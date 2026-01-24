@@ -22,9 +22,9 @@ fn extract_context_from_fields(fields: &HashMap<String, serde_json::Value>) -> H
 }
 pub use telemetry::{QueryMetrics, QueryTelemetry};
 
-use super::aggregations::{AggregationRequest, AggregationResult};
-use super::ast::QueryNode;
-use super::{QueryError, Result};
+use crate::query::aggregations::{AggregationRequest, AggregationResult};
+use crate::query::ast::QueryNode;
+use crate::query::{QueryError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tantivy::collector::TopDocs;
@@ -172,7 +172,7 @@ impl QueryExecutor {
         telemetry.mark_stage("facet_compute");
         let result_docs: Vec<_> = results.iter().map(|r| r.fields.clone()).collect();
         let facets = if !options.facet_requests.is_empty() {
-            super::aggregations::facets::compute_facets(options.facet_requests.clone(), &result_docs)
+            crate::query::aggregations::facets::compute_facets(options.facet_requests.clone(), &result_docs)
                 .unwrap_or_else(|e| {
                     tracing::warn!("Facet computation failed: {}", e);
                     Vec::new()
@@ -184,7 +184,7 @@ impl QueryExecutor {
         // 5. Apply boosting
         telemetry.mark_stage("boost_apply");
         if let Some(ref boost_config) = options.boosting_config {
-            use super::boosting::{
+            use boosting::{
                 apply_boost, calculate_context_boost, calculate_recency_decay, DecayFunction,
             };
             use chrono::{DateTime, Duration, Utc};
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_executor_computes_facets() {
-        use super::super::aggregations::{AggregationRequest, AggregationType};
+        use crate::query::aggregations::{AggregationRequest, AggregationType};
 
         let (index, reader, schema, field_map, default_fields) = setup_test_index();
         let executor = QueryExecutor::new(index, reader, schema, field_map, default_fields);

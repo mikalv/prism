@@ -1,7 +1,7 @@
 //! Query AST to Tantivy Query conversion adapter
 
-use super::super::ast::{QueryNode, TermQuery};
-use super::super::{QueryError, Result as QueryResult};
+use crate::query::ast::{QueryNode, TermQuery};
+use crate::query::{QueryError, Result};
 use std::collections::HashMap;
 use tantivy::query::{
     AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, TermQuery as TantivyTermQuery,
@@ -148,7 +148,7 @@ impl QueryAdapter {
 
     // Note: schema parameter kept for API consistency; will be used for field type validation in Phase 2
     fn convert_phrase(
-        phrase: &crate::ast::PhraseQuery,
+        phrase: &crate::query::ast::PhraseQuery,
         _schema: &Schema,
         field_map: &HashMap<String, Field>,
         default_fields: &[Field],
@@ -309,7 +309,7 @@ mod tests {
         let (schema, field_map) = test_schema();
         let default_fields = vec![];
 
-        let node = QueryNode::Wildcard(crate::ast::WildcardQuery {
+        let node = QueryNode::Wildcard(crate::query::ast::WildcardQuery {
             field: Some("title".to_string()),
             pattern: "err*".to_string(),
         });
@@ -324,7 +324,7 @@ mod tests {
         let (schema, field_map) = test_schema();
         let default_fields = vec![];
 
-        let node = QueryNode::Range(crate::ast::RangeQuery {
+        let node = QueryNode::Range(crate::query::ast::RangeQuery {
             field: "timestamp".to_string(),
             lower: Some("2024-01-01".to_string()),
             upper: None,

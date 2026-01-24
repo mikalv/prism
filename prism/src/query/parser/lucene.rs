@@ -1,5 +1,5 @@
-use super::ast::*;
-use super::{QueryError, Result};
+use crate::query::ast::*;
+use crate::query::{QueryError, Result};
 
 pub struct LuceneParser;
 
