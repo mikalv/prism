@@ -1,0 +1,388 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionSchema {
+    pub collection: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub backends: Backends,
+    #[serde(default)]
+    pub indexing: IndexingConfig,
+    #[serde(default)]
+    pub quota: QuotaConfig,
+    #[serde(default)]
+    pub embedding_generation: Option<EmbeddingGenerationConfig>,
+
+    /// Faceted search configuration
+    #[serde(default)]
+    pub facets: Option<FacetConfig>,
+
+    /// Boosting configuration
+    #[serde(default)]
+    pub boosting: Option<BoostingConfig>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Backends {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<TextBackendConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector: Option<VectorBackendConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<GraphBackendConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextBackendConfig {
+    pub fields: Vec<TextField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub field_type: FieldType,
+    #[serde(default)]
+    pub stored: bool,
+    #[serde(default)]
+    pub indexed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FieldType {
+    Text,
+    String,
+    I64,
+    U64,
+    F64,
+    Bool,
+    Date,
+    Bytes,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VectorBackendConfig {
+    pub embedding_field: String,
+    pub dimension: usize,
+    #[serde(default = "default_distance")]
+    pub distance: VectorDistance,
+    #[serde(default = "default_hnsw_m")]
+    pub hnsw_m: usize,
+    #[serde(default = "default_hnsw_ef_construction")]
+    pub hnsw_ef_construction: usize,
+    #[serde(default = "default_hnsw_ef_search")]
+    pub hnsw_ef_search: usize,
+    #[serde(default = "default_vector_weight")]
+    pub vector_weight: f32,
+}
+
+fn default_vector_weight() -> f32 {
+    0.5
+}
+
+fn default_distance() -> VectorDistance {
+    VectorDistance::Cosine
+}
+
+fn default_hnsw_m() -> usize {
+    16
+}
+
+fn default_hnsw_ef_construction() -> usize {
+    200
+}
+
+fn default_hnsw_ef_search() -> usize {
+    100
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VectorDistance {
+    Cosine,
+    Euclidean,
+    Dot,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IndexingConfig {
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
+    #[serde(default = "default_commit_interval_secs")]
+    pub commit_interval_secs: u64,
+    #[serde(default = "default_worker_threads")]
+    pub worker_threads: usize,
+}
+
+fn default_batch_size() -> usize {
+    1000
+}
+
+fn default_commit_interval_secs() -> u64 {
+    5
+}
+
+fn default_worker_threads() -> usize {
+    4
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QuotaConfig {
+    #[serde(default)]
+    pub max_documents: Option<usize>,
+    #[serde(default)]
+    pub max_size_mb: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingGenerationConfig {
+    pub enabled: bool,
+    pub model: String,
+    pub source_field: String,
+    pub target_field: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FacetConfig {
+    /// Fields allowed to be faceted
+    #[serde(default)]
+    pub allowed: Vec<String>,
+
+    /// Default facets if not specified in query
+    #[serde(default)]
+    pub default: Vec<String>,
+
+    /// Per-field facet configuration
+    #[serde(default)]
+    pub configs: Vec<FieldFacetConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldFacetConfig {
+    pub field: String,
+
+    #[serde(rename = "type")]
+    pub facet_type: FacetType,
+
+    /// Max values to return (for terms aggregation)
+    #[serde(default = "default_facet_size")]
+    pub size: usize,
+
+    /// Interval for date_histogram (e.g., "day", "week", "month")
+    #[serde(default)]
+    pub interval: Option<String>,
+}
+
+fn default_facet_size() -> usize {
+    10
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FacetType {
+    Terms,
+    DateHistogram,
+    Range,
+    Stats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoostingConfig {
+    /// Recency decay configuration
+    #[serde(default)]
+    pub recency: Option<RecencyDecayConfig>,
+
+    /// Context-based boosting (project, session, etc.)
+    #[serde(default)]
+    pub context: Vec<ContextBoostConfig>,
+
+    /// Field-specific weights
+    #[serde(default)]
+    pub field_weights: std::collections::HashMap<String, f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecencyDecayConfig {
+    /// Field containing timestamp
+    pub field: String,
+
+    /// Decay function: exponential, linear, gauss
+    #[serde(default = "default_decay_function")]
+    pub decay_function: String,
+
+    /// Time scale (e.g., "7d", "30d", "1h")
+    pub scale: String,
+
+    /// Offset before decay starts
+    #[serde(default)]
+    pub offset: Option<String>,
+
+    /// Decay rate (0.0 to 1.0)
+    #[serde(default = "default_decay_rate")]
+    pub decay_rate: f32,
+}
+
+fn default_decay_function() -> String {
+    "exponential".to_string()
+}
+
+fn default_decay_rate() -> f32 {
+    0.5
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextBoostConfig {
+    /// Field to match
+    pub field: String,
+
+    /// Match current context value
+    #[serde(default)]
+    pub match_current: bool,
+
+    /// Boost multiplier
+    #[serde(default = "default_boost_multiplier")]
+    pub boost: f32,
+}
+
+fn default_boost_multiplier() -> f32 {
+    1.5
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphBackendConfig {
+    pub path: String,
+    pub edges: Vec<EdgeTypeConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EdgeTypeConfig {
+    pub edge_type: String,
+    pub from_field: String,
+    pub to_field: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_text_backend_config() {
+        let yaml = r#"
+collection: test_collection
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        stored: true
+        indexed: true
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(schema.collection, "test_collection");
+        assert!(schema.backends.text.is_some());
+
+        let text = schema.backends.text.unwrap();
+        assert_eq!(text.fields.len(), 1);
+        assert_eq!(text.fields[0].name, "title");
+        assert_eq!(text.fields[0].field_type, FieldType::Text);
+    }
+
+    #[test]
+    fn test_parse_vector_backend_config() {
+        let yaml = r#"
+collection: embeddings
+backends:
+  vector:
+    embedding_field: content_vector
+    dimension: 384
+    distance: cosine
+    hnsw_m: 16
+    hnsw_ef_construction: 200
+    hnsw_ef_search: 100
+embedding_generation:
+  enabled: false
+  model: all-MiniLM-L6-v2
+  source_field: content
+  target_field: content_vector
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(schema.collection, "embeddings");
+        assert!(schema.backends.vector.is_some());
+
+        let vector = schema.backends.vector.unwrap();
+        assert_eq!(vector.embedding_field, "content_vector");
+        assert_eq!(vector.dimension, 384);
+        assert_eq!(vector.distance, VectorDistance::Cosine);
+        assert_eq!(vector.hnsw_m, 16);
+
+        assert!(schema.embedding_generation.is_some());
+        let emb_gen = schema.embedding_generation.unwrap();
+        assert_eq!(emb_gen.enabled, false);
+        assert_eq!(emb_gen.model, "all-MiniLM-L6-v2");
+    }
+
+    #[test]
+    fn test_parse_facet_config() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+facets:
+  allowed:
+    - type
+    - status
+  default:
+    - type
+  configs:
+    - field: type
+      type: terms
+      size: 10
+"#;
+
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let facets = schema.facets.unwrap();
+
+        assert_eq!(facets.allowed.len(), 2);
+        assert_eq!(facets.default.len(), 1);
+        assert_eq!(facets.configs.len(), 1);
+        assert_eq!(facets.configs[0].facet_type, FacetType::Terms);
+    }
+
+    #[test]
+    fn test_parse_boosting_config() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+boosting:
+  recency:
+    field: timestamp
+    decay_function: exponential
+    scale: 7d
+    decay_rate: 0.5
+  context:
+    - field: project_id
+      match_current: true
+      boost: 2.0
+  field_weights:
+    title: 2.0
+    content: 1.0
+"#;
+
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let boosting = schema.boosting.unwrap();
+
+        assert!(boosting.recency.is_some());
+        assert_eq!(boosting.context.len(), 1);
+        assert_eq!(boosting.field_weights.get("title"), Some(&2.0));
+    }
+}

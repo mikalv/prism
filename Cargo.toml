@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = ["prism", "prism-server", "prism-cli"]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+authors = ["mikalv"]
+repository = "https://github.com/mikalv/prism"
+description = "Hybrid search engine combining full-text and vector search for AI/RAG applications"
+keywords = ["search", "vector", "embedding", "rag", "tantivy"]
+categories = ["database", "text-processing"]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+async-stream = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP
+reqwest = { version = "0.12", features = ["json"] }
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+base64 = "0.22"
+parking_lot = "0.12"
+dirs = "6"
+
+# Search
+tantivy = "0.22"
+
+# Query parsing
+nom = "7.1"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+
+# Vector backends
+instant-distance = "0.6"
+usearch = "2.13"
+
+# Embedding generation
+ort = { version = "2.0.0-rc.11", features = ["download-binaries"] }
+tokenizers = "0.19"
+ndarray = "0.17"
+
+# Cache backends
+rusqlite = { version = "0.32", features = ["bundled"] }
+redis = { version = "0.27", features = ["tokio-comp"] }
+
+# Testing
+tempfile = "3"
+
+# Internal
+prism = { path = "prism" }
