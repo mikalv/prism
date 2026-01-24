@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  prism:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - prism-data:/data
+    environment:
+      - RUST_LOG=info
+      - PRISM_EMBEDDING_PROVIDER=ollama
+      - PRISM_OLLAMA_URL=http://ollama:11434
+      - PRISM_OLLAMA_MODEL=nomic-embed-text
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # Pull embedding model on startup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /bin/ollama serve &
+        sleep 5
+        /bin/ollama pull nomic-embed-text
+        wait
+
+volumes:
+  prism-data:
+  ollama-data:
