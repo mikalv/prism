@@ -183,9 +183,9 @@ impl CollectionManager {
     }
 
     /// Generate an embedding for query text using the collection's configured embedder.
-    /// Requires embedding-gen feature and embedding_generation config in schema.
-    pub fn embed_query(&self, _collection: &str, text: &str) -> Result<Vec<f32>> {
-        self.vector_backend.embed_query(text)
+    /// Requires embedding provider to be configured on the vector backend.
+    pub async fn embed_query(&self, _collection: &str, text: &str) -> Result<Vec<f32>> {
+        self.vector_backend.embed_text(text).await
     }
 
     /// Perform hybrid search combining text and vector search results.

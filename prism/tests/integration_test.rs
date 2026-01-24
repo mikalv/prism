@@ -2,8 +2,8 @@
 //!
 //! Tests the full-stack: index -> search -> facets -> boosting
 
-use searchcore::backends::{Document, Query, TextBackend, VectorBackend};
-use searchcore::collection::CollectionManager;
+use prism::backends::{Document, Query, TextBackend, VectorBackend};
+use prism::collection::CollectionManager;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;

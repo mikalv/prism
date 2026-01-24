@@ -1,5 +1,5 @@
 #[cfg(feature = "vector-instant")]
-use searchcore::backends::vector::{HnswBackend, HnswIndex, Metric};
+use prism::backends::vector::{HnswBackend, HnswIndex, Metric};
 
 #[cfg(feature = "vector-instant")]
 #[test]

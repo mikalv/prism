@@ -1,5 +1,5 @@
-use searchcore::backends::r#trait::{Document, Query, SearchBackend};
-use searchcore::backends::{TextBackend, VectorBackend, HybridSearchCoordinator};
+use prism::backends::r#trait::{Document, Query, SearchBackend};
+use prism::backends::{TextBackend, VectorBackend, HybridSearchCoordinator};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -15,10 +15,10 @@ async fn test_hybrid_merge_behaviour() {
     let hybrid = HybridSearchCoordinator::new(text.clone(), vector.clone(), 0.6);
 
     // Initialize simple collection schema for both backends
-    let schema = searchcore::schema::types::CollectionSchema {
+    let schema = prism::schema::types::CollectionSchema {
         collection: "col".to_string(),
         description: None,
-        backends: searchcore::schema::types::Backends { text: Some(searchcore::schema::types::TextBackendConfig { fields: vec![searchcore::schema::types::TextField { name: "text".to_string(), field_type: searchcore::schema::types::FieldType::Text, stored: true, indexed: true }] }), vector: Some(searchcore::schema::types::VectorBackendConfig { embedding_field: "embedding".to_string(), dimension: 3, distance: searchcore::schema::types::VectorDistance::Cosine, hnsw_m: 16, hnsw_ef_construction: 200, hnsw_ef_search: 100, vector_weight: 0.5 }), graph: None },
+        backends: prism::schema::types::Backends { text: Some(prism::schema::types::TextBackendConfig { fields: vec![prism::schema::types::TextField { name: "text".to_string(), field_type: prism::schema::types::FieldType::Text, stored: true, indexed: true }] }), vector: Some(prism::schema::types::VectorBackendConfig { embedding_field: "embedding".to_string(), dimension: 3, distance: prism::schema::types::VectorDistance::Cosine, hnsw_m: 16, hnsw_ef_construction: 200, hnsw_ef_search: 100, vector_weight: 0.5 }), graph: None },
         indexing: Default::default(),
         quota: Default::default(),
         embedding_generation: None,

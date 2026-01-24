@@ -1,6 +1,6 @@
 //! Tests for config module
 
-use searchcore::config::{Config, expand_tilde};
+use prism::config::{Config, expand_tilde};
 use std::path::PathBuf;
 use tempfile::tempdir;
 

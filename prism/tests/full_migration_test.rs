@@ -1,7 +1,7 @@
-use searchcore::backends::text::TextBackend;
-use searchcore::backends::VectorBackend;
-use searchcore::collection::manager::CollectionManager;
-use searchcore::migration::{DataExporter, DataImporter, SchemaDiscoverer};
+use prism::backends::text::TextBackend;
+use prism::backends::VectorBackend;
+use prism::collection::manager::CollectionManager;
+use prism::migration::{DataExporter, DataImporter, SchemaDiscoverer};
 use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -58,7 +58,7 @@ async fn test_full_migration_flow() {
     // Start HTTP server in background
     let server_manager = manager.clone();
     let server_handle = tokio::spawn(async move {
-        let api = searchcore::api::server::ApiServer::new(server_manager);
+        let api = prism::api::server::ApiServer::new(server_manager);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         println!("Test server listening on: {}", addr);
@@ -99,7 +99,7 @@ async fn test_full_migration_flow() {
     server_handle.abort();
 }
 
-fn create_old_index(base_path: &std::path::Path, collection: &str) -> searchcore::Result<()> {
+fn create_old_index(base_path: &std::path::Path, collection: &str) -> prism::Result<()> {
     use tantivy::schema::*;
     use tantivy::{doc, Index, IndexWriter};
 

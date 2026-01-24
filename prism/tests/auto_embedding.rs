@@ -1,8 +1,8 @@
 use std::sync::Arc;
-use searchcore::backends::vector::VectorBackend;
-use searchcore::backends::Document;
-use searchcore::backends::SearchBackend;
-use searchcore::schema::CollectionSchema;
+use prism::backends::vector::VectorBackend;
+use prism::backends::Document;
+use prism::backends::SearchBackend;
+use prism::schema::CollectionSchema;
 
 // A minimal test that indexes a document with a precomputed embedding to verify indexing path
 #[tokio::test]
@@ -13,9 +13,9 @@ async fn test_index_with_embedding_field() {
     let schema = CollectionSchema {
         collection: "test_collection".into(),
         description: None,
-        backends: searchcore::schema::types::Backends { text: None, vector: Some(searchcore::schema::types::VectorBackendConfig { embedding_field: "embedding".into(), dimension: 8, distance: searchcore::schema::types::VectorDistance::Cosine, hnsw_m: 16, hnsw_ef_construction: 200, hnsw_ef_search: 100, vector_weight: 0.5 }), graph: None },
-        indexing: searchcore::schema::types::IndexingConfig::default(),
-        quota: searchcore::schema::types::QuotaConfig::default(),
+        backends: prism::schema::types::Backends { text: None, vector: Some(prism::schema::types::VectorBackendConfig { embedding_field: "embedding".into(), dimension: 8, distance: prism::schema::types::VectorDistance::Cosine, hnsw_m: 16, hnsw_ef_construction: 200, hnsw_ef_search: 100, vector_weight: 0.5 }), graph: None },
+        indexing: prism::schema::types::IndexingConfig::default(),
+        quota: prism::schema::types::QuotaConfig::default(),
         embedding_generation: None,
         facets: None,
             boosting: None,

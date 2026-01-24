@@ -4,7 +4,7 @@
 
 #![cfg(feature = "embedding-gen-real")]
 
-use searchcore::embedding::{Embedder, ModelConfig};
+use prism::embedding::{Embedder, ModelConfig};
 
 #[tokio::test]
 async fn test_real_embedding_single() {

@@ -1,3 +1,5 @@
+//! Vector search backend with optional embedding cache integration
+
 use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults};
 use crate::error::Result;
 use crate::schema::types::CollectionSchema;
@@ -10,16 +12,17 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use super::index::{HnswBackend, HnswIndex, Metric};
+use crate::embedding::CachedEmbeddingProvider;
 
 pub struct VectorBackend {
     base_path: PathBuf,
     indexes: Arc<RwLock<HashMap<String, VectorIndex>>>,
-    #[cfg(feature = "embedding-gen")]
-    embedder: Arc<RwLock<Option<Arc<crate::embedding::Embedder>>>>,
+    /// Cached embedding provider for automatic embedding generation
+    embedding_provider: Arc<RwLock<Option<Arc<CachedEmbeddingProvider>>>>,
 }
 
 struct VectorIndex {
-    hnsw: HnswBackend,  // Compile-time selected backend
+    hnsw: HnswBackend,
     dimensions: usize,
     metric: Metric,
     ef_search: usize,
@@ -29,8 +32,10 @@ struct VectorIndex {
     next_key: AtomicU32,
     // Store document fields (HNSW only stores vectors)
     documents: HashMap<String, HashMap<String, serde_json::Value>>,
-    #[cfg(feature = "embedding-gen")]
-    embedding_generation: Option<crate::schema::types::EmbeddingGenerationConfig>,
+    /// Source field for embedding generation
+    embedding_source_field: Option<String>,
+    /// Target field for embeddings
+    embedding_target_field: String,
 }
 
 impl VectorBackend {
@@ -41,9 +46,24 @@ impl VectorBackend {
         Ok(Self {
             base_path,
             indexes: Arc::new(RwLock::new(HashMap::new())),
-            #[cfg(feature = "embedding-gen")]
-            embedder: Arc::new(RwLock::new(None)),
+            embedding_provider: Arc::new(RwLock::new(None)),
         })
+    }
+
+    /// Set the embedding provider for automatic embedding generation
+    pub fn set_embedding_provider(&self, provider: Arc<CachedEmbeddingProvider>) {
+        let mut ep = self.embedding_provider.write();
+        *ep = Some(provider);
+    }
+
+    /// Get cache statistics from the embedding provider
+    pub async fn embedding_cache_stats(&self) -> Option<crate::cache::CacheStats> {
+        let ep = self.embedding_provider.read();
+        if let Some(ref provider) = *ep {
+            provider.cache_stats().await.ok()
+        } else {
+            None
+        }
     }
 
     pub async fn initialize(&self, collection: &str, schema: &CollectionSchema) -> Result<()> {
@@ -66,6 +86,17 @@ impl VectorBackend {
             vector_config.hnsw_ef_construction,
         )?;
 
+        // Get embedding config if available
+        let (source_field, target_field) = if let Some(ref emb_cfg) = schema.embedding_generation {
+            if emb_cfg.enabled {
+                (Some(emb_cfg.source_field.clone()), emb_cfg.target_field.clone())
+            } else {
+                (None, "embedding".to_string())
+            }
+        } else {
+            (None, "embedding".to_string())
+        };
+
         let vector_index = VectorIndex {
             hnsw,
             dimensions: vector_config.dimension,
@@ -75,95 +106,144 @@ impl VectorBackend {
             key_to_id: HashMap::new(),
             next_key: AtomicU32::new(0),
             documents: HashMap::new(),
-            #[cfg(feature = "embedding-gen")]
-            embedding_generation: schema.embedding_generation.clone(),
+            embedding_source_field: source_field,
+            embedding_target_field: target_field,
         };
 
         let mut indexes = self.indexes.write();
         indexes.insert(collection.to_string(), vector_index);
 
-        #[cfg(feature = "embedding-gen")]
-        {
-            // If collection schema requests embedding generation, attempt to instantiate embedder
-            if let Some(emb_cfg) = &schema.embedding_generation {
-                if emb_cfg.enabled {
-                    // model override from schema or default
-                    let model_name = if emb_cfg.model.is_empty() { "all-MiniLM-L6-v2".to_string() } else { emb_cfg.model.clone() };
-                    let config = crate::embedding::ModelConfig::new(model_name);
-                    match crate::embedding::Embedder::new(config).await {
-                        Ok(embedder) => {
-                            let mut e = self.embedder.write();
-                            *e = Some(Arc::new(embedder));
-                            tracing::info!("Embedder initialized for collection {}", collection);
-                        }
-                        Err(err) => {
-                            tracing::warn!("Failed to initialize embedder for {}: {}. Falling back to deterministic.", collection, err);
-                        }
-                    }
-                }
-            }
-        }
-
         Ok(())
+    }
+
+    /// Embed a single text using the cached provider
+    pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
+        let ep = self.embedding_provider.read();
+        if let Some(ref provider) = *ep {
+            provider
+                .embed(text)
+                .await
+                .map_err(|e| crate::error::Error::Backend(format!("Embedding failed: {}", e)))
+        } else {
+            Err(crate::error::Error::Backend(
+                "No embedding provider configured. Call set_embedding_provider() first.".into(),
+            ))
+        }
+    }
+
+    /// Embed multiple texts using the cached provider (uses batch API)
+    pub async fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        let ep = self.embedding_provider.read();
+        if let Some(ref provider) = *ep {
+            provider
+                .embed_batch(texts)
+                .await
+                .map_err(|e| crate::error::Error::Backend(format!("Batch embedding failed: {}", e)))
+        } else {
+            Err(crate::error::Error::Backend(
+                "No embedding provider configured. Call set_embedding_provider() first.".into(),
+            ))
+        }
+    }
+
+    /// Search with a text query (auto-embeds the query)
+    pub async fn search_text(&self, collection: &str, text: &str, limit: usize) -> Result<SearchResults> {
+        // Generate embedding for the query
+        let query_vector = self.embed_text(text).await?;
+
+        // Convert to JSON for the standard search
+        let query = Query {
+            query_string: serde_json::to_string(&query_vector)
+                .map_err(|e| crate::error::Error::Backend(format!("JSON error: {}", e)))?,
+            fields: vec![],
+            limit,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+        };
+
+        self.search(collection, query).await
     }
 }
 
 #[async_trait]
 impl SearchBackend for VectorBackend {
     async fn index(&self, collection: &str, mut docs: Vec<Document>) -> Result<()> {
-        // Auto-embedding (feature gated)
-        #[cfg(feature = "embedding-gen")]
-        {
-            let mut indexes = self.indexes.write();
+        // Check if we need auto-embedding
+        let needs_embedding = {
+            let indexes = self.indexes.read();
             let vector_index = indexes
-                .get_mut(collection)
+                .get(collection)
                 .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
+            vector_index.embedding_source_field.is_some()
+        };
 
-            if let Some(cfg) = &vector_index.embedding_generation {
-                if cfg.enabled {
-                    let embedder_opt = self.embedder.read();
-                    if let Some(embedder_arc) = embedder_opt.as_ref() {
-                        let embedder = embedder_arc.clone();
-                        let mut texts: Vec<&str> = Vec::new();
-                        let mut need_idx: Vec<usize> = Vec::new();
-                        for (i, doc) in docs.iter().enumerate() {
-                            if !doc.fields.contains_key(&cfg.target_field) {
-                                if let Some(val) = doc.fields.get(&cfg.source_field) {
-                                    if let Some(s) = val.as_str() {
-                                        texts.push(s);
-                                        need_idx.push(i);
-                                    }
+        // Auto-embed documents that need it
+        if needs_embedding {
+            // Clone the provider Arc to avoid holding the guard across await
+            let provider = {
+                let ep = self.embedding_provider.read();
+                ep.clone()
+            };
+
+            if let Some(ref provider) = provider {
+                let (source_field, target_field, texts_to_embed) = {
+                    let indexes = self.indexes.read();
+                    let vector_index = indexes.get(collection).unwrap();
+                    let source_field = vector_index.embedding_source_field.clone().unwrap();
+                    let target_field = vector_index.embedding_target_field.clone();
+
+                    // Collect texts that need embedding
+                    let mut texts_to_embed: Vec<(usize, String)> = Vec::new();
+                    for (i, doc) in docs.iter().enumerate() {
+                        if !doc.fields.contains_key(&target_field) {
+                            if let Some(val) = doc.fields.get(&source_field) {
+                                if let Some(s) = val.as_str() {
+                                    texts_to_embed.push((i, s.to_string()));
                                 }
                             }
                         }
+                    }
+                    (source_field, target_field, texts_to_embed)
+                }; // indexes lock released here
 
-                        if !texts.is_empty() {
-                            tracing::info!("Auto-generating {} embeddings", texts.len());
-                            match embedder.embed_batch(&texts) {
-                                Ok(embs) => {
-                                    for (emb, &doc_i) in embs.iter().zip(need_idx.iter()) {
-                                        docs[doc_i].fields.insert(cfg.target_field.clone(), serde_json::to_value(emb).unwrap());
-                                    }
-                                }
-                                Err(e) => tracing::error!("Embedding generation failed: {}", e),
+                if !texts_to_embed.is_empty() {
+                    tracing::info!("Auto-generating {} embeddings (with cache)", texts_to_embed.len());
+                    let texts: Vec<&str> = texts_to_embed.iter().map(|(_, s)| s.as_str()).collect();
+
+                    match provider.embed_batch(&texts).await {
+                        Ok(embeddings) => {
+                            for ((doc_idx, _), embedding) in texts_to_embed.iter().zip(embeddings.into_iter()) {
+                                docs[*doc_idx].fields.insert(
+                                    target_field.clone(),
+                                    serde_json::to_value(&embedding).unwrap(),
+                                );
                             }
+                        }
+                        Err(e) => {
+                            tracing::error!("Embedding generation failed: {}", e);
                         }
                     }
                 }
             }
         }
 
+        // Index documents with embeddings
         let mut indexes = self.indexes.write();
         let vector_index = indexes
             .get_mut(collection)
             .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
 
         for doc in docs {
-            // Extract vector from document (assume field name "embedding")
+            // Extract vector from document
             let vector_value = doc
                 .fields
-                .get("embedding")
-                .ok_or_else(|| crate::error::Error::Schema("Missing embedding field".into()))?;
+                .get(&vector_index.embedding_target_field)
+                .ok_or_else(|| crate::error::Error::Schema(format!(
+                    "Missing {} field",
+                    vector_index.embedding_target_field
+                )))?;
 
             let vector: Vec<f32> = serde_json::from_value(vector_value.clone())
                 .map_err(|_| crate::error::Error::Schema("Invalid embedding format".into()))?;
@@ -305,28 +385,52 @@ impl SearchBackend for VectorBackend {
     }
 }
 
-impl VectorBackend {
-    /// Generate embedding for a query text using the configured embedder.
-    /// Returns the embedding vector if embedding generation is enabled and available.
-    #[cfg(feature = "embedding-gen")]
-    pub fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
-        let embedder_guard = self.embedder.read();
-        if let Some(ref embedder) = *embedder_guard {
-            embedder
-                .embed(text)
-                .map_err(|e| crate::error::Error::Backend(format!("Embedding failed: {}", e)))
-        } else {
-            Err(crate::error::Error::Backend(
-                "No embedder available. Enable embedding-gen feature and configure embedding_generation in schema.".into(),
-            ))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cache::SqliteCache;
+    use crate::embedding::{EmbeddingProvider, CachedEmbeddingProvider};
+    use crate::cache::KeyStrategy;
+    use tempfile::tempdir;
+
+    struct MockEmbeddingProvider {
+        dimensions: usize,
+    }
+
+    #[async_trait::async_trait]
+    impl EmbeddingProvider for MockEmbeddingProvider {
+        async fn embed(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+            // Return deterministic embedding based on text hash
+            Ok(vec![0.1, 0.2, 0.3, 0.4])
+        }
+
+        fn model_name(&self) -> &str {
+            "mock"
+        }
+
+        fn dimensions(&self) -> usize {
+            self.dimensions
         }
     }
 
-    /// Stub for when embedding-gen feature is disabled
-    #[cfg(not(feature = "embedding-gen"))]
-    pub fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
-        Err(crate::error::Error::Backend(
-            "Embedding generation not enabled. Compile with --features embedding-gen".into(),
-        ))
+    #[tokio::test]
+    async fn test_vector_backend_with_cached_provider() {
+        let dir = tempdir().unwrap();
+        let backend = VectorBackend::new(dir.path()).unwrap();
+
+        // Create cached embedding provider
+        let mock_provider = Box::new(MockEmbeddingProvider { dimensions: 4 });
+        let cache = Arc::new(SqliteCache::in_memory().unwrap());
+        let cached_provider = Arc::new(CachedEmbeddingProvider::new(
+            mock_provider,
+            cache,
+            KeyStrategy::ModelText,
+        ));
+
+        backend.set_embedding_provider(cached_provider);
+
+        // Test embedding
+        let embedding = backend.embed_text("hello world").await.unwrap();
+        assert_eq!(embedding.len(), 4);
     }
 }

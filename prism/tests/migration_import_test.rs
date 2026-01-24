@@ -1,4 +1,4 @@
-use searchcore::migration::import::DataImporter;
+use prism::migration::import::DataImporter;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
