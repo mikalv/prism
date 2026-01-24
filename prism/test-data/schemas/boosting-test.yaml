@@ -1,0 +1,35 @@
+collection: conversations
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+      - name: project_id
+        type: string
+        indexed: true
+      - name: session_id
+        type: string
+        indexed: true
+      - name: timestamp
+        type: date
+        indexed: true
+
+boosting:
+  recency:
+    field: timestamp
+    decay_function: exponential
+    scale: 7d
+    decay_rate: 0.5
+
+  context:
+    - field: project_id
+      match_current: true
+      boost: 2.0
+    - field: session_id
+      match_current: true
+      boost: 1.5
+
+  field_weights:
+    title: 2.0
+    content: 1.0

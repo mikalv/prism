@@ -1,0 +1,35 @@
+collection: test_faceted
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+      - name: type
+        type: string
+        indexed: true
+      - name: status
+        type: string
+        indexed: true
+      - name: timestamp
+        type: date
+        indexed: true
+
+facets:
+  allowed:
+    - type
+    - status
+    - timestamp
+  default:
+    - type
+    - status
+  configs:
+    - field: type
+      type: terms
+      size: 10
+    - field: status
+      type: terms
+      size: 5
+    - field: timestamp
+      type: date_histogram
+      interval: day
