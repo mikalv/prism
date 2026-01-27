@@ -65,6 +65,10 @@ ndarray = { workspace = true, optional = true }
 rusqlite = { workspace = true }
 redis = { workspace = true, optional = true }
 
+# Object storage
+object_store = { workspace = true, optional = true }
+bytes = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 
@@ -83,6 +87,9 @@ all-providers = ["provider-ollama", "provider-openai", "provider-onnx"]
 
 # Cache backends
 cache-redis = ["dep:redis"]
+
+# Storage backends
+storage-s3 = ["dep:object_store"]
 
 # Full feature set
 full = ["vector-instant", "all-providers", "cache-redis"]
