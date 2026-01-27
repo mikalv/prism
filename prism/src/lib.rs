@@ -9,6 +9,7 @@ pub mod mcp;
 pub mod migration;
 pub mod query;
 pub mod schema;
+pub mod storage;
 
 pub use config::Config;
 pub use error::{Error, Result};

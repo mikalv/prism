@@ -23,7 +23,8 @@ async fn test_hybrid_merge_behaviour() {
         quota: Default::default(),
         embedding_generation: None,
         facets: None,
-            boosting: None,
+        boosting: None,
+        storage: Default::default(),
     };
 
     text.initialize("col", &schema).await.unwrap();

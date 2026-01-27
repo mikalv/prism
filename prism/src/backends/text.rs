@@ -473,6 +473,7 @@ mod tests {
             embedding_generation: None,
             facets: None,
             boosting: None,
+            storage: Default::default(),
         };
 
         backend.initialize("test", &schema).await?;

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::storage::StorageConfig;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionSchema {
     pub collection: String,
@@ -20,6 +22,10 @@ pub struct CollectionSchema {
     /// Boosting configuration
     #[serde(default)]
     pub boosting: Option<BoostingConfig>,
+
+    /// Storage backend configuration (local or S3)
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

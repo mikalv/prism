@@ -30,7 +30,8 @@ async fn test_initialize_collection() {
         quota: Default::default(),
         embedding_generation: None,
         facets: None,
-            boosting: None,
+        boosting: None,
+        storage: Default::default(),
     };
 
     backend.initialize("test", &schema).await.unwrap();
@@ -68,7 +69,8 @@ async fn test_index_and_search() {
         quota: Default::default(),
         embedding_generation: None,
         facets: None,
-            boosting: None,
+        boosting: None,
+        storage: Default::default(),
     };
 
     backend.initialize("test2", &schema).await.unwrap();

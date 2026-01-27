@@ -91,6 +91,7 @@ impl SchemaDiscoverer {
             embedding_generation: None,
             facets: None,
             boosting: None,
+            storage: Default::default(),
         })
     }
 

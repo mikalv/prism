@@ -18,7 +18,8 @@ async fn test_index_with_embedding_field() {
         quota: prism::schema::types::QuotaConfig::default(),
         embedding_generation: None,
         facets: None,
-            boosting: None,
+        boosting: None,
+        storage: Default::default(),
     };
     backend.initialize("test_collection", &schema).await.unwrap();
 
