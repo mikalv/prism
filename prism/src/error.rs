@@ -31,6 +31,9 @@ pub enum Error {
 
     #[error("Storage error: {0}")]
     Storage(String),
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
