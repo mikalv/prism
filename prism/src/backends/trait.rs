@@ -36,6 +36,13 @@ pub struct SearchResults {
     pub latency_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchResultsWithAggs {
+    pub results: Vec<SearchResult>,
+    pub total: u64,
+    pub aggregations: HashMap<String, AggregationResult>,
+}
+
 #[async_trait]
 pub trait SearchBackend: Send + Sync {
     /// Index documents
@@ -52,6 +59,14 @@ pub trait SearchBackend: Send + Sync {
 
     /// Get backend statistics
     async fn stats(&self, collection: &str) -> Result<BackendStats>;
+
+    /// Search documents with aggregations
+    async fn search_with_aggs(
+        &self,
+        collection: &str,
+        query: &Query,
+        aggregations: Vec<crate::aggregations::AggregationRequest>,
+    ) -> Result<SearchResultsWithAggs>;
 }
 
 #[derive(Debug, Clone)]

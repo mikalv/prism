@@ -1,13 +1,14 @@
-use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults};
+use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
 use crate::schema::{CollectionSchema, FieldType};
-use crate::storage::StorageConfig;
 use crate::{Error, Result};
+use crate::aggregations::{Agg, PreparedAgg, SegmentAgg, AggSegmentContext, AggregationRequest, AggregationType, CountAgg, MinMaxAgg, TermsAgg};
 use async_trait::async_trait;
+use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
-    collector::TopDocs, directory::MmapDirectory, query::QueryParser, schema::*,
+    collector::TopDocs, query::QueryParser, schema::*,
     Document as TantivyDocTrait, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
     Term,
 };
@@ -576,6 +577,155 @@ impl SearchBackend for TextBackend {
             size_bytes,
         })
     }
+
+    async fn search_with_aggs(
+        &self,
+        collection: &str,
+        query: &Query,
+        aggregations: Vec<AggregationRequest>,
+    ) -> Result<SearchResultsWithAggs> {
+
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        let searcher = coll.reader.searcher();
+
+        let query_fields: Vec<Field> = if query.fields.is_empty() {
+            coll.field_map
+                .iter()
+                .filter(|(name, field)| {
+                    if *name == "id" {
+                        return false;
+                    }
+                    let field_entry = coll.schema.get_field_entry(**field);
+                    field_entry.field_type().is_indexed()
+                        && matches!(field_entry.field_type(), tantivy::schema::FieldType::Str(_))
+                })
+                .map(|(_, field)| *field)
+                .collect()
+        } else {
+            query
+                .fields
+                .iter()
+                .filter_map(|f| coll.field_map.get(f).copied())
+                .collect()
+        };
+
+        let query_parser = QueryParser::for_index(&coll.index, query_fields);
+        let parsed_query = query_parser
+            .parse_query(&query.query_string)
+            .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+
+        let top_docs = TopDocs::with_limit(query.limit as usize);
+
+        let mut agg_results = HashMap::new();
+        for agg_req in aggregations {
+            let result = match &agg_req.agg_type {
+                AggregationType::Count => {
+                    let prepared = CountAgg.prepare(&searcher)?;
+                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
+                    let agg = CountAgg;
+                    agg.into_result(agg_req.name.clone(), fruit)
+                }
+                AggregationType::Min { field } => {
+                    let agg = MinMaxAgg::min(field);
+                    let prepared = agg.prepare(&searcher)?;
+                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
+                    agg.into_result(agg_req.name.clone(), fruit)
+                }
+                AggregationType::Max { field } => {
+                    let agg = MinMaxAgg::max(field);
+                    let prepared = agg.prepare(&searcher)?;
+                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
+                    agg.into_result(agg_req.name.clone(), fruit)
+                }
+                AggregationType::Terms { field, size } => {
+                    let agg = TermsAgg::new(field, size.unwrap_or(10));
+                    let prepared = agg.prepare(&searcher)?;
+                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
+                    agg.into_result(agg_req.name.clone(), fruit)
+                }
+                _ => return Err(Error::InvalidQuery(format!("Unsupported aggregation type"))),
+            };
+
+            agg_results.insert(agg_req.name, result);
+        }
+
+        let mut results = Vec::new();
+        let id_field = coll.field_map.get("id").unwrap();
+
+        for (_score, doc_address) in searcher.search(&parsed_query, &top_docs)? {
+            let retrieved_doc: TantivyDocument = searcher.doc(doc_address)?;
+
+            let id = retrieved_doc
+                .get_first(*id_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let mut fields = HashMap::new();
+            for (field_name, field) in &coll.field_map {
+                if let Some(value) = retrieved_doc.get_first(*field) {
+                    let json_value = match value {
+                        tantivy::schema::Value::Str(s) => json!(s),
+                        tantivy::schema::Value::I64(i) => json!(i),
+                        tantivy::schema::Value::U64(u) => json!(u),
+                        tantivy::schema::Value::F64(f) => json!(f),
+                        tantivy::schema::Value::Bool(b) => json!(b),
+                        _ => continue,
+                    };
+                    fields.insert(field_name.clone(), json_value);
+                }
+            }
+
+            results.push(SearchResult {
+                id,
+                score: 0.0,
+                fields,
+            });
+        }
+
+        Ok(SearchResultsWithAggs {
+            results,
+            total: results.len() as u64,
+            aggregations: agg_results,
+        })
+    }
+}
+
+fn run_aggregation<F: PreparedAgg>(
+    reader: &IndexReader,
+    query: &tantivy::query::Query,
+    top_docs: &TopDocs,
+    prepared: F,
+) -> Result<F::Fruit>
+where
+    F::Child: SegmentAgg<Fruit = F::Fruit>,
+{
+    let mut fruit = prepared.create_fruit();
+
+    for segment_reader in reader.segment_readers() {
+        let segment_ord = segment_reader.segment_id();
+        let weight = query.weight(tantivy::query::EnableScoring::disabled_from_searcher(&reader))?;
+        let scorer = weight.scorer(&segment_reader, 1.0)?;
+
+        let mut segment_agg = prepared.for_segment(&AggSegmentContext {
+            segment_ord,
+            reader: segment_reader,
+            scorer: scorer.as_ref(),
+        })?;
+
+        weight.for_each(&segment_reader, &mut |doc, score| {
+            segment_agg.collect(doc, score, &mut fruit);
+        })?;
+
+        let segment_fruit = segment_agg.create_fruit();
+        prepared.merge(&mut fruit, segment_fruit);
+    }
+
+    Ok(fruit)
 }
 
 #[cfg(test)]
