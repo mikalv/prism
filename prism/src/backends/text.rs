@@ -1,13 +1,15 @@
 use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults};
 use crate::schema::{CollectionSchema, FieldType};
+use crate::storage::StorageConfig;
 use crate::{Error, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
-    collector::TopDocs, query::QueryParser, schema::*, Document as TantivyDocTrait, Index,
-    IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term,
+    collector::TopDocs, directory::MmapDirectory, query::QueryParser, schema::*,
+    Document as TantivyDocTrait, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
+    Term,
 };
 
 pub struct TextBackend {
@@ -157,6 +159,141 @@ impl TextBackend {
             .insert(collection.to_string(), collection_index);
 
         Ok(())
+    }
+
+    #[cfg(feature = "storage-s3")]
+    pub async fn initialize_with_storage(
+        &self,
+        collection: &str,
+        schema: &CollectionSchema,
+        storage: &StorageConfig,
+    ) -> Result<()> {
+        use crate::storage::{LocalConfig, ObjectStoreDirectory, S3Config};
+
+        match storage {
+            StorageConfig::Local(_) => self.initialize(collection, schema).await,
+            StorageConfig::S3(s3_config) => {
+                let text_config = schema
+                    .backends
+                    .text
+                    .as_ref()
+                    .ok_or_else(|| Error::Schema("No text backend config".to_string()))?;
+
+                let mut schema_builder = Schema::builder();
+                let mut field_map = HashMap::new();
+
+                let id_field = schema_builder.add_text_field("id", STRING | STORED);
+                field_map.insert("id".to_string(), id_field);
+
+                for field_def in &text_config.fields {
+                    let field = match field_def.field_type {
+                        FieldType::Text => {
+                            let mut options = TextOptions::default();
+                            if field_def.indexed {
+                                options = options.set_indexing_options(
+                                    TextFieldIndexing::default()
+                                        .set_tokenizer("default")
+                                        .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+                                );
+                            }
+                            if field_def.stored {
+                                options = options.set_stored();
+                            }
+                            schema_builder.add_text_field(&field_def.name, options)
+                        }
+                        FieldType::String => {
+                            let mut opts = STRING;
+                            if field_def.stored {
+                                opts = opts | STORED;
+                            }
+                            schema_builder.add_text_field(&field_def.name, opts)
+                        }
+                        FieldType::I64 => {
+                            let mut opts = NumericOptions::default().set_indexed();
+                            if field_def.stored {
+                                opts = opts.set_stored();
+                            }
+                            schema_builder.add_i64_field(&field_def.name, opts)
+                        }
+                        FieldType::U64 => {
+                            let mut opts = NumericOptions::default().set_indexed();
+                            if field_def.stored {
+                                opts = opts.set_stored();
+                            }
+                            schema_builder.add_u64_field(&field_def.name, opts)
+                        }
+                        FieldType::F64 => {
+                            let mut opts = NumericOptions::default().set_indexed();
+                            if field_def.stored {
+                                opts = opts.set_stored();
+                            }
+                            schema_builder.add_f64_field(&field_def.name, opts)
+                        }
+                        FieldType::Bool => {
+                            let mut opts = NumericOptions::default().set_indexed();
+                            if field_def.stored {
+                                opts = opts.set_stored();
+                            }
+                            schema_builder.add_bool_field(&field_def.name, opts)
+                        }
+                        FieldType::Date => {
+                            let mut opts = DateOptions::default().set_indexed();
+                            if field_def.stored {
+                                opts = opts.set_stored();
+                            }
+                            schema_builder.add_date_field(&field_def.name, opts)
+                        }
+                        FieldType::Bytes => schema_builder.add_bytes_field(&field_def.name, STORED),
+                    };
+                    field_map.insert(field_def.name.clone(), field);
+                }
+
+                let tantivy_schema = schema_builder.build();
+
+                let directory =
+                    ObjectStoreDirectory::from_s3_config(s3_config, collection, None, 0)
+                        .await
+                        .map_err(|e| Error::Io(e))?;
+
+                let index = if directory.is_empty() {
+                    Index::create(
+                        directory,
+                        tantivy_schema.clone(),
+                        tantivy::IndexSettings::default(),
+                    )?
+                } else {
+                    Index::open(directory)?
+                };
+
+                let existing_schema = index.schema();
+                let mut existing_field_map = HashMap::new();
+                for (field, entry) in existing_schema.fields() {
+                    existing_field_map.insert(entry.name().to_string(), field);
+                }
+
+                let reader = index
+                    .reader_builder()
+                    .reload_policy(ReloadPolicy::OnCommitWithDelay)
+                    .try_into()?;
+
+                let writer = Arc::new(parking_lot::Mutex::new(index.writer(50_000_000)?));
+
+                let collection_index = CollectionIndex {
+                    index,
+                    schema: existing_schema,
+                    field_map: existing_field_map,
+                    reader,
+                    writer,
+                };
+
+                self.collections
+                    .write()
+                    .unwrap()
+                    .insert(collection.to_string(), collection_index);
+
+                Ok(())
+            }
+        }
     }
 }
 

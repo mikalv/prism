@@ -28,6 +28,9 @@ pub enum Error {
 
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
