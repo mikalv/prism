@@ -34,9 +34,11 @@
 //! ```
 
 mod config;
+mod factory;
 mod vector_store;
 
 pub use config::{LocalConfig, S3Config, StorageConfig};
+pub use factory::StorageFactory;
 pub use vector_store::{LocalVectorStore, VectorStore};
 
 #[cfg(feature = "storage-s3")]
