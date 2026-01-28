@@ -34,8 +34,13 @@
 //! ```
 
 mod config;
+mod vector_store;
 
 pub use config::{LocalConfig, S3Config, StorageConfig};
+pub use vector_store::{LocalVectorStore, VectorStore};
+
+#[cfg(feature = "storage-s3")]
+pub use vector_store::S3VectorStore;
 
 #[cfg(feature = "storage-s3")]
 mod object_store_directory;
