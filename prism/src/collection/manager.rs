@@ -188,6 +188,11 @@ impl CollectionManager {
         self.vector_backend.embed_text(text).await
     }
 
+    /// Get embedding cache statistics (if cache is enabled)
+    pub async fn cache_stats(&self) -> Option<crate::cache::CacheStats> {
+        self.vector_backend.embedding_cache_stats().await
+    }
+
     /// Perform hybrid search combining text and vector search results.
     ///
     /// # Arguments

@@ -1,7 +1,9 @@
 use crate::collection::CollectionManager;
+use crate::config::CorsConfig;
 use crate::Result;
 use axum::{
     extract::State,
+    http::{HeaderValue, Method},
     response::sse::{Event, KeepAlive, Sse},
     routing::get,
     routing::post,
@@ -12,6 +14,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::mcp::handler::{JsonRpcRequest, JsonRpcResponse, McpHandler};
@@ -30,10 +33,15 @@ pub struct ApiServer {
     manager: Arc<CollectionManager>,
     session_manager: Arc<SessionManager>,
     mcp_handler: Arc<McpHandler>,
+    cors_config: CorsConfig,
 }
 
 impl ApiServer {
     pub fn new(manager: Arc<CollectionManager>) -> Self {
+        Self::with_cors(manager, CorsConfig::default())
+    }
+
+    pub fn with_cors(manager: Arc<CollectionManager>, cors_config: CorsConfig) -> Self {
         // Initialize MCP components
         let session_manager = Arc::new(SessionManager::new());
         let mut tool_registry = ToolRegistry::new();
@@ -45,6 +53,7 @@ impl ApiServer {
             manager,
             session_manager,
             mcp_handler,
+            cors_config,
         }
     }
 
@@ -123,6 +132,41 @@ impl ApiServer {
         axum::Json(response)
     }
 
+    /// Build CORS layer from configuration
+    fn build_cors_layer(&self) -> CorsLayer {
+        if !self.cors_config.enabled {
+            return CorsLayer::new();
+        }
+
+        let origins: Vec<HeaderValue> = self
+            .cors_config
+            .origins
+            .iter()
+            .filter_map(|o| {
+                if o == "*" {
+                    // Wildcard handled separately
+                    None
+                } else {
+                    o.parse().ok()
+                }
+            })
+            .collect();
+
+        // Check if wildcard is specified
+        let has_wildcard = self.cors_config.origins.iter().any(|o| o == "*");
+
+        let cors = if has_wildcard {
+            CorsLayer::new().allow_origin(tower_http::cors::Any)
+        } else if origins.is_empty() {
+            CorsLayer::new()
+        } else {
+            CorsLayer::new().allow_origin(origins)
+        };
+
+        cors.allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+            .allow_headers(tower_http::cors::Any)
+    }
+
     pub fn router(&self) -> Router {
         let app_state = AppState {
             manager: self.manager.clone(),
@@ -144,12 +188,29 @@ impl ApiServer {
                 "/collections/:collection/documents/:id",
                 get(crate::api::routes::get_document),
             )
+            // Collection metadata API (Issue #21)
+            .route(
+                "/collections/:collection/schema",
+                get(crate::api::routes::get_collection_schema),
+            )
+            .route(
+                "/collections/:collection/stats",
+                get(crate::api::routes::get_collection_stats),
+            )
             .route(
                 "/admin/collections",
                 get(crate::api::routes::list_collections),
             )
             .route("/admin/lint-schemas", get(crate::api::routes::lint_schemas))
             .route("/health", get(crate::api::routes::health))
+            // Stats API (Issue #22)
+            .route("/stats/cache", get(crate::api::routes::get_cache_stats))
+            .route("/stats/server", get(crate::api::routes::get_server_info))
+            // Aggregations API (Issue #23)
+            .route(
+                "/collections/:collection/aggregate",
+                post(crate::api::routes::aggregate),
+            )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",
@@ -169,10 +230,15 @@ impl ApiServer {
             .route("/sse", get(Self::sse_handler).post(Self::sse_post_handler))
             .with_state(app_state);
 
+        // CORS configuration from config file
+        // Dashboard runs on different port (e.g., localhost:5173)
+        let cors = self.build_cors_layer();
+
         // Merge routers
         Router::new()
             .merge(legacy_routes)
             .merge(mcp_routes)
+            .layer(cors)
             .layer(TraceLayer::new_for_http())
     }
 

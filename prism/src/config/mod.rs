@@ -25,6 +25,8 @@ pub struct ServerConfig {
     #[serde(default = "default_bind_addr")]
     pub bind_addr: String,
     pub unix_socket: Option<PathBuf>,
+    #[serde(default)]
+    pub cors: CorsConfig,
 }
 
 fn default_bind_addr() -> String {
@@ -36,6 +38,36 @@ impl Default for ServerConfig {
         Self {
             bind_addr: default_bind_addr(),
             unix_socket: None,
+            cors: CorsConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CorsConfig {
+    /// Enable CORS (default: true for development)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Allowed origins. Use "*" for any origin, or list specific origins.
+    /// Default: common development ports
+    #[serde(default = "default_cors_origins")]
+    pub origins: Vec<String>,
+}
+
+fn default_cors_origins() -> Vec<String> {
+    vec![
+        "http://localhost:5173".to_string(),
+        "http://localhost:3000".to_string(),
+        "http://127.0.0.1:5173".to_string(),
+        "http://127.0.0.1:3000".to_string(),
+    ]
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            origins: default_cors_origins(),
         }
     }
 }

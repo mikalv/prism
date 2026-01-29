@@ -58,8 +58,12 @@ impl VectorBackend {
 
     /// Get cache statistics from the embedding provider
     pub async fn embedding_cache_stats(&self) -> Option<crate::cache::CacheStats> {
-        let ep = self.embedding_provider.read();
-        if let Some(ref provider) = *ep {
+        // Clone the provider to avoid holding the lock across await
+        let provider = {
+            let ep = self.embedding_provider.read();
+            ep.clone()
+        };
+        if let Some(provider) = provider {
             provider.cache_stats().await.ok()
         } else {
             None
