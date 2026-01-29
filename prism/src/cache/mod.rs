@@ -1,13 +1,18 @@
-//! Embedding cache module for Prism
+//! Cache module for Prism
 //!
-//! Provides caching layer for embeddings to avoid repeated calls to embedding providers.
-//! Supports SQLite (default) and Redis backends.
+//! Provides caching layer for embeddings and object storage operations.
+//! Supports SQLite (default) and Redis backends for embeddings.
+//! Includes LRU cache and statistics for object storage.
 
+mod embedding;
+mod lru;
+mod stats;
 mod sqlite;
-mod r#trait;
 
+pub use embedding::{CacheKey, EmbeddingCache, EmbeddingCacheStats};
+pub use lru::LruCache;
+pub use stats::ObjectCacheStats;
 pub use sqlite::SqliteCache;
-pub use r#trait::{CacheKey, CacheStats, EmbeddingCache};
 
 #[cfg(feature = "cache-redis")]
 mod redis;

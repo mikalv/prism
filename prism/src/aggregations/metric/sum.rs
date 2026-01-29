@@ -12,6 +12,7 @@ pub struct SumPrepared {
     field: String,
 }
 
+#[allow(dead_code)]
 pub struct SumSegment {
     field: String,
     sum: f64,

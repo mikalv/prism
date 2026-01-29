@@ -198,7 +198,7 @@ impl CollectionManager {
     }
 
     /// Get embedding cache statistics (if cache is enabled)
-    pub async fn cache_stats(&self) -> Option<crate::cache::CacheStats> {
+    pub async fn cache_stats(&self) -> Option<crate::cache::EmbeddingCacheStats> {
         self.vector_backend.embedding_cache_stats().await
     }
 

@@ -23,7 +23,7 @@ pub use inference::Embedder;
 #[cfg(feature = "provider-onnx")]
 pub use model::{ModelCache, ModelConfig};
 
-use crate::cache::{CacheKey, EmbeddingCache, KeyStrategy, SqliteCache};
+use crate::cache::{CacheKey, EmbeddingCache, EmbeddingCacheStats, KeyStrategy, SqliteCache};
 use std::sync::Arc;
 
 /// Cached embedding provider that uses the cache layer
@@ -130,7 +130,7 @@ impl CachedEmbeddingProvider {
     }
 
     /// Get cache statistics
-    pub async fn cache_stats(&self) -> anyhow::Result<crate::cache::CacheStats> {
+    pub async fn cache_stats(&self) -> anyhow::Result<EmbeddingCacheStats> {
         self.cache.stats().await
     }
 

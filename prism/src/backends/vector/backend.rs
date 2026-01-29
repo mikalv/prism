@@ -1,25 +1,32 @@
 //! Vector search backend with optional embedding cache integration
 
 use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
-use crate::aggregations::types::AggregationRequest;
+// Aggregations request type used in signatures
+use crate::cache::EmbeddingCacheStats;
 use crate::error::Result;
 use crate::schema::types::CollectionSchema;
+use crate::storage::{LocalVectorStore, VectorStore};
 use async_trait::async_trait;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use tempfile::NamedTempFile;
 
 use super::index::{HnswBackend, HnswIndex, Metric};
 use crate::embedding::CachedEmbeddingProvider;
 
 pub struct VectorBackend {
-    base_path: PathBuf,
+    _base_path: PathBuf,
     indexes: Arc<RwLock<HashMap<String, VectorIndex>>>,
     /// Cached embedding provider for automatic embedding generation
     embedding_provider: Arc<RwLock<Option<Arc<CachedEmbeddingProvider>>>>,
+    /// Pluggable vector store (local or S3)
+    vector_store: Arc<dyn VectorStore>,
 }
 
 struct VectorIndex {
@@ -39,15 +46,40 @@ struct VectorIndex {
     embedding_target_field: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct PersistedVectorIndex {
+    dimensions: usize,
+    metric: Metric,
+    ef_search: usize,
+    id_to_key: HashMap<String, u32>,
+    key_to_id: HashMap<u32, String>,
+    next_key: u32,
+    documents: HashMap<String, HashMap<String, serde_json::Value>>,
+    embedding_source_field: Option<String>,
+    embedding_target_field: String,
+    hnsw_data: Vec<u8>,
+}
+
 impl VectorBackend {
     pub fn new(base_path: impl AsRef<Path>) -> Result<Self> {
         let base_path = base_path.as_ref().to_path_buf();
-        std::fs::create_dir_all(&base_path)?;
+        let store = Arc::new(LocalVectorStore::new(base_path.clone()));
+        Self::with_storage(base_path, store)
+    }
+
+    /// Create a backend with a custom vector store (e.g., S3)
+    pub fn with_storage(
+        base_path: impl AsRef<Path>,
+        vector_store: Arc<dyn VectorStore>,
+    ) -> Result<Self> {
+        let base_path = base_path.as_ref().to_path_buf();
+        let _ = std::fs::create_dir_all(&base_path);
 
         Ok(Self {
-            base_path,
+            _base_path: base_path,
             indexes: Arc::new(RwLock::new(HashMap::new())),
             embedding_provider: Arc::new(RwLock::new(None)),
+            vector_store,
         })
     }
 
@@ -58,12 +90,13 @@ impl VectorBackend {
     }
 
     /// Get cache statistics from the embedding provider
-    pub async fn embedding_cache_stats(&self) -> Option<crate::cache::CacheStats> {
+    pub async fn embedding_cache_stats(&self) -> Option<EmbeddingCacheStats> {
         // Clone the provider to avoid holding the lock across await
         let provider = {
             let ep = self.embedding_provider.read();
             ep.clone()
         };
+
         if let Some(provider) = provider {
             provider.cache_stats().await.ok()
         } else {
@@ -77,6 +110,15 @@ impl VectorBackend {
             .vector
             .as_ref()
             .ok_or_else(|| crate::error::Error::Schema("No vector backend configured".into()))?;
+
+        // Try loading a persisted index first
+        if let Some(bytes) = self.vector_store.load(collection).await? {
+            if let Ok(restored) = deserialize_vector_index(&bytes) {
+                let mut indexes = self.indexes.write();
+                indexes.insert(collection.to_string(), restored);
+                return Ok(());
+            }
+        }
 
         let metric = match vector_config.distance {
             crate::schema::types::VectorDistance::Cosine => Metric::Cosine,
@@ -193,7 +235,7 @@ impl SearchBackend for VectorBackend {
             };
 
             if let Some(ref provider) = provider {
-                let (source_field, target_field, texts_to_embed) = {
+                let (_source_field, target_field, texts_to_embed) = {
                     let indexes = self.indexes.read();
                     let vector_index = indexes.get(collection).unwrap();
                     let source_field = vector_index.embedding_source_field.clone().unwrap();
@@ -235,47 +277,44 @@ impl SearchBackend for VectorBackend {
         }
 
         // Index documents with embeddings
-        let mut indexes = self.indexes.write();
-        let vector_index = indexes
-            .get_mut(collection)
-            .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
+        let data = {
+            let mut indexes = self.indexes.write();
+            let vector_index = indexes
+                .get_mut(collection)
+                .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
 
-        for doc in docs {
-            // Extract vector from document
-            let vector_value = doc
-                .fields
-                .get(&vector_index.embedding_target_field)
-                .ok_or_else(|| crate::error::Error::Schema(format!(
-                    "Missing {} field",
-                    vector_index.embedding_target_field
-                )))?;
+            for doc in docs {
+                // Extract vector from document
+                let vector_value = doc
+                    .fields
+                    .get(&vector_index.embedding_target_field)
+                    .ok_or_else(|| crate::error::Error::Schema(format!(
+                        "Missing {} field",
+                        vector_index.embedding_target_field
+                    )))?;
 
-            let vector: Vec<f32> = serde_json::from_value(vector_value.clone())
-                .map_err(|_| crate::error::Error::Schema("Invalid embedding format".into()))?;
+                let vector: Vec<f32> = serde_json::from_value(vector_value.clone())
+                    .map_err(|_| crate::error::Error::Schema("Invalid embedding format".into()))?;
 
-            if vector.len() != vector_index.dimensions {
-                return Err(crate::error::Error::Schema(format!(
-                    "Expected {} dimensions, got {}",
-                    vector_index.dimensions,
-                    vector.len()
-                )));
+                if vector.len() != vector_index.dimensions {
+                    return Err(crate::error::Error::Schema(format!(
+                        "Expected {} dimensions, got {}",
+                        vector_index.dimensions,
+                        vector.len()
+                    )));
+                }
+
+                let key = vector_index.next_key.fetch_add(1, Ordering::SeqCst);
+                vector_index.hnsw.add(key, &vector)?;
+                vector_index.id_to_key.insert(doc.id.clone(), key);
+                vector_index.key_to_id.insert(key, doc.id.clone());
+                vector_index.documents.insert(doc.id.clone(), doc.fields);
             }
 
-            // Allocate new key
-            let key = vector_index.next_key.fetch_add(1, Ordering::SeqCst);
+            serialize_vector_index(vector_index)?
+        };
 
-            // Add to HNSW index
-            vector_index.hnsw.add(key, &vector)?;
-
-            // Store ID mappings
-            vector_index.id_to_key.insert(doc.id.clone(), key);
-            vector_index.key_to_id.insert(key, doc.id.clone());
-
-            // Store document fields
-            vector_index.documents.insert(doc.id.clone(), doc.fields);
-        }
-
-        Ok(())
+        self.vector_store.save(collection, &data).await
     }
 
     async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
@@ -344,20 +383,24 @@ impl SearchBackend for VectorBackend {
     }
 
     async fn delete(&self, collection: &str, ids: Vec<String>) -> Result<()> {
-        let mut indexes = self.indexes.write();
-        let vector_index = indexes
-            .get_mut(collection)
-            .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
+        let data = {
+            let mut indexes = self.indexes.write();
+            let vector_index = indexes
+                .get_mut(collection)
+                .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
 
-        for id in ids {
-            if let Some(key) = vector_index.id_to_key.remove(&id) {
-                vector_index.key_to_id.remove(&key);
-                vector_index.hnsw.remove(key)?;
-                vector_index.documents.remove(&id);
+            for id in ids {
+                if let Some(key) = vector_index.id_to_key.remove(&id) {
+                    vector_index.key_to_id.remove(&key);
+                    vector_index.hnsw.remove(key)?;
+                    vector_index.documents.remove(&id);
+                }
             }
-        }
 
-        Ok(())
+            serialize_vector_index(vector_index)?
+        };
+
+        self.vector_store.save(collection, &data).await
     }
 
     async fn stats(&self, collection: &str) -> Result<BackendStats> {
@@ -393,7 +436,7 @@ impl SearchBackend for VectorBackend {
         &self,
         collection: &str,
         query: &Query,
-        aggregations: Vec<crate::aggregations::AggregationRequest>,
+        _aggregations: Vec<crate::aggregations::AggregationRequest>,
     ) -> Result<SearchResultsWithAggs> {
         // VectorBackend doesn't support aggregations yet
         // Return empty aggregations for now
@@ -407,12 +450,52 @@ impl SearchBackend for VectorBackend {
     }
 }
 
+fn serialize_vector_index(vector_index: &VectorIndex) -> Result<Vec<u8>> {
+    let tmp = NamedTempFile::new()?;
+    vector_index.hnsw.save(tmp.path())?;
+    let hnsw_data = fs::read(tmp.path())?;
+
+    let persisted = PersistedVectorIndex {
+        dimensions: vector_index.dimensions,
+        metric: vector_index.metric,
+        ef_search: vector_index.ef_search,
+        id_to_key: vector_index.id_to_key.clone(),
+        key_to_id: vector_index.key_to_id.clone(),
+        next_key: vector_index.next_key.load(Ordering::SeqCst),
+        documents: vector_index.documents.clone(),
+        embedding_source_field: vector_index.embedding_source_field.clone(),
+        embedding_target_field: vector_index.embedding_target_field.clone(),
+        hnsw_data,
+    };
+
+    Ok(serde_json::to_vec(&persisted)?)
+}
+
+fn deserialize_vector_index(bytes: &[u8]) -> Result<VectorIndex> {
+    let persisted: PersistedVectorIndex = serde_json::from_slice(bytes)?;
+    let tmp = NamedTempFile::new()?;
+    fs::write(tmp.path(), &persisted.hnsw_data)?;
+    let hnsw = HnswBackend::load(tmp.path())?;
+
+    Ok(VectorIndex {
+        hnsw,
+        dimensions: persisted.dimensions,
+        metric: persisted.metric,
+        ef_search: persisted.ef_search,
+        id_to_key: persisted.id_to_key,
+        key_to_id: persisted.key_to_id,
+        next_key: AtomicU32::new(persisted.next_key),
+        documents: persisted.documents,
+        embedding_source_field: persisted.embedding_source_field,
+        embedding_target_field: persisted.embedding_target_field,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::SqliteCache;
-    use crate::embedding::{EmbeddingProvider, CachedEmbeddingProvider};
-    use crate::cache::KeyStrategy;
+    use crate::cache::{KeyStrategy, SqliteCache};
+    use crate::embedding::{CachedEmbeddingProvider, EmbeddingProvider};
     use tempfile::tempdir;
 
     struct MockEmbeddingProvider {

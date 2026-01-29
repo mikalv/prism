@@ -15,6 +15,7 @@ pub struct TermsPrepared {
     size: usize,
 }
 
+#[allow(dead_code)]
 pub struct TermsSegment {
     field: String,
     size: usize,
@@ -68,7 +69,7 @@ impl PreparedAgg for TermsPrepared {
         TermsFruit(HashMap::new())
     }
 
-    fn for_segment(&self, ctx: &AggSegmentContext) -> TantivyResult<Self::Child> {
+    fn for_segment(&self, _ctx: &AggSegmentContext) -> TantivyResult<Self::Child> {
         Ok(TermsSegment {
             field: self.field.clone(),
             size: self.size,
@@ -90,7 +91,7 @@ impl SegmentAgg for TermsSegment {
         TermsFruit(self.counts.clone())
     }
 
-    fn collect(&mut self, doc: DocId, _: Score, fruit: &mut Self::Fruit) {
+    fn collect(&mut self, _doc: DocId, _: Score, _fruit: &mut Self::Fruit) {
         // TODO: Implement proper string field collection in Tantivy 0.22
         // For now, we'll skip aggregation collection until API is resolved
     }

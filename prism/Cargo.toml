@@ -68,8 +68,6 @@ redis = { workspace = true, optional = true }
 # Object storage
 object_store = { workspace = true, optional = true }
 bytes = { workspace = true }
-
-[dev-dependencies]
 tempfile = { workspace = true }
 
 [features]

@@ -1,15 +1,14 @@
 use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
 use crate::schema::{CollectionSchema, FieldType};
 use crate::{Error, Result};
-use crate::aggregations::{Agg, PreparedAgg, SegmentAgg, AggSegmentContext, AggregationRequest, AggregationType, AvgAgg, CountAgg, MinMaxAgg, SumAgg, TermsAgg};
+use crate::aggregations::{Agg, PreparedAgg, AggregationRequest, AggregationType, AvgAgg, CountAgg, MinMaxAgg, SumAgg, TermsAgg};
 use async_trait::async_trait;
-use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
      collector::TopDocs, query::QueryParser, schema::*,
-     Document as TantivyDocTrait, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
+     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
      Term,
  };
 
@@ -677,7 +676,7 @@ impl SearchBackend for TextBackend {
                 .unwrap_or("")
                 .to_string();
 
-            let mut fields = HashMap::new();
+            let fields = HashMap::new();
             for (_field_name, field) in &coll.field_map {
                 if let Some(_value) = retrieved_doc.get_first(*field) {
                     // TODO: Implement proper value to JSON conversion for Tantivy 0.22

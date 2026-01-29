@@ -1,8 +1,9 @@
 use crate::Result;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Distance metric for vector similarity
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Metric {
     Cosine,
     Euclidean,
@@ -45,7 +46,7 @@ pub trait HnswIndex: Send + Sync {
 // Simple in-memory adapter used as default/instant fallback
 
 #[cfg(feature = "vector-instant")]
-use instant_distance::{Builder, HnswMap, Search, Point as IDPoint};
+use instant_distance::{Builder, HnswMap, Point as IDPoint, Search};
 #[cfg(feature = "vector-instant")]
 use parking_lot::Mutex;
 
@@ -61,17 +62,26 @@ impl IDPoint for PointVec {
     fn distance(&self, other: &Self) -> f32 {
         match self.metric {
             Metric::Cosine => {
-                let dot: f32 = self.v.iter().zip(other.v.iter()).map(|(a,b)| a*b).sum();
-                let na = self.v.iter().map(|x| x*x).sum::<f32>().sqrt();
-                let nb = other.v.iter().map(|x| x*x).sum::<f32>().sqrt();
-                if na == 0.0 || nb == 0.0 { 1.0 } else { 1.0 - (dot / (na*nb)) }
+                let dot: f32 = self.v.iter().zip(other.v.iter()).map(|(a, b)| a * b).sum();
+                let na = self.v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                let nb = other.v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                if na == 0.0 || nb == 0.0 {
+                    1.0
+                } else {
+                    1.0 - (dot / (na * nb))
+                }
             }
             Metric::Euclidean => {
-                let sum: f32 = self.v.iter().zip(other.v.iter()).map(|(a,b)| (a-b)*(a-b)).sum();
+                let sum: f32 = self
+                    .v
+                    .iter()
+                    .zip(other.v.iter())
+                    .map(|(a, b)| (a - b) * (a - b))
+                    .sum();
                 sum.sqrt()
             }
             Metric::DotProduct => {
-                let dot: f32 = self.v.iter().zip(other.v.iter()).map(|(a,b)| a*b).sum();
+                let dot: f32 = self.v.iter().zip(other.v.iter()).map(|(a, b)| a * b).sum();
                 // convert to distance
                 1.0 - dot
             }
@@ -104,7 +114,9 @@ impl InstantDistanceAdapter {
             self.built_size = 0;
             return Ok(());
         }
-        let builder = Builder::default().ef_construction(self.ef_construction).ef_search(100);
+        let builder = Builder::default()
+            .ef_construction(self.ef_construction)
+            .ef_search(100);
         let map = builder.build(self.points.clone(), self.keys.clone());
         self.built_size = self.keys.len();
         self.hnsw = Some(map);
@@ -133,15 +145,24 @@ impl HnswIndex for InstantDistanceAdapter {
 
     fn add(&mut self, key: u32, vector: &[f32]) -> Result<()> {
         if vector.len() != self.dimensions {
-            return Err(crate::error::Error::Schema(format!("Expected {} dimensions, got {}", self.dimensions, vector.len())));
+            return Err(crate::error::Error::Schema(format!(
+                "Expected {} dimensions, got {}",
+                self.dimensions,
+                vector.len()
+            )));
         }
         self.keys.push(key);
-        self.points.push(PointVec { v: vector.to_vec(), metric: self.metric });
+        self.points.push(PointVec {
+            v: vector.to_vec(),
+            metric: self.metric,
+        });
 
         // Only rebuild the heavy HNSW structure when threshold is reached
         // If no hnsw built yet, or we've accumulated rebuild_threshold new points since last build, rebuild.
         // Also, for small collections (<= rebuild_threshold) rebuild on each add to keep index usable.
-        let need_build = self.hnsw.is_none() || (self.keys.len() <= self.rebuild_threshold) || (self.keys.len() - self.built_size >= self.rebuild_threshold);
+        let need_build = self.hnsw.is_none()
+            || (self.keys.len() <= self.rebuild_threshold)
+            || (self.keys.len() - self.built_size >= self.rebuild_threshold);
         if need_build {
             self.rebuild()?;
         }
@@ -158,14 +179,22 @@ impl HnswIndex for InstantDistanceAdapter {
             return Ok(Vec::new());
         }
 
-        let hnsw = self.hnsw.as_ref().ok_or_else(|| crate::error::Error::Backend("Index not built".into()))?;
-        let query = PointVec { v: vector.to_vec(), metric: self.metric };
+        let hnsw = self
+            .hnsw
+            .as_ref()
+            .ok_or_else(|| crate::error::Error::Backend("Index not built".into()))?;
+        let query = PointVec {
+            v: vector.to_vec(),
+            metric: self.metric,
+        };
         let mut search = self.searcher.lock();
         let iter = hnsw.search(&query, &mut *search);
         let mut out = Vec::new();
         for item in iter {
             out.push((item.value.clone(), 1.0 - item.distance));
-            if out.len() >= k { break; }
+            if out.len() >= k {
+                break;
+            }
         }
         Ok(out)
     }
@@ -196,9 +225,30 @@ impl HnswIndex for InstantDistanceAdapter {
         let dimensions = data["dimensions"].as_u64().unwrap() as usize;
         let keys: Vec<u32> = serde_json::from_value(data["keys"].clone())?;
         let points_data: Vec<Vec<f32>> = serde_json::from_value(data["points"].clone())?;
-        let points: Vec<PointVec> = points_data.into_iter().map(|v| PointVec { v, metric: Metric::Cosine }).collect();
-        let rebuild_threshold = data.get("rebuild_threshold").and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(32);
-        let mut adapter = Self { dimensions, metric: Metric::Cosine, m: 16, ef_construction: 200, points, keys, hnsw: None, searcher: Mutex::new(Search::default()), rebuild_threshold, built_size: 0 };
+        let points: Vec<PointVec> = points_data
+            .into_iter()
+            .map(|v| PointVec {
+                v,
+                metric: Metric::Cosine,
+            })
+            .collect();
+        let rebuild_threshold = data
+            .get("rebuild_threshold")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(32);
+        let mut adapter = Self {
+            dimensions,
+            metric: Metric::Cosine,
+            m: 16,
+            ef_construction: 200,
+            points,
+            keys,
+            hnsw: None,
+            searcher: Mutex::new(Search::default()),
+            rebuild_threshold,
+            built_size: 0,
+        };
         adapter.rebuild()?;
         Ok(adapter)
     }

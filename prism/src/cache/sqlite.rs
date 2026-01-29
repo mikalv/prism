@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use rusqlite::{params, Connection};
 use tokio::sync::Mutex;
 
-use super::r#trait::{CacheKey, CacheStats, EmbeddingCache};
+use super::embedding::{CacheKey, EmbeddingCache, EmbeddingCacheStats};
 
 /// SQLite-based embedding cache
 pub struct SqliteCache {
@@ -148,7 +148,7 @@ impl EmbeddingCache for SqliteCache {
         Ok(())
     }
 
-    async fn stats(&self) -> anyhow::Result<CacheStats> {
+    async fn stats(&self) -> anyhow::Result<EmbeddingCacheStats> {
         let conn = self.conn.lock().await;
 
         let total_entries: usize = conn.query_row(
@@ -163,7 +163,7 @@ impl EmbeddingCache for SqliteCache {
             |row| row.get(0),
         )?;
 
-        Ok(CacheStats {
+        Ok(EmbeddingCacheStats {
             total_entries,
             total_bytes,
             hits: self.hits.load(Ordering::Relaxed),

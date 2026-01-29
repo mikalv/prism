@@ -14,6 +14,7 @@ pub struct MinMaxPrepared {
     is_min: bool,
 }
 
+#[allow(dead_code)]
 pub struct MinMaxSegment {
     field: String,
     is_min: bool,

@@ -12,6 +12,7 @@ pub struct AvgPrepared {
     field: String,
 }
 
+#[allow(dead_code)]
 pub struct AvgSegment {
     field: String,
     sum: f64,
