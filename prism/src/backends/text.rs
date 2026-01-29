@@ -1,7 +1,7 @@
 use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
 use crate::schema::{CollectionSchema, FieldType};
 use crate::{Error, Result};
-use crate::aggregations::{Agg, PreparedAgg, AggregationRequest, AggregationType, AvgAgg, CountAgg, MinMaxAgg, SumAgg, TermsAgg};
+use crate::aggregations::{AggregationRequest, AggregationType, AggregationResult, AggregationValue, Bucket};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,10 @@ use tantivy::{
      collector::TopDocs, query::QueryParser, schema::*,
      Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
      Term,
- };
+};
+use tantivy::aggregation::agg_req::Aggregations;
+use tantivy::aggregation::agg_result::AggregationResults;
+use tantivy::aggregation::AggregationCollector;
 
 pub struct TextBackend {
     base_path: PathBuf,
@@ -583,7 +586,6 @@ impl SearchBackend for TextBackend {
         query: &Query,
         aggregations: Vec<AggregationRequest>,
     ) -> Result<SearchResultsWithAggs> {
-
         let collections = self.collections.read().unwrap();
         let coll = collections
             .get(collection)
@@ -617,57 +619,24 @@ impl SearchBackend for TextBackend {
             .parse_query(&query.query_string)
             .map_err(|e| Error::InvalidQuery(e.to_string()))?;
 
+        // Build Tantivy-native aggregation request from Prism's aggregation types
+        let tantivy_agg_req = build_tantivy_aggregations(&aggregations)?;
+
+        // Use Tantivy's native AggregationCollector
+        let collector = AggregationCollector::from_aggs(tantivy_agg_req, Default::default());
+
+        // Combine TopDocs with AggregationCollector
         let top_docs = TopDocs::with_limit(query.limit as usize);
+        let (top_doc_results, agg_results) = searcher.search(&parsed_query, &(top_docs, collector))?;
 
-        let mut agg_results = HashMap::new();
-        for agg_req in aggregations {
-            let result = match &agg_req.agg_type {
-                AggregationType::Count => {
-                    let agg = CountAgg;
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    CountAgg::into_result(agg_req.name.clone(), fruit)
-                }
-                AggregationType::Min { field } => {
-                    let agg = MinMaxAgg::min(field);
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    MinMaxAgg::into_result(agg_req.name.clone(), fruit)
-                }
-                AggregationType::Max { field } => {
-                    let agg = MinMaxAgg::max(field);
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    MinMaxAgg::into_result(agg_req.name.clone(), fruit)
-                }
-                AggregationType::Sum { field } => {
-                    let agg = SumAgg::sum(field);
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    SumAgg::into_result(agg_req.name.clone(), fruit)
-                }
-                AggregationType::Avg { field } => {
-                    let agg = AvgAgg::avg(field);
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    AvgAgg::into_result(agg_req.name.clone(), fruit)
-                }
-                AggregationType::Terms { field, size } => {
-                    let agg = TermsAgg::new(field, size.unwrap_or(10));
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    agg.into_result(agg_req.name.clone(), fruit)
-                }
-                _ => return Err(Error::InvalidQuery(format!("Unsupported aggregation type"))),
-            };
+        // Convert Tantivy aggregation results to Prism format
+        let agg_results = convert_tantivy_agg_results(agg_results, &aggregations)?;
 
-            agg_results.insert(agg_req.name, result);
-        }
-
+        // Build search results
         let mut results = Vec::new();
         let id_field = coll.field_map.get("id").unwrap();
 
-        for (_score, doc_address) in searcher.search(&parsed_query, &top_docs)? {
+        for (_score, doc_address) in top_doc_results {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address)?;
 
             let id = retrieved_doc
@@ -677,15 +646,7 @@ impl SearchBackend for TextBackend {
                 .to_string();
 
             let fields = HashMap::new();
-            for (_field_name, field) in &coll.field_map {
-                if let Some(_value) = retrieved_doc.get_first(*field) {
-                    // TODO: Implement proper value to JSON conversion for Tantivy 0.22
-                    // For now, we'll skip this field
-                    continue;
-                }
-                // json_value is not yet implemented for Tantivy 0.22
-                // fields.insert(field_name.clone(), json_value);
-            }
+            // TODO: Implement proper value to JSON conversion for Tantivy 0.22
 
             results.push(SearchResult {
                 id,
@@ -703,39 +664,166 @@ impl SearchBackend for TextBackend {
     }
 }
 
-fn run_aggregation<F: PreparedAgg>(
-    _reader: &IndexReader,
-    _query: &Box<dyn tantivy::query::Query>,
-    _top_docs: &TopDocs,
-    _prepared: F,
-) -> Result<F::Fruit>
-where
-    <F as PreparedAgg>::Fruit: Default,
-{
-    // Tantivy 0.22 migration: segment_readers() API removed
-    //
-    // Old API (Tantivy 0.21):
-    //   for segment_reader in reader.segment_readers() {
-    //       let segment_agg = prepared.for_segment(&segment_reader)?;
-    //       for (score, doc) in scorer {
-    //           segment_agg.collect(doc, score, &mut fruit);
-    //       }
-    //       let segment_fruit = segment_agg.create_fruit();
-    //       acc.merge(&mut fruit, segment_fruit);
-    //   }
-    //
-    // New API approach (Tantivy 0.22):
-    // The segment iteration API has been removed in favor of
-    // Searcher::doc() method for direct document access.
-    //
-    // Current limitation: Returns empty/default aggregation results.
-    // Full implementation requires:
-    // 1. Figure out how to iterate matching documents per segment
-    // 2. Update SegmentAgg trait for new document collection pattern
-    // 3. Ensure proper parallelization and performance
-    //
-    // See: #19 - Migrate aggregations to Tantivy 0.22 API
-    Ok(<F as PreparedAgg>::Fruit::default())
+/// Build Tantivy-native aggregation request from Prism's aggregation types
+fn build_tantivy_aggregations(aggregations: &[AggregationRequest]) -> Result<Aggregations> {
+    use serde_json::{json, Map, Value};
+
+    let mut agg_map = Map::new();
+
+    for agg in aggregations {
+        let agg_def = match &agg.agg_type {
+            AggregationType::Count => {
+                json!({ "value_count": { "field": "_id" } })
+            }
+            AggregationType::Min { field } => {
+                json!({ "min": { "field": field } })
+            }
+            AggregationType::Max { field } => {
+                json!({ "max": { "field": field } })
+            }
+            AggregationType::Sum { field } => {
+                json!({ "sum": { "field": field } })
+            }
+            AggregationType::Avg { field } => {
+                json!({ "avg": { "field": field } })
+            }
+            AggregationType::Stats { field } => {
+                json!({ "stats": { "field": field } })
+            }
+            AggregationType::Terms { field, size } => {
+                json!({ "terms": { "field": field, "size": size.unwrap_or(10) } })
+            }
+            AggregationType::Histogram { field, interval } => {
+                json!({ "histogram": { "field": field, "interval": interval } })
+            }
+            AggregationType::DateHistogram { field, calendar_interval } => {
+                json!({ "date_histogram": { "field": field, "calendar_interval": calendar_interval } })
+            }
+        };
+
+        agg_map.insert(agg.name.clone(), agg_def);
+    }
+
+    let agg_json = Value::Object(agg_map);
+    serde_json::from_value(agg_json)
+        .map_err(|e| Error::InvalidQuery(format!("Failed to build aggregation request: {}", e)))
+}
+
+/// Convert Tantivy aggregation results to Prism's format
+fn convert_tantivy_agg_results(
+    tantivy_results: AggregationResults,
+    requests: &[AggregationRequest],
+) -> Result<HashMap<String, AggregationResult>> {
+    let mut results = HashMap::new();
+
+    for req in requests {
+        let result = match tantivy_results.0.get(&req.name) {
+            Some(agg_result) => convert_single_agg_result(&req.name, &req.agg_type, agg_result)?,
+            None => {
+                // Aggregation not found in results, return default
+                AggregationResult {
+                    name: req.name.clone(),
+                    value: AggregationValue::Single(0.0),
+                }
+            }
+        };
+        results.insert(req.name.clone(), result);
+    }
+
+    Ok(results)
+}
+
+fn convert_single_agg_result(
+    name: &str,
+    agg_type: &AggregationType,
+    result: &tantivy::aggregation::agg_result::AggregationResult,
+) -> Result<AggregationResult> {
+    use tantivy::aggregation::agg_result::AggregationResult as TantivyAggResult;
+
+    let value = match result {
+        TantivyAggResult::BucketResult(bucket_result) => {
+            // Handle bucket aggregations (terms, histogram, etc.)
+            use tantivy::aggregation::agg_result::BucketEntries;
+            match bucket_result {
+                tantivy::aggregation::agg_result::BucketResult::Terms { buckets, .. } => {
+                    let prism_buckets: Vec<Bucket> = buckets
+                        .iter()
+                        .map(|b| Bucket {
+                            key: format!("{}", b.key),
+                            doc_count: b.doc_count,
+                            sub_aggs: None,
+                        })
+                        .collect();
+                    AggregationValue::Buckets(prism_buckets)
+                }
+                tantivy::aggregation::agg_result::BucketResult::Histogram { buckets } => {
+                    let entries = match buckets {
+                        BucketEntries::Vec(v) => v.clone(),
+                        BucketEntries::HashMap(m) => m.values().cloned().collect(),
+                    };
+                    let prism_buckets: Vec<Bucket> = entries
+                        .iter()
+                        .map(|b| Bucket {
+                            key: b.key.to_string(),
+                            doc_count: b.doc_count,
+                            sub_aggs: None,
+                        })
+                        .collect();
+                    AggregationValue::Buckets(prism_buckets)
+                }
+                tantivy::aggregation::agg_result::BucketResult::Range { buckets } => {
+                    let entries = match buckets {
+                        BucketEntries::Vec(v) => v.clone(),
+                        BucketEntries::HashMap(m) => m.values().cloned().collect(),
+                    };
+                    let prism_buckets: Vec<Bucket> = entries
+                        .iter()
+                        .map(|b| Bucket {
+                            key: b.key.to_string(),
+                            doc_count: b.doc_count,
+                            sub_aggs: None,
+                        })
+                        .collect();
+                    AggregationValue::Buckets(prism_buckets)
+                }
+            }
+        }
+        TantivyAggResult::MetricResult(metric_result) => {
+            use tantivy::aggregation::agg_result::MetricResult;
+            match metric_result {
+                MetricResult::Average(avg) => {
+                    AggregationValue::Single(avg.value.unwrap_or(0.0))
+                }
+                MetricResult::Sum(sum) => {
+                    AggregationValue::Single(sum.value.unwrap_or(0.0))
+                }
+                MetricResult::Min(min) => {
+                    AggregationValue::Single(min.value.unwrap_or(0.0))
+                }
+                MetricResult::Max(max) => {
+                    AggregationValue::Single(max.value.unwrap_or(0.0))
+                }
+                MetricResult::Count(count) => {
+                    AggregationValue::Single(count.value.unwrap_or(0.0))
+                }
+                MetricResult::Stats(stats) => {
+                    AggregationValue::Stats(crate::aggregations::types::StatsResult {
+                        count: stats.count,
+                        min: stats.min,
+                        max: stats.max,
+                        sum: Some(stats.sum),
+                        avg: stats.avg,
+                    })
+                }
+                _ => AggregationValue::Single(0.0),
+            }
+        }
+    };
+
+    Ok(AggregationResult {
+        name: name.to_string(),
+        value,
+    })
 }
 
 #[cfg(test)]
