@@ -32,6 +32,9 @@ pub enum Error {
     #[error("Storage error: {0}")]
     Storage(String),
 
+    #[error("Config error: {0}")]
+    Config(String),
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }

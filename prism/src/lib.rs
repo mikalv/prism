@@ -1,3 +1,4 @@
+pub mod aggregations;
 pub mod api;
 pub mod backends;
 pub mod cache;

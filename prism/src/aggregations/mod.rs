@@ -1,9 +1,9 @@
 mod agg_trait;
 mod bucket;
 mod metric;
-mod types;
+pub mod types;
 
 pub use agg_trait::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
 pub use bucket::TermsAgg;
 pub use metric::{CountAgg, MinMaxAgg};
-pub use types::{AggregationRequest, AggregationResult, AggregationType};
+pub use types::{AggregationRequest, AggregationResult, AggregationType, AggregationValue, Bucket};

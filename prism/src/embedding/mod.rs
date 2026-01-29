@@ -23,7 +23,7 @@ pub use inference::Embedder;
 #[cfg(feature = "provider-onnx")]
 pub use model::{ModelCache, ModelConfig};
 
-use crate::cache::{CacheConfig, CacheKey, EmbeddingCache, KeyStrategy, SqliteCache};
+use crate::cache::{CacheKey, EmbeddingCache, KeyStrategy, SqliteCache};
 use std::sync::Arc;
 
 /// Cached embedding provider that uses the cache layer

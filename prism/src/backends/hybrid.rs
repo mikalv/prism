@@ -157,4 +157,13 @@ impl SearchBackend for HybridSearchCoordinator {
         let v = self.vector_backend.stats(collection).await?;
         Ok(BackendStats { document_count: std::cmp::max(t.document_count, v.document_count), size_bytes: t.size_bytes + v.size_bytes })
     }
+
+    async fn search_with_aggs(
+        &self,
+        _collection: &str,
+        _query: &Query,
+        _aggregations: Vec<crate::aggregations::AggregationRequest>,
+    ) -> Result<crate::backends::SearchResultsWithAggs> {
+        Err(crate::error::Error::NotImplemented("Aggregations not supported for hybrid backend".to_string()))
+    }
 }

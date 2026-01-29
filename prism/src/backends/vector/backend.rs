@@ -1,6 +1,7 @@
 //! Vector search backend with optional embedding cache integration
 
-use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults};
+use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
+use crate::aggregations::types::AggregationRequest;
 use crate::error::Result;
 use crate::schema::types::CollectionSchema;
 use async_trait::async_trait;
@@ -385,6 +386,23 @@ impl SearchBackend for VectorBackend {
         Ok(BackendStats {
             document_count,
             size_bytes,
+        })
+    }
+
+    async fn search_with_aggs(
+        &self,
+        collection: &str,
+        query: &Query,
+        aggregations: Vec<crate::aggregations::AggregationRequest>,
+    ) -> Result<SearchResultsWithAggs> {
+        // VectorBackend doesn't support aggregations yet
+        // Return empty aggregations for now
+        let results = self.search(collection, query.clone()).await?;
+
+        Ok(SearchResultsWithAggs {
+            results: results.results,
+            total: results.total as u64,
+            aggregations: HashMap::new(),
         })
     }
 }

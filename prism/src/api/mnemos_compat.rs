@@ -2,7 +2,7 @@
 //!
 //! Provides `/api/*` routes compatible with the mnemos MCP server.
 
-use crate::backends::{Query, SearchResults};
+use crate::backends::Query;
 use crate::collection::CollectionManager;
 use axum::{
     extract::State,

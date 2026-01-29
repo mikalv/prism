@@ -1,5 +1,6 @@
 use crate::aggregations::agg_trait::*;
 use crate::aggregations::types::{AggregationResult, AggregationValue};
+use std::default::Default;
 use tantivy::fastfield::Column;
 use tantivy::{DocId, Result as TantivyResult, Score, Searcher};
 
@@ -20,7 +21,23 @@ pub struct MinMaxSegment {
     fast_field_reader: Option<Column<u64>>,
 }
 
+#[derive(Debug, Clone)]
 pub struct MinMaxFruit(Option<f64>);
+
+impl Default for MinMaxFruit {
+    fn default() -> Self {
+        MinMaxFruit(None)
+    }
+}
+
+impl Default for MinMaxPrepared {
+    fn default() -> Self {
+        MinMaxPrepared {
+            field: String::new(),
+            is_min: true,
+        }
+    }
+}
 
 impl MinMaxAgg {
     pub fn min(field: impl Into<String>) -> Self {

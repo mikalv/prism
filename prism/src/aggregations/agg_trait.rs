@@ -12,7 +12,7 @@ pub struct AggSegmentContext<'r, 's> {
 
 /// High-level aggregation API
 pub trait Agg: Send + Sync {
-    type Fruit: Send + 'static;
+    type Fruit: Send + 'static + Default;
     type Child: PreparedAgg + Send + 'static;
 
     fn prepare(&self, searcher: &Searcher) -> TantivyResult<Self::Child>;
@@ -20,7 +20,7 @@ pub trait Agg: Send + Sync {
 
 /// Prepared aggregation for segment collection
 pub trait PreparedAgg: Send + Sync {
-    type Fruit: Send + 'static;
+    type Fruit: Send + 'static + Default;
     type Child: SegmentAgg + Send + 'static;
 
     fn create_fruit(&self) -> Self::Fruit;
@@ -30,7 +30,7 @@ pub trait PreparedAgg: Send + Sync {
 
 /// Segment-level aggregation
 pub trait SegmentAgg: Send + Sync {
-    type Fruit: Send + 'static;
+    type Fruit: Send + 'static + Default;
 
     fn create_fruit(&self) -> Self::Fruit;
     fn collect(&mut self, doc: DocId, score: Score, fruit: &mut Self::Fruit);
