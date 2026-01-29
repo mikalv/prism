@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const StatsPage = lazy(() => import('@/pages/StatsPage').then(m => ({ default: m.StatsPage })))
@@ -37,41 +38,51 @@ function App() {
             <Route
               path="/"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <StatsPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <StatsPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
             <Route
               path="/collections"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <CollectionsPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <CollectionsPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
             <Route
               path="/search"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <SearchPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <SearchPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
             <Route
               path="/aggregations"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <AggregationsPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <AggregationsPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
             <Route
               path="/index"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <IndexPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <IndexPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
           </Route>
