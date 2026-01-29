@@ -73,6 +73,7 @@ impl VectorBackend {
         vector_store: Arc<dyn VectorStore>,
     ) -> Result<Self> {
         let base_path = base_path.as_ref().to_path_buf();
+        // Ensure local path exists for filesystem-backed stores; harmless for S3
         let _ = std::fs::create_dir_all(&base_path);
 
         Ok(Self {
@@ -111,12 +112,17 @@ impl VectorBackend {
             .as_ref()
             .ok_or_else(|| crate::error::Error::Schema("No vector backend configured".into()))?;
 
-        // Try loading a persisted index first
+        // Attempt to restore from persistence first
         if let Some(bytes) = self.vector_store.load(collection).await? {
-            if let Ok(restored) = deserialize_vector_index(&bytes) {
-                let mut indexes = self.indexes.write();
-                indexes.insert(collection.to_string(), restored);
-                return Ok(());
+            match deserialize_vector_index(&bytes) {
+                Ok(restored) => {
+                    let mut indexes = self.indexes.write();
+                    indexes.insert(collection.to_string(), restored);
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to load persisted vector index, rebuilding");
+                }
             }
         }
 
