@@ -6,7 +6,7 @@
 #![cfg(feature = "storage-s3")]
 
 use object_store::aws::AmazonS3Builder;
-use prism::storage::{ObjectStoreDirectory, S3Config};
+use prism::storage::{ObjectStoreDirectory, S3Config, S3VectorStore, VectorStore};
 use std::path::Path;
 use std::sync::Arc;
 use tantivy::directory::Directory;
@@ -19,6 +19,7 @@ fn minio_config() -> S3Config {
         endpoint: Some("http://localhost:9000".to_string()),
         force_path_style: true,
         cache_dir: None,
+        cache_max_size_mb: None,
     }
 }
 
@@ -128,4 +129,125 @@ async fn test_s3_from_config() {
 
     dir.atomic_write(Path::new("config-test.txt"), b"")
         .expect("Failed to cleanup");
+}
+
+// =============================================================================
+// S3VectorStore Tests
+// =============================================================================
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_vector_store_roundtrip() {
+    let store = create_minio_store().await;
+    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+
+    let data = b"serialized hnsw index data for testing";
+    vector_store
+        .save("test-collection", data)
+        .await
+        .expect("Failed to save vector index");
+
+    let loaded = vector_store
+        .load("test-collection")
+        .await
+        .expect("Failed to load vector index");
+    assert_eq!(loaded, Some(data.to_vec()));
+
+    // Cleanup
+    vector_store
+        .delete("test-collection")
+        .await
+        .expect("Failed to delete");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_vector_store_not_found() {
+    let store = create_minio_store().await;
+    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+
+    let loaded = vector_store
+        .load("nonexistent-collection")
+        .await
+        .expect("Failed to load");
+    assert_eq!(loaded, None);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_vector_store_overwrite() {
+    let store = create_minio_store().await;
+    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+
+    // Write initial data
+    vector_store
+        .save("overwrite-test", b"version 1")
+        .await
+        .expect("Failed to save v1");
+
+    // Overwrite with new data
+    vector_store
+        .save("overwrite-test", b"version 2")
+        .await
+        .expect("Failed to save v2");
+
+    let loaded = vector_store
+        .load("overwrite-test")
+        .await
+        .expect("Failed to load");
+    assert_eq!(loaded, Some(b"version 2".to_vec()));
+
+    // Cleanup
+    vector_store.delete("overwrite-test").await.ok();
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_vector_store_delete() {
+    let store = create_minio_store().await;
+    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+
+    // Save data
+    vector_store
+        .save("delete-test", b"to be deleted")
+        .await
+        .expect("Failed to save");
+
+    // Verify it exists
+    let loaded = vector_store.load("delete-test").await.expect("Failed to load");
+    assert!(loaded.is_some());
+
+    // Delete
+    vector_store
+        .delete("delete-test")
+        .await
+        .expect("Failed to delete");
+
+    // Verify it's gone
+    let loaded = vector_store.load("delete-test").await.expect("Failed to load");
+    assert_eq!(loaded, None);
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_vector_store_large_data() {
+    let store = create_minio_store().await;
+    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+
+    // Create ~1MB of data (simulating a real HNSW index)
+    let large_data: Vec<u8> = (0..1_000_000).map(|i| (i % 256) as u8).collect();
+
+    vector_store
+        .save("large-index", &large_data)
+        .await
+        .expect("Failed to save large index");
+
+    let loaded = vector_store
+        .load("large-index")
+        .await
+        .expect("Failed to load large index");
+    assert_eq!(loaded, Some(large_data));
+
+    // Cleanup
+    vector_store.delete("large-index").await.ok();
 }

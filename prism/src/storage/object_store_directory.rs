@@ -412,10 +412,13 @@ impl Directory for ObjectStoreDirectory {
         let data = self
             .rt
             .block_on(async { self.store.get_range(&location, 0..len).await })
-            .map_err(|e| OpenReadError::wrap_io_error(e, path.to_path_buf()))?;
+            .map_err(|e| OpenReadError::wrap_io_error(
+                std::io::Error::new(std::io::ErrorKind::Other, e),
+                path.to_path_buf(),
+            ))?;
 
         if let Some(parent) = cache_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| OpenReadError::wrap_io_error(e, cache_path))?;
+            fs::create_dir_all(parent).map_err(|e| OpenReadError::wrap_io_error(e, cache_path.clone()))?;
         }
 
         fs::write(&cache_path, data.as_ref())

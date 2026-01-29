@@ -15,6 +15,7 @@ pub(crate) struct LruEntry {
 }
 
 /// LRU cache for object storage files
+#[derive(Clone)]
 pub struct LruCache {
     entries: Arc<RwLock<HashMap<PathBuf, Arc<LruEntry>>>>,
     max_size_bytes: u64,

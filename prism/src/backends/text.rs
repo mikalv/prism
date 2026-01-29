@@ -166,9 +166,9 @@ impl TextBackend {
         &self,
         collection: &str,
         schema: &CollectionSchema,
-        storage: &StorageConfig,
+        storage: &crate::storage::StorageConfig,
     ) -> Result<()> {
-        use crate::storage::{LocalConfig, ObjectStoreDirectory, S3Config};
+        use crate::storage::{LocalConfig, ObjectStoreDirectory, S3Config, StorageConfig};
 
         match storage {
             StorageConfig::Local(_) => self.initialize(collection, schema).await,
