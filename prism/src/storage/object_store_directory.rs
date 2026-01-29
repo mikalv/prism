@@ -292,6 +292,15 @@ impl ObjectStoreDirectory {
             builder = builder.with_virtual_hosted_style_request(false);
         }
 
+        // Use explicit credentials if provided (e.g., for MinIO testing)
+        if let (Some(access_key), Some(secret_key)) =
+            (&config.access_key_id, &config.secret_access_key)
+        {
+            builder = builder
+                .with_access_key_id(access_key)
+                .with_secret_access_key(secret_key);
+        }
+
         let store = builder
             .build()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;

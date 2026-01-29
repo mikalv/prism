@@ -20,6 +20,8 @@ fn minio_config() -> S3Config {
         force_path_style: true,
         cache_dir: None,
         cache_max_size_mb: None,
+        access_key_id: Some("minioadmin".to_string()),
+        secret_access_key: Some("minioadmin".to_string()),
     }
 }
 

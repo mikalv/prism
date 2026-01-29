@@ -33,6 +33,13 @@ pub struct S3Config {
     pub cache_dir: Option<String>,
     #[serde(default)]
     pub cache_max_size_mb: Option<usize>,
+    /// Optional access key for explicit credentials (e.g., MinIO testing)
+    /// If not set, uses AWS credential chain (env vars, IAM role, etc.)
+    #[serde(default)]
+    pub access_key_id: Option<String>,
+    /// Optional secret key for explicit credentials
+    #[serde(default)]
+    pub secret_access_key: Option<String>,
 }
 
 impl StorageConfig {
