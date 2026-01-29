@@ -713,9 +713,29 @@ fn run_aggregation<F: PreparedAgg>(
 where
     <F as PreparedAgg>::Fruit: Default,
 {
-    // TODO: Implement proper segment aggregation collection for Tantivy 0.22
-    // The segment_readers API has changed significantly
-    // For now, we'll return default aggregation results
+    // Tantivy 0.22 migration: segment_readers() API removed
+    //
+    // Old API (Tantivy 0.21):
+    //   for segment_reader in reader.segment_readers() {
+    //       let segment_agg = prepared.for_segment(&segment_reader)?;
+    //       for (score, doc) in scorer {
+    //           segment_agg.collect(doc, score, &mut fruit);
+    //       }
+    //       let segment_fruit = segment_agg.create_fruit();
+    //       acc.merge(&mut fruit, segment_fruit);
+    //   }
+    //
+    // New API approach (Tantivy 0.22):
+    // The segment iteration API has been removed in favor of
+    // Searcher::doc() method for direct document access.
+    //
+    // Current limitation: Returns empty/default aggregation results.
+    // Full implementation requires:
+    // 1. Figure out how to iterate matching documents per segment
+    // 2. Update SegmentAgg trait for new document collection pattern
+    // 3. Ensure proper parallelization and performance
+    //
+    // See: #19 - Migrate aggregations to Tantivy 0.22 API
     Ok(<F as PreparedAgg>::Fruit::default())
 }
 
