@@ -544,6 +544,136 @@ pub struct NodeCapabilities {
 4. Wait for replication catch-up
 5. Repeat for next node
 
+## Graph Sharding
+
+### Design: Shard-scoped Graph
+
+Graph edges are scoped to a single shard - no cross-shard edges at runtime.
+
+```
+Collection "products"
+├── Shard 0
+│   ├── Documents
+│   ├── Vectors
+│   └── Graph (edges only between docs in shard 0)
+├── Shard 1
+│   └── Graph (edges only between docs in shard 1)
+└── ...
+```
+
+### Benefits
+
+| Aspect | Shard-scoped |
+|--------|--------------|
+| Edge lookup | Always local, no RPC |
+| Traversal | Entire graph local |
+| Complexity | Minimal |
+| Performance | Predictable, fast |
+
+### Implementation
+
+```rust
+pub struct GraphEdge {
+    pub source: DocId,
+    pub target: DocId,  // Always local
+    pub edge_type: String,
+    pub properties: HashMap<String, Value>,
+}
+```
+
+### Merge Feature
+
+For cross-shard/collection graph needs, provide offline merge instead of complex cross-shard traversal:
+
+```bash
+# Merge two shards into one
+prism-cli shard merge collection/shard_0 collection/shard_1 --output collection/merged
+
+# Merge two collections
+prism-cli collection merge collection_a collection_b --output combined
+```
+
+### Configuration
+
+```toml
+[collection.sharding]
+key = "tenant_id"  # Related docs → same shard
+
+[collection.graph]
+scope = "shard"  # default: shard | collection (v2)
+```
+
+## Unified Storage
+
+### Shared Segment Abstraction
+
+Common storage abstraction that all backends (Tantivy, Vector, Graph) use.
+
+```rust
+#[async_trait]
+pub trait SegmentStorage: Send + Sync {
+    async fn write_segment(&self, id: &SegmentId, data: &[u8]) -> Result<()>;
+    async fn read_segment(&self, id: &SegmentId) -> Result<Vec<u8>>;
+    async fn list_segments(&self, prefix: &str) -> Result<Vec<SegmentId>>;
+    async fn delete_segment(&self, id: &SegmentId) -> Result<()>;
+    async fn rename_segment(&self, from: &SegmentId, to: &SegmentId) -> Result<()>;
+}
+```
+
+### Segment ID Format
+
+```
+{collection}/{backend}/{shard}/{segment_type}_{version}
+
+Examples:
+products/tantivy/shard_0/segment_00000001
+products/vector/shard_0/hnsw_00000003
+products/graph/shard_0/edges_00000002
+```
+
+### Storage Implementations
+
+| Backend | Description |
+|---------|-------------|
+| `LocalStorage` | Local filesystem |
+| `S3Storage` | S3/MinIO/R2 |
+| `CachedStorage` | L1 local + L2 remote |
+
+### Backend Integration
+
+```rust
+pub struct TantivyBackend {
+    storage: Arc<dyn SegmentStorage>,
+}
+
+pub struct VectorBackend {
+    storage: Arc<dyn SegmentStorage>,
+}
+
+pub struct GraphBackend {
+    storage: Arc<dyn SegmentStorage>,
+}
+```
+
+### Configuration
+
+```toml
+[storage]
+backend = "local"  # local | s3 | cached
+
+[storage.local]
+data_dir = "/data/prism"
+
+[storage.s3]
+bucket = "prism-data"
+region = "eu-west-1"
+
+[storage.cached]
+l1_backend = "local"
+l1_max_size_gb = 50
+l2_backend = "s3"
+```
+
 ## Implementation Phases
 
 ### Phase 1: Federation Foundation
@@ -585,6 +715,8 @@ pub struct NodeCapabilities {
 - [#38](https://github.com/mikalv/prism/issues/38) - Observability
 - [#39](https://github.com/mikalv/prism/issues/39) - Rolling upgrades
 - [#40](https://github.com/mikalv/prism/issues/40) - HNSW sharding
+- [#41](https://github.com/mikalv/prism/issues/41) - Graph sharding
+- [#42](https://github.com/mikalv/prism/issues/42) - Unified storage
 
 ## References
 
