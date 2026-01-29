@@ -5,7 +5,8 @@ use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, Sea
 use crate::cache::EmbeddingCacheStats;
 use crate::error::Result;
 use crate::schema::types::CollectionSchema;
-use crate::storage::{LocalVectorStore, VectorStore};
+use crate::storage::{create_vector_store_from_segment_storage, LocalVectorStore, VectorStore};
+use prism_storage::SegmentStorage;
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -82,6 +83,17 @@ impl VectorBackend {
             embedding_provider: Arc::new(RwLock::new(None)),
             vector_store,
         })
+    }
+
+    /// Create a backend with unified SegmentStorage (preferred for S3/cached storage).
+    ///
+    /// This uses the new unified storage layer, bridging to VectorStore via adapter.
+    pub fn with_segment_storage(
+        base_path: impl AsRef<Path>,
+        segment_storage: Arc<dyn SegmentStorage>,
+    ) -> Result<Self> {
+        let vector_store = create_vector_store_from_segment_storage(segment_storage);
+        Self::with_storage(base_path, vector_store)
     }
 
     /// Set the embedding provider for automatic embedding generation

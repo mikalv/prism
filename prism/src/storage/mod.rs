@@ -35,11 +35,19 @@
 
 mod config;
 mod factory;
+mod segment_adapter;
 mod vector_store;
 
 pub use config::{LocalConfig, S3Config, StorageConfig};
 pub use factory::StorageFactory;
+pub use segment_adapter::{create_vector_store_from_segment_storage, SegmentStorageVectorAdapter};
 pub use vector_store::{LocalVectorStore, VectorStore};
+
+// Re-export prism-storage types for convenience
+pub use prism_storage::{
+    CacheConfig, CacheStats, CachedStorage, LocalStorage, SegmentStorage, StorageBackend,
+    StoragePath,
+};
 
 #[cfg(feature = "storage-s3")]
 pub use vector_store::S3VectorStore;

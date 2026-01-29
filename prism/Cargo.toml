@@ -70,6 +70,9 @@ object_store = { workspace = true, optional = true }
 bytes = { workspace = true }
 tempfile = { workspace = true }
 
+# Unified storage
+prism-storage = { workspace = true, features = [] }
+
 [features]
 default = ["vector-instant", "provider-ollama"]
 
@@ -87,7 +90,7 @@ all-providers = ["provider-ollama", "provider-openai", "provider-onnx"]
 cache-redis = ["dep:redis"]
 
 # Storage backends
-storage-s3 = ["dep:object_store"]
+storage-s3 = ["dep:object_store", "prism-storage/s3", "prism-storage/tantivy-adapter"]
 
 # Full feature set
 full = ["vector-instant", "all-providers", "cache-redis"]

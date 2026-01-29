@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["prism", "prism-server", "prism-cli"]
+members = ["prism", "prism-server", "prism-cli", "prism-storage"]
 
 [workspace.package]
 version = "0.3.0"
@@ -79,3 +79,4 @@ tempfile = "3"
 
 # Internal
 prism = { path = "prism" }
+prism-storage = { path = "prism-storage" }

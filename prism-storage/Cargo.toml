@@ -1,0 +1,48 @@
+[package]
+name = "prism-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Unified storage abstraction for Prism search engine"
+keywords = ["storage", "s3", "search", "prism"]
+categories = ["database", "filesystem"]
+
+[dependencies]
+# Async
+async-trait.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+futures.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Serialization (for metadata)
+serde = { workspace = true, features = ["derive"] }
+
+# Logging
+tracing.workspace = true
+
+# Async utilities
+async-recursion = "1"
+
+# Object storage (optional)
+object_store = { workspace = true, optional = true }
+bytes.workspace = true
+
+# Synchronization
+parking_lot.workspace = true
+
+# Tantivy integration (optional)
+tantivy = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[features]
+default = []
+s3 = ["object_store"]
+tantivy-adapter = ["tantivy"]
+full = ["s3", "tantivy-adapter"]
