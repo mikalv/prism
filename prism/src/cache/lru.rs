@@ -52,27 +52,28 @@ impl LruCache {
         }
     }
 
-    pub fn put(&self, key: PathBuf, size: u64) -> bool {
+    pub(crate) fn put(&self, key: PathBuf, size: u64) -> Option<PathBuf> {
         let mut entries = match self.entries.write() {
             Ok(guard) => guard,
-            Err(_) => return false,
+            Err(_) => return None,
         };
 
         // Check if already exists
         if entries.contains_key(&key) {
-            return false;
+            return None;
         }
 
         // Check if we need to evict
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
+        let mut evicted = None;
         if current_size + size > self.max_size_bytes {
-            Self::evict_lru(&mut entries, &self.current_size_bytes, &self.stats);
+            evicted = Self::evict_lru(&mut entries, &self.current_size_bytes, &self.stats);
         }
 
         // Double-check after eviction
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
         if current_size + size > self.max_size_bytes {
-            return false;
+            return evicted;
         }
 
         // Insert new entry
@@ -85,7 +86,7 @@ impl LruCache {
 
         entries.insert(key, entry);
         self.current_size_bytes.fetch_add(size, Ordering::Relaxed);
-        true
+        evicted
     }
 
     pub fn remove(&self, key: &PathBuf) -> Option<u64> {
@@ -127,9 +128,9 @@ impl LruCache {
         entries: &mut HashMap<PathBuf, Arc<LruEntry>>,
         current_size: &AtomicU64,
         stats: &ObjectCacheStats,
-    ) {
+    ) -> Option<PathBuf> {
         if entries.is_empty() {
-            return;
+            return None;
         }
 
         // Find LRU entry
@@ -142,7 +143,9 @@ impl LruCache {
             if let Some(entry) = entries.remove(&key) {
                 current_size.fetch_sub(entry.size, Ordering::Relaxed);
                 stats.evict();
+                return Some(key);
             }
         }
+        None
     }
 }

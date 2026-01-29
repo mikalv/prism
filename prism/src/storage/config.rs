@@ -31,6 +31,8 @@ pub struct S3Config {
     pub force_path_style: bool,
     #[serde(default)]
     pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub cache_max_size_mb: Option<usize>,
 }
 
 impl StorageConfig {

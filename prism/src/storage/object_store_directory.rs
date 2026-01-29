@@ -4,7 +4,7 @@
 //! Uses CoW versioning via meta.json.{version} for atomic updates.
 
 use std::collections::HashSet;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -24,6 +24,10 @@ use tantivy::directory::{
 use tantivy::HasLen;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Handle;
+
+use crate::cache::{LruCache, ObjectCacheStats};
+
+const DEFAULT_CACHE_MAX_MB: usize = 512;
 
 use std::fmt;
 
@@ -59,6 +63,11 @@ pub struct ObjectStoreDirectory {
 
     /// Set of files that exist (cached from list operations)
     file_cache: Arc<RwLock<HashSet<PathBuf>>>,
+
+    /// Local LRU cache for downloaded files
+    object_cache: LruCache,
+    /// Cache statistics for object cache
+    cache_stats: Arc<ObjectCacheStats>,
 }
 
 impl std::fmt::Debug for ObjectStoreDirectory {
@@ -209,7 +218,7 @@ impl ObjectStoreDirectory {
         read_version: Option<u64>,
         write_version: u64,
     ) -> Result<Self, std::io::Error> {
-        Self::with_cache_dir(store, base_path, read_version, write_version, None, None)
+        Self::with_cache_dir(store, base_path, read_version, write_version, None, None, None)
     }
 
     /// Create with explicit cache directory and runtime.
@@ -219,6 +228,7 @@ impl ObjectStoreDirectory {
         read_version: Option<u64>,
         write_version: u64,
         cache_dir: Option<PathBuf>,
+        cache_max_size_mb: Option<usize>,
         rt: Option<Arc<tokio::runtime::Runtime>>,
     ) -> Result<Self, std::io::Error> {
         if let Some(rv) = read_version {
@@ -241,6 +251,10 @@ impl ObjectStoreDirectory {
             )
         });
 
+        let cache_max = cache_max_size_mb.unwrap_or(DEFAULT_CACHE_MAX_MB);
+        let object_cache = LruCache::new(cache_max);
+        let cache_stats = object_cache.stats();
+
         Ok(Self {
             store,
             base_path: base_path.to_string(),
@@ -251,6 +265,8 @@ impl ObjectStoreDirectory {
             rt,
             atomic_rw_lock: Arc::new(Mutex::new(())),
             file_cache: Arc::new(RwLock::new(HashSet::new())),
+            object_cache,
+            cache_stats,
         })
     }
 
@@ -291,6 +307,7 @@ impl ObjectStoreDirectory {
             read_version,
             write_version,
             cache_dir,
+            config.cache_max_size_mb,
             None,
         )
     }
@@ -301,6 +318,12 @@ impl ObjectStoreDirectory {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "non-utf8 path")
         })?;
         Ok(ObjectPath::from(format!("{}/{}", self.base_path, p)))
+    }
+
+    fn insert_into_cache(&self, cache_path: &Path, size: u64) {
+        if let Some(evicted) = self.object_cache.put(cache_path.to_path_buf(), size) {
+            let _ = fs::remove_file(evicted);
+        }
     }
 
     /// Get file metadata via HEAD request.
@@ -344,6 +367,11 @@ impl ObjectStoreDirectory {
         })
     }
 
+    /// Cache statistics for the local object cache
+    pub fn cache_stats(&self) -> Arc<ObjectCacheStats> {
+        Arc::clone(&self.cache_stats)
+    }
+
     /// Check if the directory has any files.
     pub fn is_empty(&self) -> bool {
         self.list_files().is_empty()
@@ -364,6 +392,10 @@ impl Directory for ObjectStoreDirectory {
             .rt
             .block_on(async { self.local_fs.head(&cache_obj_path).await })
         {
+            if self.object_cache.get(&cache_path).is_none() {
+                self.insert_into_cache(&cache_path, meta.size as u64);
+            }
+
             return Ok(Arc::new(ObjectStoreFileHandle::new(
                 self.local_fs.clone(),
                 cache_obj_path,
@@ -373,11 +405,27 @@ impl Directory for ObjectStoreDirectory {
         }
 
         // Fetch from object store
+        self.cache_stats.miss();
         let len = self.head(path)?.size;
 
+        // Download and write to cache
+        let data = self
+            .rt
+            .block_on(async { self.store.get_range(&location, 0..len).await })
+            .map_err(|e| OpenReadError::wrap_io_error(e, path.to_path_buf()))?;
+
+        if let Some(parent) = cache_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| OpenReadError::wrap_io_error(e, cache_path))?;
+        }
+
+        fs::write(&cache_path, data.as_ref())
+            .map_err(|e| OpenReadError::wrap_io_error(e, cache_path.clone()))?;
+
+        self.insert_into_cache(&cache_path, len as u64);
+
         Ok(Arc::new(ObjectStoreFileHandle::new(
-            self.store.clone(),
-            location,
+            self.local_fs.clone(),
+            cache_obj_path,
             len,
             self.rt.clone(),
         )))
@@ -546,6 +594,73 @@ mod tests {
 
         let data = dir.atomic_read(Path::new("segment.dat")).unwrap();
         assert_eq!(data, b"hello world");
+    }
+
+    #[test]
+    fn test_cache_read_through_and_hits() {
+        let store_temp = TempDir::new().unwrap();
+        let cache_temp = TempDir::new().unwrap();
+        let store = Arc::new(LocalFileSystem::new_with_prefix(store_temp.path()).unwrap());
+
+        let dir = ObjectStoreDirectory::with_cache_dir(
+            store,
+            "test-index",
+            None,
+            0,
+            Some(cache_temp.path().to_path_buf()),
+            Some(10),
+            None,
+        )
+        .unwrap();
+
+        dir.atomic_write(Path::new("file1"), b"abc").unwrap();
+
+        let data1 = dir.atomic_read(Path::new("file1")).unwrap();
+        assert_eq!(data1, b"abc");
+
+        let cache_path = cache_temp.path().join("test-index/file1");
+        assert!(cache_path.exists());
+
+        let stats = dir.cache_stats();
+        assert_eq!(stats.misses(), 1);
+        assert_eq!(stats.hits(), 0);
+
+        let _ = dir.atomic_read(Path::new("file1")).unwrap();
+        let stats = dir.cache_stats();
+        assert_eq!(stats.hits(), 1);
+    }
+
+    #[test]
+    fn test_cache_eviction_removes_old_files() {
+        let store_temp = TempDir::new().unwrap();
+        let cache_temp = TempDir::new().unwrap();
+        let store = Arc::new(LocalFileSystem::new_with_prefix(store_temp.path()).unwrap());
+
+        let dir = ObjectStoreDirectory::with_cache_dir(
+            store,
+            "test-index",
+            None,
+            0,
+            Some(cache_temp.path().to_path_buf()),
+            Some(1),
+            None,
+        )
+        .unwrap();
+
+        let big = vec![0u8; 800_000];
+
+        dir.atomic_write(Path::new("f1"), &big).unwrap();
+        dir.atomic_read(Path::new("f1")).unwrap();
+        let path1 = cache_temp.path().join("test-index/f1");
+        assert!(path1.exists());
+
+        dir.atomic_write(Path::new("f2"), &big).unwrap();
+        dir.atomic_read(Path::new("f2")).unwrap();
+        let path2 = cache_temp.path().join("test-index/f2");
+        assert!(path2.exists());
+
+        // First file should be evicted due to cache size limit
+        assert!(!path1.exists());
     }
 
     #[test]
