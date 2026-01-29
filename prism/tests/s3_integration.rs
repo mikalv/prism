@@ -23,7 +23,7 @@ fn minio_config() -> S3Config {
     }
 }
 
-async fn create_minio_store() -> Arc<dyn object_store::ObjectStore> {
+fn create_minio_store() -> Arc<dyn object_store::ObjectStore> {
     Arc::new(
         AmazonS3Builder::new()
             .with_bucket_name("test-bucket")
@@ -38,10 +38,16 @@ async fn create_minio_store() -> Arc<dyn object_store::ObjectStore> {
     )
 }
 
-#[tokio::test]
+// =============================================================================
+// ObjectStoreDirectory Tests
+// Note: These use #[test] (not #[tokio::test]) because ObjectStoreDirectory
+// creates its own internal runtime for sync operations.
+// =============================================================================
+
+#[test]
 #[ignore]
-async fn test_s3_directory_operations() {
-    let store = create_minio_store().await;
+fn test_s3_directory_operations() {
+    let store = create_minio_store();
 
     let dir = ObjectStoreDirectory::new(store.clone(), "test-collection", None, 0)
         .expect("Failed to create directory");
@@ -61,10 +67,10 @@ async fn test_s3_directory_operations() {
         .expect("Failed to cleanup");
 }
 
-#[tokio::test]
+#[test]
 #[ignore]
-async fn test_s3_file_handle() {
-    let store = create_minio_store().await;
+fn test_s3_file_handle() {
+    let store = create_minio_store();
 
     let dir = ObjectStoreDirectory::new(store.clone(), "test-filehandle", None, 0)
         .expect("Failed to create directory");
@@ -83,13 +89,13 @@ async fn test_s3_file_handle() {
         .expect("Failed to cleanup");
 }
 
-#[tokio::test]
+#[test]
 #[ignore]
-async fn test_s3_write_ptr() {
+fn test_s3_write_ptr() {
     use std::io::Write;
     use tantivy::directory::TerminatingWrite;
 
-    let store = create_minio_store().await;
+    let store = create_minio_store();
 
     let dir = ObjectStoreDirectory::new(store.clone(), "test-writeptr", None, 0)
         .expect("Failed to create directory");
@@ -110,13 +116,19 @@ async fn test_s3_write_ptr() {
         .expect("Failed to cleanup");
 }
 
-#[tokio::test]
+#[test]
 #[ignore]
-async fn test_s3_from_config() {
+fn test_s3_from_config() {
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
     let config = minio_config();
 
-    let dir = ObjectStoreDirectory::from_s3_config(&config, "config-test", None, 0)
-        .await
+    let dir = rt
+        .block_on(ObjectStoreDirectory::from_s3_config(
+            &config,
+            "config-test",
+            None,
+            0,
+        ))
         .expect("Failed to create from config");
 
     dir.atomic_write(Path::new("config-test.txt"), b"from config")
@@ -138,7 +150,7 @@ async fn test_s3_from_config() {
 #[tokio::test]
 #[ignore]
 async fn test_s3_vector_store_roundtrip() {
-    let store = create_minio_store().await;
+    let store = create_minio_store();
     let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
 
     let data = b"serialized hnsw index data for testing";
@@ -163,7 +175,7 @@ async fn test_s3_vector_store_roundtrip() {
 #[tokio::test]
 #[ignore]
 async fn test_s3_vector_store_not_found() {
-    let store = create_minio_store().await;
+    let store = create_minio_store();
     let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
 
     let loaded = vector_store
@@ -176,7 +188,7 @@ async fn test_s3_vector_store_not_found() {
 #[tokio::test]
 #[ignore]
 async fn test_s3_vector_store_overwrite() {
-    let store = create_minio_store().await;
+    let store = create_minio_store();
     let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
 
     // Write initial data
@@ -204,7 +216,7 @@ async fn test_s3_vector_store_overwrite() {
 #[tokio::test]
 #[ignore]
 async fn test_s3_vector_store_delete() {
-    let store = create_minio_store().await;
+    let store = create_minio_store();
     let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
 
     // Save data
@@ -231,7 +243,7 @@ async fn test_s3_vector_store_delete() {
 #[tokio::test]
 #[ignore]
 async fn test_s3_vector_store_large_data() {
-    let store = create_minio_store().await;
+    let store = create_minio_store();
     let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
 
     // Create ~1MB of data (simulating a real HNSW index)
