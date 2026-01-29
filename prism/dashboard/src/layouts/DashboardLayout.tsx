@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Sidebar,
   SidebarContent,
@@ -14,8 +15,10 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
-import { BarChart3, Database, Layers, Activity, Moon, Sun, Search } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { BarChart3, Database, Layers, Activity, Moon, Sun, Search, Circle } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
+import { api } from '@/api/client'
 
 const navItems = [
   { to: '/', icon: Activity, label: 'Stats' },
@@ -28,15 +31,38 @@ const navItems = [
 export function DashboardLayout() {
   const { theme, setTheme } = useTheme()
 
+  const healthQuery = useQuery({
+    queryKey: ['health'],
+    queryFn: api.getServerInfo,
+    refetchInterval: 10_000,
+    retry: false,
+  })
+
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
+
+  const isConnected = healthQuery.isSuccess
+  const isLoading = healthQuery.isLoading
 
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="border-b px-4 py-3">
-          <h1 className="text-lg font-semibold">Prism Dashboard</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold">Prism</h1>
+            <Badge
+              variant={isConnected ? 'default' : 'destructive'}
+              className="text-xs"
+            >
+              <Circle
+                className={`mr-1 h-2 w-2 fill-current ${
+                  isLoading ? 'animate-pulse' : ''
+                }`}
+              />
+              {isLoading ? 'Connecting' : isConnected ? 'Connected' : 'Offline'}
+            </Badge>
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
