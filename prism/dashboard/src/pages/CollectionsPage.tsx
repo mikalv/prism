@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type FieldSchema } from '@/api/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { PageHeader } from '@/components/PageHeader'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -26,6 +27,7 @@ function FieldTypeBadge({ field }: { field: FieldSchema }) {
 }
 
 export function CollectionsPage() {
+  const queryClient = useQueryClient()
   const [selected, setSelected] = useState<string | null>(null)
 
   const collectionsQuery = useQuery({
@@ -51,9 +53,24 @@ export function CollectionsPage() {
     enabled: !!selected,
   })
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['collections'] })
+    if (selected) {
+      queryClient.invalidateQueries({ queryKey: ['schema', selected] })
+      queryClient.invalidateQueries({ queryKey: ['stats', selected] })
+      queryClient.invalidateQueries({ queryKey: ['sample', selected] })
+    }
+  }
+
+  const isRefreshing = collectionsQuery.isFetching || schemaQuery.isFetching || statsQuery.isFetching
+
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Collections</h2>
+      <PageHeader
+        title="Collections"
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <Card>
