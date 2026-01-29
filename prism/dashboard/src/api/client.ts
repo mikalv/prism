@@ -84,4 +84,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ query, limit }),
     }),
+  sampleDocuments: (collection: string, limit = 5) =>
+    fetchApi<SearchResults>(`/collections/${collection}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ query: '*', limit }),
+    }),
 }

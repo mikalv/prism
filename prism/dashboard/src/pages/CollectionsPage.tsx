@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { api, type FieldSchema } from '@/api/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -40,6 +42,12 @@ export function CollectionsPage() {
   const statsQuery = useQuery({
     queryKey: ['stats', selected],
     queryFn: () => api.getCollectionStats(selected!),
+    enabled: !!selected,
+  })
+
+  const sampleQuery = useQuery({
+    queryKey: ['sample', selected],
+    queryFn: () => api.sampleDocuments(selected!, 5),
     enabled: !!selected,
   })
 
@@ -111,58 +119,110 @@ export function CollectionsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Schema</CardTitle>
-                <CardDescription>
-                  Dynamic field definitions for this collection
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {schemaQuery.isLoading ? (
-                  <Skeleton className="h-32 w-full" />
-                ) : schemaQuery.error ? (
-                  <p className="text-destructive">Failed to load schema</p>
-                ) : schemaQuery.data?.fields.length === 0 ? (
-                  <p className="text-muted-foreground">No fields defined</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Field</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Indexed</TableHead>
-                        <TableHead>Stored</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {schemaQuery.data?.fields.map((field) => (
-                        <TableRow key={field.name}>
-                          <TableCell className="font-mono">{field.name}</TableCell>
-                          <TableCell>
-                            <FieldTypeBadge field={field} />
-                          </TableCell>
-                          <TableCell>
-                            {field.indexed ? (
-                              <Badge variant="outline">Yes</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">No</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {field.stored ? (
-                              <Badge variant="outline">Yes</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">No</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
+            <Tabs defaultValue="schema">
+              <TabsList>
+                <TabsTrigger value="schema">Schema</TabsTrigger>
+                <TabsTrigger value="documents">Sample Documents</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="schema">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Schema</CardTitle>
+                    <CardDescription>
+                      Dynamic field definitions for this collection
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {schemaQuery.isLoading ? (
+                      <Skeleton className="h-32 w-full" />
+                    ) : schemaQuery.error ? (
+                      <p className="text-destructive">Failed to load schema</p>
+                    ) : schemaQuery.data?.fields.length === 0 ? (
+                      <p className="text-muted-foreground">No fields defined</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Field</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Indexed</TableHead>
+                            <TableHead>Stored</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {schemaQuery.data?.fields.map((field) => (
+                            <TableRow key={field.name}>
+                              <TableCell className="font-mono">{field.name}</TableCell>
+                              <TableCell>
+                                <FieldTypeBadge field={field} />
+                              </TableCell>
+                              <TableCell>
+                                {field.indexed ? (
+                                  <Badge variant="outline">Yes</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">No</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {field.stored ? (
+                                  <Badge variant="outline">Yes</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">No</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="documents">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Sample Documents</CardTitle>
+                    <CardDescription>
+                      Preview documents from this collection
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {sampleQuery.isLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-20 w-full" />
+                        <Skeleton className="h-20 w-full" />
+                      </div>
+                    ) : sampleQuery.error ? (
+                      <p className="text-destructive">Failed to load documents</p>
+                    ) : sampleQuery.data?.hits.length === 0 ? (
+                      <p className="text-muted-foreground">No documents found</p>
+                    ) : (
+                      <ScrollArea className="h-[400px]">
+                        <div className="space-y-3">
+                          {sampleQuery.data?.hits.map((hit, i) => (
+                            <div
+                              key={hit.id ?? i}
+                              className="border rounded-lg p-3 space-y-2"
+                            >
+                              {hit.id && (
+                                <Badge variant="outline" className="mb-2">
+                                  ID: {hit.id}
+                                </Badge>
+                              )}
+                              <pre className="text-sm bg-muted p-2 rounded overflow-x-auto">
+                                {JSON.stringify(hit.document, null, 2)}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </div>
