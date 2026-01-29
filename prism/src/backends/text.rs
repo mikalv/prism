@@ -1,7 +1,7 @@
 use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
 use crate::schema::{CollectionSchema, FieldType};
 use crate::{Error, Result};
-use crate::aggregations::{Agg, PreparedAgg, SegmentAgg, AggSegmentContext, AggregationRequest, AggregationType, CountAgg, MinMaxAgg, TermsAgg};
+use crate::aggregations::{Agg, PreparedAgg, SegmentAgg, AggSegmentContext, AggregationRequest, AggregationType, AvgAgg, CountAgg, MinMaxAgg, SumAgg, TermsAgg};
 use async_trait::async_trait;
 use serde_json::json;
 use std::collections::HashMap;
@@ -623,7 +623,7 @@ impl SearchBackend for TextBackend {
         let mut agg_results = HashMap::new();
         for agg_req in aggregations {
             let result = match &agg_req.agg_type {
-            AggregationType::Count => {
+                AggregationType::Count => {
                     let agg = CountAgg;
                     let prepared = agg.prepare(&searcher)?;
                     let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
@@ -641,23 +641,17 @@ impl SearchBackend for TextBackend {
                     let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
                     MinMaxAgg::into_result(agg_req.name.clone(), fruit)
                 }
-                AggregationType::Terms { field, size } => {
-                    let agg = TermsAgg::new(field, size.unwrap_or(10));
+                AggregationType::Sum { field } => {
+                    let agg = SumAgg::sum(field);
                     let prepared = agg.prepare(&searcher)?;
                     let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    agg.into_result(agg_req.name.clone(), fruit)
+                    SumAgg::into_result(agg_req.name.clone(), fruit)
                 }
-                AggregationType::Min { field } => {
-                    let agg = MinMaxAgg::min(field);
+                AggregationType::Avg { field } => {
+                    let agg = AvgAgg::avg(field);
                     let prepared = agg.prepare(&searcher)?;
                     let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    MinMaxAgg::into_result(agg_req.name.clone(), fruit)
-                }
-                AggregationType::Max { field } => {
-                    let agg = MinMaxAgg::max(field);
-                    let prepared = agg.prepare(&searcher)?;
-                    let fruit = run_aggregation(&coll.reader, &parsed_query, &top_docs, prepared)?;
-                    MinMaxAgg::into_result(agg_req.name.clone(), fruit)
+                    AvgAgg::into_result(agg_req.name.clone(), fruit)
                 }
                 AggregationType::Terms { field, size } => {
                     let agg = TermsAgg::new(field, size.unwrap_or(10));
