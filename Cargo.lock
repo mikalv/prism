@@ -2228,6 +2228,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism-importer"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "base64 0.22.1",
+ "clap",
+ "futures",
+ "indicatif",
+ "prism",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "prism-server"
 version = "0.3.0"
 dependencies = [

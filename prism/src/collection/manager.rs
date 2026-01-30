@@ -432,6 +432,7 @@ impl CollectionManager {
     ) -> Result<Option<crate::backends::text::ReconstructedDocument>> {
         self.text_backend.reconstruct_document(collection, id)
     }
+
 }
 
 #[cfg(test)]

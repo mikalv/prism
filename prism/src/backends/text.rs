@@ -2089,6 +2089,7 @@ impl TextBackend {
             indexed_terms,
         }))
     }
+
 }
 
 #[cfg(test)]
