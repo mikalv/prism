@@ -52,6 +52,7 @@ dirs = "6"
 
 # Search
 tantivy = "0.22"
+tantivy-common = "0.7"
 
 # Query parsing
 nom = "7.1"

@@ -16,7 +16,10 @@ use tantivy::{
      collector::TopDocs, query::QueryParser, schema::*,
      Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
      Term,
- };
+};
+use tantivy::aggregation::agg_req::Aggregations;
+use tantivy::aggregation::agg_result::AggregationResults;
+use tantivy::aggregation::AggregationCollector;
 
 pub struct TextBackend {
     /// Base path for local buffer directory (used for Tantivy temp files)

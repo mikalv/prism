@@ -1,61 +1,58 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod commands;
 
 #[derive(Parser, Debug)]
 #[command(name = "prism")]
 #[command(about = "Prism CLI - hybrid search engine tools")]
 #[command(version)]
 struct Cli {
+    /// Data directory (defaults to ./data)
+    #[arg(long, short = 'd', global = true, default_value = "./data")]
+    data_dir: PathBuf,
+
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Discover schemas from existing Tantivy indexes
-    Discover {
-        /// Input directory with existing indexes
+    /// Collection management commands
+    #[command(subcommand)]
+    Collection(CollectionCommands),
+
+    /// Document operations
+    #[command(subcommand)]
+    Document(DocumentCommands),
+
+    /// Index management commands
+    #[command(subcommand)]
+    Index(IndexCommands),
+
+    /// Run performance benchmarks
+    Benchmark {
+        /// Collection name
         #[arg(short, long)]
-        input: String,
+        collection: String,
 
-        /// Output directory for YAML schemas
+        /// File containing queries (one per line)
         #[arg(short, long)]
-        output: String,
-    },
+        queries: PathBuf,
 
-    /// Export documents from indexes to JSONL
-    Export {
-        /// Input directory with indexes
-        #[arg(short, long)]
-        input: String,
+        /// Number of times to repeat each query
+        #[arg(short, long, default_value = "10")]
+        repeat: usize,
 
-        /// Output directory for JSONL files
-        #[arg(short, long)]
-        output: String,
+        /// Number of warmup iterations
+        #[arg(short, long, default_value = "3")]
+        warmup: usize,
 
-        /// Collections to export (comma-separated)
-        #[arg(short, long)]
-        collections: Option<String>,
-    },
-
-    /// Import JSONL files via HTTP API
-    Import {
-        /// Input directory with JSONL files
-        #[arg(short, long)]
-        input: String,
-
-        /// Prism API URL
-        #[arg(long, default_value = "http://localhost:3080")]
-        api_url: String,
-
-        /// Collections to import (comma-separated)
-        #[arg(short, long)]
-        collections: Option<String>,
-
-        /// Batch size for imports
-        #[arg(long, default_value = "100")]
-        batch_size: usize,
+        /// Number of top results to fetch
+        #[arg(short = 'k', long, default_value = "10")]
+        top_k: usize,
     },
 
     /// Show cache statistics
@@ -77,6 +74,74 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand, Debug)]
+enum CollectionCommands {
+    /// Inspect a collection's index structure and statistics
+    Inspect {
+        /// Collection name
+        #[arg(short, long)]
+        name: String,
+
+        /// Show detailed per-segment breakdown
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// List all collections
+    List,
+}
+
+#[derive(Subcommand, Debug)]
+enum DocumentCommands {
+    /// Import documents from JSONL file or stdin
+    Import {
+        /// Collection name
+        #[arg(short, long)]
+        collection: String,
+
+        /// Input JSONL file (omit for stdin)
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Prism API URL
+        #[arg(long, default_value = "http://localhost:3080")]
+        api_url: String,
+
+        /// Batch size for imports
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+
+        /// Disable progress output
+        #[arg(long)]
+        no_progress: bool,
+    },
+
+    /// Export documents to JSONL
+    Export {
+        /// Collection name
+        #[arg(short, long)]
+        collection: String,
+
+        /// Output file (omit for stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum IndexCommands {
+    /// Optimize index by merging segments and garbage collecting
+    Optimize {
+        /// Collection name
+        #[arg(short, long)]
+        collection: String,
+
+        /// Only run garbage collection, skip segment merge
+        #[arg(long)]
+        gc_only: bool,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
@@ -89,48 +154,94 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Discover { input, output } => {
-            tracing::info!("Discovering schemas from {} -> {}", input, output);
-            // TODO: prism::migration::discover(&input, &output)?;
-            tracing::warn!("Discover implementation pending");
-        }
-        Commands::Export {
-            input,
-            output,
-            collections,
-        } => {
-            tracing::info!("Exporting from {} -> {}", input, output);
-            if let Some(c) = collections {
-                tracing::info!("Collections: {}", c);
+        Commands::Collection(cmd) => match cmd {
+            CollectionCommands::Inspect { name, verbose } => {
+                commands::run_inspect(&cli.data_dir, &name, verbose)?;
             }
-            // TODO: prism::migration::export(&input, &output, collections)?;
-            tracing::warn!("Export implementation pending");
-        }
-        Commands::Import {
-            input,
-            api_url,
-            collections,
-            batch_size,
-        } => {
-            tracing::info!("Importing from {} -> {} (batch={})", input, api_url, batch_size);
-            if let Some(c) = collections {
-                tracing::info!("Collections: {}", c);
+            CollectionCommands::List => {
+                list_collections(&cli.data_dir)?;
             }
-            // TODO: prism::migration::import(&input, &api_url, collections, batch_size).await?;
-            tracing::warn!("Import implementation pending");
+        },
+
+        Commands::Document(cmd) => match cmd {
+            DocumentCommands::Import {
+                collection,
+                file,
+                api_url,
+                batch_size,
+                no_progress,
+            } => {
+                let source = match file {
+                    Some(path) => commands::import::DocumentSource::FromFile(path),
+                    None => commands::import::DocumentSource::FromStdin,
+                };
+                commands::run_import(&api_url, &collection, source, batch_size, no_progress).await?;
+            }
+            DocumentCommands::Export { collection, output } => {
+                tracing::info!("Exporting collection {} to {:?}", collection, output);
+                tracing::warn!("Export implementation pending");
+            }
+        },
+
+        Commands::Index(cmd) => match cmd {
+            IndexCommands::Optimize { collection, gc_only } => {
+                commands::run_optimize(&cli.data_dir, &collection, gc_only)?;
+            }
+        },
+
+        Commands::Benchmark {
+            collection,
+            queries,
+            repeat,
+            warmup,
+            top_k,
+        } => {
+            commands::run_benchmark(&cli.data_dir, &collection, &queries, repeat, warmup, top_k)?;
         }
+
         Commands::CacheStats { path } => {
             tracing::info!("Cache stats for {}", path);
-            // TODO: prism::cache::stats(&path)?;
             tracing::warn!("Cache stats implementation pending");
         }
+
         Commands::CacheClear { path, older_than_days } => {
             tracing::info!("Clearing cache at {}", path);
             if let Some(days) = older_than_days {
                 tracing::info!("Only entries older than {} days", days);
             }
-            // TODO: prism::cache::clear(&path, older_than_days)?;
             tracing::warn!("Cache clear implementation pending");
+        }
+    }
+
+    Ok(())
+}
+
+fn list_collections(data_dir: &std::path::Path) -> Result<()> {
+    let collections_dir = data_dir.join("collections");
+
+    if !collections_dir.exists() {
+        println!("No collections found (directory {:?} does not exist)", collections_dir);
+        return Ok(());
+    }
+
+    let mut collections: Vec<String> = Vec::new();
+
+    for entry in std::fs::read_dir(&collections_dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            if let Some(name) = entry.file_name().to_str() {
+                collections.push(name.to_string());
+            }
+        }
+    }
+
+    if collections.is_empty() {
+        println!("No collections found");
+    } else {
+        collections.sort();
+        println!("Collections:");
+        for name in collections {
+            println!("  - {}", name);
         }
     }
 
