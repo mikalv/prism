@@ -60,17 +60,10 @@ impl CollectionManager {
 
     pub async fn initialize(&self) -> Result<()> {
         for (name, schema) in &self.schemas {
+            // Storage is configured at backend construction time via SegmentStorage.
+            // Initialize just sets up the collection schema/indexes.
             if schema.backends.text.is_some() {
-                #[cfg(feature = "storage-s3")]
-                {
-                    self.text_backend
-                        .initialize_with_storage(name, schema, &schema.storage)
-                        .await?;
-                }
-                #[cfg(not(feature = "storage-s3"))]
-                {
-                    self.text_backend.initialize(name, schema).await?;
-                }
+                self.text_backend.initialize(name, schema).await?;
             }
             if schema.backends.vector.is_some() {
                 self.vector_backend.initialize(name, schema).await?;

@@ -1,59 +1,43 @@
-//! Storage backends for Tantivy indexes.
+//! Unified storage backends for all Prism data.
 //!
-//! Supports local filesystem (default) and S3-compatible object storage.
+//! All backends (Text/Tantivy, Vector, Graph) use the SegmentStorage trait
+//! from prism-storage for persistence. This enables pluggable storage backends
+//! (local filesystem, S3, cached) without changing backend code.
 //!
-//! # Configuration
+//! # Architecture
 //!
-//! ```json
-//! { "storage": { "type": "local" } }
-//! ```
-//!
-//! ```json
-//! {
-//!   "storage": {
-//!     "type": "s3",
-//!     "bucket": "my-bucket",
-//!     "region": "us-east-1",
-//!     "prefix": "indexes/"
-//!   }
-//! }
-//! ```
-//!
-//! # S3-Compatible (MinIO)
-//!
-//! ```json
-//! {
-//!   "storage": {
-//!     "type": "s3",
-//!     "bucket": "local-bucket",
-//!     "region": "us-east-1",
-//!     "endpoint": "http://localhost:9000",
-//!     "force_path_style": true
-//!   }
-//! }
+//! ```text
+//! ┌─────────────────────────────────────────────────┐
+//! │  Backends                                       │
+//! │  ┌───────────┐ ┌───────────┐ ┌───────────┐     │
+//! │  │ Tantivy   │ │ Vector    │ │ Graph     │     │
+//! │  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘     │
+//! │        │             │             │            │
+//! │        └─────────────┼─────────────┘            │
+//! │                      ▼                          │
+//! │            ┌─────────────────┐                  │
+//! │            │ SegmentStorage  │  ← Unified trait │
+//! │            └────────┬────────┘                  │
+//! │                     │                           │
+//! │        ┌────────────┼────────────┐              │
+//! │        ▼            ▼            ▼              │
+//! │  ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+//! │  │  Local   │ │   S3     │ │  Cached  │        │
+//! │  └──────────┘ └──────────┘ └──────────┘        │
+//! └─────────────────────────────────────────────────┘
 //! ```
 
 mod config;
 mod factory;
-mod segment_adapter;
-mod vector_store;
 
 pub use config::{LocalConfig, S3Config, StorageConfig};
 pub use factory::StorageFactory;
-pub use segment_adapter::{create_vector_store_from_segment_storage, SegmentStorageVectorAdapter};
-pub use vector_store::{LocalVectorStore, VectorStore};
 
-// Re-export prism-storage types for convenience
+// Re-export prism-storage types for convenience (the unified storage layer)
 pub use prism_storage::{
-    CacheConfig, CacheStats, CachedStorage, LocalStorage, SegmentStorage, StorageBackend,
-    StoragePath,
+    Bytes, CacheConfig, CacheStats, CachedStorage, LocalStorage, SegmentStorage,
+    StorageBackend, StoragePath, TantivyStorageAdapter,
 };
 
 #[cfg(feature = "storage-s3")]
-pub use vector_store::S3VectorStore;
-
-#[cfg(feature = "storage-s3")]
-mod object_store_directory;
-
-#[cfg(feature = "storage-s3")]
-pub use object_store_directory::ObjectStoreDirectory;
+pub use prism_storage::S3Storage;

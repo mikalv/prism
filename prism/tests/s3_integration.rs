@@ -5,11 +5,9 @@
 
 #![cfg(feature = "storage-s3")]
 
-use object_store::aws::AmazonS3Builder;
-use prism::storage::{ObjectStoreDirectory, S3Config, S3VectorStore, VectorStore};
-use std::path::Path;
+use prism::storage::{Bytes, S3Config, SegmentStorage, StorageBackend, StoragePath};
+use prism_storage::{S3Config as PrismS3Config, S3Storage};
 use std::sync::Arc;
-use tantivy::directory::Directory;
 
 fn minio_config() -> S3Config {
     S3Config {
@@ -25,243 +23,201 @@ fn minio_config() -> S3Config {
     }
 }
 
-fn create_minio_store() -> Arc<dyn object_store::ObjectStore> {
-    Arc::new(
-        AmazonS3Builder::new()
-            .with_bucket_name("test-bucket")
-            .with_region("us-east-1")
-            .with_endpoint("http://localhost:9000")
-            .with_virtual_hosted_style_request(false)
-            .with_allow_http(true)
-            .with_access_key_id("minioadmin")
-            .with_secret_access_key("minioadmin")
-            .build()
-            .expect("Failed to create S3 store"),
-    )
+fn create_s3_storage() -> Arc<dyn SegmentStorage> {
+    let config = PrismS3Config::minio("test-bucket", "http://localhost:9000")
+        .with_prefix("prism-test/")
+        .with_credentials("minioadmin", "minioadmin");
+    Arc::new(S3Storage::new(config).expect("Failed to create S3 storage"))
 }
 
 // =============================================================================
-// ObjectStoreDirectory Tests
-// Note: These use #[test] (not #[tokio::test]) because ObjectStoreDirectory
-// creates its own internal runtime for sync operations.
-// =============================================================================
-
-#[test]
-#[ignore]
-fn test_s3_directory_operations() {
-    let store = create_minio_store();
-
-    let dir = ObjectStoreDirectory::new(store.clone(), "test-collection", None, 0)
-        .expect("Failed to create directory");
-
-    dir.atomic_write(Path::new("test.txt"), b"hello s3")
-        .expect("Failed to write");
-
-    let data = dir
-        .atomic_read(Path::new("test.txt"))
-        .expect("Failed to read");
-    assert_eq!(data, b"hello s3");
-
-    let files = dir.list_files();
-    assert!(files.iter().any(|p| p.to_string_lossy().contains("test")));
-
-    dir.atomic_write(Path::new("test.txt"), b"")
-        .expect("Failed to cleanup");
-}
-
-#[test]
-#[ignore]
-fn test_s3_file_handle() {
-    let store = create_minio_store();
-
-    let dir = ObjectStoreDirectory::new(store.clone(), "test-filehandle", None, 0)
-        .expect("Failed to create directory");
-
-    dir.atomic_write(Path::new("segment.idx"), b"0123456789")
-        .expect("Failed to write");
-
-    let handle = dir
-        .get_file_handle(Path::new("segment.idx"))
-        .expect("Failed to get handle");
-
-    let bytes = handle.read_bytes(2..5).expect("Failed to read range");
-    assert_eq!(bytes.as_slice(), b"234");
-
-    dir.atomic_write(Path::new("segment.idx"), b"")
-        .expect("Failed to cleanup");
-}
-
-#[test]
-#[ignore]
-fn test_s3_write_ptr() {
-    use std::io::Write;
-    use tantivy::directory::TerminatingWrite;
-
-    let store = create_minio_store();
-
-    let dir = ObjectStoreDirectory::new(store.clone(), "test-writeptr", None, 0)
-        .expect("Failed to create directory");
-
-    let mut writer = dir
-        .open_write(Path::new("segment.dat"))
-        .expect("Failed to open write");
-    writer.write_all(b"hello ").expect("Failed to write");
-    writer.write_all(b"world").expect("Failed to write");
-    writer.terminate().expect("Failed to terminate");
-
-    let data = dir
-        .atomic_read(Path::new("segment.dat"))
-        .expect("Failed to read");
-    assert_eq!(data, b"hello world");
-
-    dir.atomic_write(Path::new("segment.dat"), b"")
-        .expect("Failed to cleanup");
-}
-
-#[test]
-#[ignore]
-fn test_s3_from_config() {
-    let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-    let config = minio_config();
-
-    let dir = rt
-        .block_on(ObjectStoreDirectory::from_s3_config(
-            &config,
-            "config-test",
-            None,
-            0,
-        ))
-        .expect("Failed to create from config");
-
-    dir.atomic_write(Path::new("config-test.txt"), b"from config")
-        .expect("Failed to write");
-
-    let data = dir
-        .atomic_read(Path::new("config-test.txt"))
-        .expect("Failed to read");
-    assert_eq!(data, b"from config");
-
-    dir.atomic_write(Path::new("config-test.txt"), b"")
-        .expect("Failed to cleanup");
-}
-
-// =============================================================================
-// S3VectorStore Tests
+// SegmentStorage S3 Tests
 // =============================================================================
 
 #[tokio::test]
 #[ignore]
-async fn test_s3_vector_store_roundtrip() {
-    let store = create_minio_store();
-    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+async fn test_s3_segment_storage_roundtrip() {
+    let storage = create_s3_storage();
 
-    let data = b"serialized hnsw index data for testing";
-    vector_store
-        .save("test-collection", data)
-        .await
-        .expect("Failed to save vector index");
+    let path = StoragePath::vector("test-collection", "default", "index.bin");
+    let data = Bytes::from_static(b"serialized hnsw index data for testing");
 
-    let loaded = vector_store
-        .load("test-collection")
-        .await
-        .expect("Failed to load vector index");
-    assert_eq!(loaded, Some(data.to_vec()));
+    storage.write(&path, data.clone()).await.expect("Failed to write");
+
+    let loaded = storage.read(&path).await.expect("Failed to read");
+    assert_eq!(loaded, data);
 
     // Cleanup
-    vector_store
-        .delete("test-collection")
-        .await
-        .expect("Failed to delete");
+    storage.delete(&path).await.expect("Failed to delete");
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_s3_vector_store_not_found() {
-    let store = create_minio_store();
-    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+async fn test_s3_segment_storage_not_found() {
+    let storage = create_s3_storage();
 
-    let loaded = vector_store
-        .load("nonexistent-collection")
-        .await
-        .expect("Failed to load");
-    assert_eq!(loaded, None);
+    let path = StoragePath::vector("nonexistent", "shard", "missing.bin");
+    let result = storage.read(&path).await;
+
+    // Should return error for non-existent file
+    assert!(result.is_err());
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_s3_vector_store_overwrite() {
-    let store = create_minio_store();
-    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+async fn test_s3_segment_storage_overwrite() {
+    let storage = create_s3_storage();
+    let path = StoragePath::vector("overwrite-test", "default", "data.bin");
 
     // Write initial data
-    vector_store
-        .save("overwrite-test", b"version 1")
+    storage
+        .write(&path, Bytes::from_static(b"version 1"))
         .await
-        .expect("Failed to save v1");
+        .expect("Failed to write v1");
 
     // Overwrite with new data
-    vector_store
-        .save("overwrite-test", b"version 2")
+    storage
+        .write(&path, Bytes::from_static(b"version 2"))
         .await
-        .expect("Failed to save v2");
+        .expect("Failed to write v2");
 
-    let loaded = vector_store
-        .load("overwrite-test")
-        .await
-        .expect("Failed to load");
-    assert_eq!(loaded, Some(b"version 2".to_vec()));
+    let loaded = storage.read(&path).await.expect("Failed to read");
+    assert_eq!(loaded, Bytes::from_static(b"version 2"));
 
     // Cleanup
-    vector_store.delete("overwrite-test").await.ok();
+    storage.delete(&path).await.ok();
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_s3_vector_store_delete() {
-    let store = create_minio_store();
-    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+async fn test_s3_segment_storage_delete() {
+    let storage = create_s3_storage();
+    let path = StoragePath::vector("delete-test", "default", "data.bin");
 
     // Save data
-    vector_store
-        .save("delete-test", b"to be deleted")
+    storage
+        .write(&path, Bytes::from_static(b"to be deleted"))
         .await
-        .expect("Failed to save");
+        .expect("Failed to write");
 
     // Verify it exists
-    let loaded = vector_store.load("delete-test").await.expect("Failed to load");
-    assert!(loaded.is_some());
+    let loaded = storage.read(&path).await.expect("Failed to read");
+    assert_eq!(loaded, Bytes::from_static(b"to be deleted"));
 
     // Delete
-    vector_store
-        .delete("delete-test")
-        .await
-        .expect("Failed to delete");
+    storage.delete(&path).await.expect("Failed to delete");
 
     // Verify it's gone
-    let loaded = vector_store.load("delete-test").await.expect("Failed to load");
-    assert_eq!(loaded, None);
+    let result = storage.read(&path).await;
+    assert!(result.is_err());
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_s3_vector_store_large_data() {
-    let store = create_minio_store();
-    let vector_store = S3VectorStore::new(store, "vector-test/".to_string());
+async fn test_s3_segment_storage_large_data() {
+    let storage = create_s3_storage();
+    let path = StoragePath::vector("large-test", "default", "large.bin");
 
     // Create ~1MB of data (simulating a real HNSW index)
     let large_data: Vec<u8> = (0..1_000_000).map(|i| (i % 256) as u8).collect();
+    let large_bytes = Bytes::from(large_data.clone());
 
-    vector_store
-        .save("large-index", &large_data)
+    storage
+        .write(&path, large_bytes.clone())
         .await
-        .expect("Failed to save large index");
+        .expect("Failed to write large data");
 
-    let loaded = vector_store
-        .load("large-index")
-        .await
-        .expect("Failed to load large index");
-    assert_eq!(loaded, Some(large_data));
+    let loaded = storage.read(&path).await.expect("Failed to read large data");
+    assert_eq!(loaded, large_bytes);
 
     // Cleanup
-    vector_store.delete("large-index").await.ok();
+    storage.delete(&path).await.ok();
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_segment_storage_list() {
+    let storage = create_s3_storage();
+    let collection = "list-test";
+
+    // Write multiple files
+    let path1 = StoragePath::vector(collection, "shard1", "index.bin");
+    let path2 = StoragePath::vector(collection, "shard2", "index.bin");
+
+    storage.write(&path1, Bytes::from_static(b"shard1")).await.unwrap();
+    storage.write(&path2, Bytes::from_static(b"shard2")).await.unwrap();
+
+    // List collection files using StoragePath prefix
+    let prefix = StoragePath::new(collection, StorageBackend::Vector);
+    let files = storage.list(&prefix).await.expect("Failed to list");
+    assert!(files.len() >= 2);
+
+    // Cleanup
+    storage.delete(&path1).await.ok();
+    storage.delete(&path2).await.ok();
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_segment_storage_text_backend_path() {
+    let storage = create_s3_storage();
+
+    // Test text backend path format (uses tantivy for text search)
+    let path = StoragePath::tantivy("documents", "default", "meta.json");
+    let data = Bytes::from_static(b"{\"version\": 1}");
+
+    storage.write(&path, data.clone()).await.expect("Failed to write text segment");
+
+    let loaded = storage.read(&path).await.expect("Failed to read text segment");
+    assert_eq!(loaded, data);
+
+    // Cleanup
+    storage.delete(&path).await.ok();
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_s3_segment_storage_graph_backend_path() {
+    let storage = create_s3_storage();
+
+    // Test graph backend path format
+    let path = StoragePath::graph("knowledge", "default", "nodes.json");
+    let data = Bytes::from_static(b"{}");
+
+    storage.write(&path, data.clone()).await.expect("Failed to write graph segment");
+
+    let loaded = storage.read(&path).await.expect("Failed to read graph segment");
+    assert_eq!(loaded, data);
+
+    // Cleanup
+    storage.delete(&path).await.ok();
+}
+
+#[test]
+#[ignore]
+fn test_s3_config_from_prism_config() {
+    let config = minio_config();
+
+    // Verify config can be converted to prism-storage config
+    let prism_config = if config.endpoint.is_some() {
+        PrismS3Config::minio(&config.bucket, config.endpoint.as_ref().unwrap())
+    } else {
+        PrismS3Config::aws(&config.bucket, &config.region)
+    };
+
+    let prism_config = if let Some(prefix) = &config.prefix {
+        prism_config.with_prefix(prefix)
+    } else {
+        prism_config
+    };
+
+    let prism_config = if let (Some(key), Some(secret)) = (&config.access_key_id, &config.secret_access_key) {
+        prism_config.with_credentials(key, secret)
+    } else {
+        prism_config
+    };
+
+    // Should be able to create storage from config
+    let storage = S3Storage::new(prism_config);
+    assert!(storage.is_ok());
 }

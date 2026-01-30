@@ -1,14 +1,14 @@
-//! Vector search backend with optional embedding cache integration
+//! Vector search backend with unified SegmentStorage integration
+//!
+//! All storage (local, S3, cached) goes through the SegmentStorage trait.
 
 use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
-// Aggregations request type used in signatures
 use crate::cache::EmbeddingCacheStats;
 use crate::error::Result;
 use crate::schema::types::CollectionSchema;
-use crate::storage::{create_vector_store_from_segment_storage, LocalVectorStore, VectorStore};
-use prism_storage::SegmentStorage;
 use async_trait::async_trait;
 use parking_lot::RwLock;
+use prism_storage::{Bytes, LocalStorage, SegmentStorage, StoragePath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -26,8 +26,8 @@ pub struct VectorBackend {
     indexes: Arc<RwLock<HashMap<String, VectorIndex>>>,
     /// Cached embedding provider for automatic embedding generation
     embedding_provider: Arc<RwLock<Option<Arc<CachedEmbeddingProvider>>>>,
-    /// Pluggable vector store (local or S3)
-    vector_store: Arc<dyn VectorStore>,
+    /// Unified storage backend (local, S3, cached, etc.)
+    storage: Arc<dyn SegmentStorage>,
 }
 
 struct VectorIndex {
@@ -62,16 +62,21 @@ struct PersistedVectorIndex {
 }
 
 impl VectorBackend {
+    /// Create a new VectorBackend with local filesystem storage.
+    ///
+    /// Uses LocalStorage from prism-storage for persistence.
     pub fn new(base_path: impl AsRef<Path>) -> Result<Self> {
         let base_path = base_path.as_ref().to_path_buf();
-        let store = Arc::new(LocalVectorStore::new(base_path.clone()));
-        Self::with_storage(base_path, store)
+        let storage = Arc::new(LocalStorage::new(&base_path));
+        Self::with_segment_storage(base_path, storage)
     }
 
-    /// Create a backend with a custom vector store (e.g., S3)
-    pub fn with_storage(
+    /// Create a backend with unified SegmentStorage (local, S3, cached, etc.).
+    ///
+    /// This is the primary constructor - all storage goes through SegmentStorage.
+    pub fn with_segment_storage(
         base_path: impl AsRef<Path>,
-        vector_store: Arc<dyn VectorStore>,
+        storage: Arc<dyn SegmentStorage>,
     ) -> Result<Self> {
         let base_path = base_path.as_ref().to_path_buf();
         // Ensure local path exists for filesystem-backed stores; harmless for S3
@@ -81,19 +86,8 @@ impl VectorBackend {
             _base_path: base_path,
             indexes: Arc::new(RwLock::new(HashMap::new())),
             embedding_provider: Arc::new(RwLock::new(None)),
-            vector_store,
+            storage,
         })
-    }
-
-    /// Create a backend with unified SegmentStorage (preferred for S3/cached storage).
-    ///
-    /// This uses the new unified storage layer, bridging to VectorStore via adapter.
-    pub fn with_segment_storage(
-        base_path: impl AsRef<Path>,
-        segment_storage: Arc<dyn SegmentStorage>,
-    ) -> Result<Self> {
-        let vector_store = create_vector_store_from_segment_storage(segment_storage);
-        Self::with_storage(base_path, vector_store)
     }
 
     /// Set the embedding provider for automatic embedding generation
@@ -125,7 +119,7 @@ impl VectorBackend {
             .ok_or_else(|| crate::error::Error::Schema("No vector backend configured".into()))?;
 
         // Attempt to restore from persistence first
-        if let Some(bytes) = self.vector_store.load(collection).await? {
+        if let Some(bytes) = self.load_index(collection).await? {
             match deserialize_vector_index(&bytes) {
                 Ok(restored) => {
                     let mut indexes = self.indexes.write();
@@ -230,6 +224,29 @@ impl VectorBackend {
 
         self.search(collection, query).await
     }
+
+    // --- Storage helpers using SegmentStorage ---
+
+    fn index_path(collection: &str) -> StoragePath {
+        StoragePath::vector(collection, "default", "vector_index.json")
+    }
+
+    async fn save_index(&self, collection: &str, data: &[u8]) -> Result<()> {
+        let path = Self::index_path(collection);
+        self.storage
+            .write(&path, Bytes::copy_from_slice(data))
+            .await
+            .map_err(|e| crate::error::Error::Storage(e.to_string()))
+    }
+
+    async fn load_index(&self, collection: &str) -> Result<Option<Vec<u8>>> {
+        let path = Self::index_path(collection);
+        match self.storage.read(&path).await {
+            Ok(data) => Ok(Some(data.to_vec())),
+            Err(prism_storage::StorageError::NotFound(_)) => Ok(None),
+            Err(e) => Err(crate::error::Error::Storage(e.to_string())),
+        }
+    }
 }
 
 #[async_trait]
@@ -332,7 +349,7 @@ impl SearchBackend for VectorBackend {
             serialize_vector_index(vector_index)?
         };
 
-        self.vector_store.save(collection, &data).await
+        self.save_index(collection, &data).await
     }
 
     async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
@@ -418,7 +435,7 @@ impl SearchBackend for VectorBackend {
             serialize_vector_index(vector_index)?
         };
 
-        self.vector_store.save(collection, &data).await
+        self.save_index(collection, &data).await
     }
 
     async fn stats(&self, collection: &str) -> Result<BackendStats> {
@@ -555,5 +572,15 @@ mod tests {
         // Test embedding
         let embedding = backend.embed_text("hello world").await.unwrap();
         assert_eq!(embedding.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_vector_backend_with_segment_storage() {
+        let dir = tempdir().unwrap();
+        let storage = Arc::new(LocalStorage::new(dir.path()));
+        let backend = VectorBackend::with_segment_storage(dir.path(), storage).unwrap();
+
+        // Verify storage is used correctly
+        assert!(backend.load_index("nonexistent").await.unwrap().is_none());
     }
 }
