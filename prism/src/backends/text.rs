@@ -4,6 +4,7 @@
 
 use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
 use crate::schema::{CollectionSchema, FieldType};
+use crate::ranking::{RankableResult, RankingConfig, apply_ranking_adjustments};
 use crate::{Error, Result};
 use crate::aggregations::{AggregationRequest, AggregationResult, AggregationType, AggregationValue, Bucket};
 use crate::aggregations::types::StatsResult;
@@ -40,6 +41,8 @@ struct CollectionIndex {
     indexed_at_enabled: bool,
     /// Whether _boost system field is enabled
     boost_enabled: bool,
+    /// Boosting configuration for ranking adjustments
+    boosting_config: Option<crate::schema::BoostingConfig>,
 }
 
 impl TextBackend {
@@ -234,6 +237,7 @@ impl TextBackend {
             writer,
             indexed_at_enabled,
             boost_enabled,
+            boosting_config: schema.boosting.clone(),
         };
 
         self.collections
@@ -409,7 +413,20 @@ impl SearchBackend for TextBackend {
             });
         }
 
-        let query_parser = QueryParser::for_index(&coll.index, fields_to_search);
+        let mut query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
+
+        // Apply field-level boosting from config
+        if let Some(boosting_config) = &coll.boosting_config {
+            for (field_name, boost) in &boosting_config.field_weights {
+                if let Some(&field) = coll.field_map.get(field_name) {
+                    // Only boost fields that are being searched
+                    if fields_to_search.contains(&field) {
+                        query_parser.set_field_boost(field, *boost);
+                    }
+                }
+            }
+        }
+
         let parsed_query = query_parser
             .parse_query(&query.query_string)
             .map_err(|e| Error::InvalidQuery(e.to_string()))?;
@@ -448,6 +465,10 @@ impl SearchBackend for TextBackend {
                                     .unwrap_or(serde_json::Value::Null)
                             }
                             tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
+                            tantivy::schema::OwnedValue::Date(dt) => {
+                                // Store DateTime as microseconds since epoch for ranking
+                                serde_json::Value::Number(dt.into_timestamp_micros().into())
+                            }
                             _ => continue,
                         };
                         fields.insert(entry.name().to_string(), json_value);
@@ -461,6 +482,33 @@ impl SearchBackend for TextBackend {
                 fields,
             });
         }
+
+        // Apply ranking adjustments if boosting is configured
+        let results = if let Some(boosting_config) = &coll.boosting_config {
+            let ranking_config = RankingConfig::from_boosting_config(boosting_config);
+            let now = std::time::SystemTime::now();
+
+            // Convert to rankable results
+            let mut rankable: Vec<RankableResult> = results
+                .into_iter()
+                .map(|r| RankableResult::from_fields(r.id, r.score, r.fields))
+                .collect();
+
+            // Apply ranking adjustments (recency decay, popularity boost)
+            apply_ranking_adjustments(&mut rankable, &ranking_config, now);
+
+            // Convert back to SearchResult
+            rankable
+                .into_iter()
+                .map(|r| SearchResult {
+                    id: r.id,
+                    score: r.adjusted_score,
+                    fields: r.fields,
+                })
+                .collect()
+        } else {
+            results
+        };
 
         let total = results.len();
         let latency_ms = start.elapsed().as_millis() as u64;

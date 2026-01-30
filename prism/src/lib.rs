@@ -9,6 +9,7 @@ pub mod error;
 pub mod mcp;
 pub mod migration;
 pub mod query;
+pub mod ranking;
 pub mod schema;
 pub mod storage;
 
