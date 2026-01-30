@@ -18,13 +18,36 @@ async fn test_hybrid_merge_behaviour() {
     let schema = prism::schema::types::CollectionSchema {
         collection: "col".to_string(),
         description: None,
-        backends: prism::schema::types::Backends { text: Some(prism::schema::types::TextBackendConfig { fields: vec![prism::schema::types::TextField { name: "text".to_string(), field_type: prism::schema::types::FieldType::Text, stored: true, indexed: true }] }), vector: Some(prism::schema::types::VectorBackendConfig { embedding_field: "embedding".to_string(), dimension: 3, distance: prism::schema::types::VectorDistance::Cosine, hnsw_m: 16, hnsw_ef_construction: 200, hnsw_ef_search: 100, vector_weight: 0.5 }), graph: None },
+        backends: prism::schema::types::Backends {
+            text: Some(prism::schema::types::TextBackendConfig {
+                fields: vec![prism::schema::types::TextField {
+                    name: "text".to_string(),
+                    field_type: prism::schema::types::FieldType::Text,
+                    stored: true,
+                    indexed: true,
+                }],
+                bm25_k1: None,
+                bm25_b: None,
+            }),
+            vector: Some(prism::schema::types::VectorBackendConfig {
+                embedding_field: "embedding".to_string(),
+                dimension: 3,
+                distance: prism::schema::types::VectorDistance::Cosine,
+                hnsw_m: 16,
+                hnsw_ef_construction: 200,
+                hnsw_ef_search: 100,
+                vector_weight: 0.5,
+            }),
+            graph: None,
+        },
         indexing: Default::default(),
         quota: Default::default(),
         embedding_generation: None,
         facets: None,
         boosting: None,
         storage: Default::default(),
+        system_fields: Default::default(),
+        hybrid: None,
     };
 
     text.initialize("col", &schema).await.unwrap();

@@ -26,6 +26,14 @@ pub struct CollectionSchema {
     /// Storage backend configuration (local or S3)
     #[serde(default)]
     pub storage: StorageConfig,
+
+    /// System fields configuration (auto-indexed fields for ranking)
+    #[serde(default)]
+    pub system_fields: SystemFieldsConfig,
+
+    /// Hybrid search configuration
+    #[serde(default)]
+    pub hybrid: Option<HybridConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -41,6 +49,16 @@ pub struct Backends {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextBackendConfig {
     pub fields: Vec<TextField>,
+
+    /// BM25 k1 parameter for term saturation (default: 1.2)
+    /// Higher values increase the impact of term frequency
+    #[serde(default)]
+    pub bm25_k1: Option<f32>,
+
+    /// BM25 b parameter for document length normalization (default: 0.75)
+    /// 0 = no length normalization, 1 = full normalization
+    #[serde(default)]
+    pub bm25_b: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +273,81 @@ fn default_boost_multiplier() -> f32 {
     1.5
 }
 
+/// Configuration for automatically indexed system fields.
+/// These fields enable ranking features without requiring migration later.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemFieldsConfig {
+    /// Automatically add _indexed_at timestamp to all documents (default: true)
+    /// Required for recency/freshness scoring
+    #[serde(default = "default_indexed_at_enabled")]
+    pub indexed_at: bool,
+
+    /// Enable per-document _boost field (default: false)
+    /// Allows setting custom boost multipliers per document for popularity signals
+    #[serde(default)]
+    pub document_boost: bool,
+}
+
+impl Default for SystemFieldsConfig {
+    fn default() -> Self {
+        Self {
+            indexed_at: true,
+            document_boost: false,
+        }
+    }
+}
+
+fn default_indexed_at_enabled() -> bool {
+    true
+}
+
+/// Configuration for hybrid search defaults
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HybridConfig {
+    /// Default merge strategy: "rrf" or "weighted" (default: "rrf")
+    #[serde(default = "default_merge_strategy")]
+    pub default_strategy: String,
+
+    /// RRF k parameter - higher values reduce rank influence (default: 60)
+    #[serde(default = "default_rrf_k")]
+    pub rrf_k: usize,
+
+    /// Default text weight for weighted merge (default: 0.5)
+    #[serde(default = "default_text_weight")]
+    pub text_weight: f32,
+
+    /// Default vector weight for weighted merge (default: 0.5)
+    #[serde(default = "default_vector_weight_hybrid")]
+    pub vector_weight: f32,
+}
+
+impl Default for HybridConfig {
+    fn default() -> Self {
+        Self {
+            default_strategy: "rrf".to_string(),
+            rrf_k: 60,
+            text_weight: 0.5,
+            vector_weight: 0.5,
+        }
+    }
+}
+
+fn default_merge_strategy() -> String {
+    "rrf".to_string()
+}
+
+fn default_rrf_k() -> usize {
+    60
+}
+
+fn default_text_weight() -> f32 {
+    0.5
+}
+
+fn default_vector_weight_hybrid() -> f32 {
+    0.5
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphBackendConfig {
     pub path: String,
@@ -390,5 +483,92 @@ boosting:
         assert!(boosting.recency.is_some());
         assert_eq!(boosting.context.len(), 1);
         assert_eq!(boosting.field_weights.get("title"), Some(&2.0));
+    }
+
+    #[test]
+    fn test_system_fields_default() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+
+        // _indexed_at should be enabled by default
+        assert!(schema.system_fields.indexed_at);
+        // _boost should be disabled by default
+        assert!(!schema.system_fields.document_boost);
+    }
+
+    #[test]
+    fn test_system_fields_custom() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+system_fields:
+  indexed_at: false
+  document_boost: true
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+
+        assert!(!schema.system_fields.indexed_at);
+        assert!(schema.system_fields.document_boost);
+    }
+
+    #[test]
+    fn test_hybrid_config() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+  vector:
+    embedding_field: embedding
+    dimension: 384
+hybrid:
+  default_strategy: weighted
+  rrf_k: 100
+  text_weight: 0.7
+  vector_weight: 0.3
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let hybrid = schema.hybrid.unwrap();
+
+        assert_eq!(hybrid.default_strategy, "weighted");
+        assert_eq!(hybrid.rrf_k, 100);
+        assert_eq!(hybrid.text_weight, 0.7);
+        assert_eq!(hybrid.vector_weight, 0.3);
+    }
+
+    #[test]
+    fn test_bm25_config() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+    bm25_k1: 1.5
+    bm25_b: 0.8
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let text = schema.backends.text.unwrap();
+
+        assert_eq!(text.bm25_k1, Some(1.5));
+        assert_eq!(text.bm25_b, Some(0.8));
     }
 }

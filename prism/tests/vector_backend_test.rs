@@ -32,6 +32,8 @@ async fn test_initialize_collection() {
         facets: None,
         boosting: None,
         storage: Default::default(),
+        system_fields: Default::default(),
+        hybrid: None,
     };
 
     backend.initialize("test", &schema).await.unwrap();
@@ -71,6 +73,8 @@ async fn test_index_and_search() {
         facets: None,
         boosting: None,
         storage: Default::default(),
+        system_fields: Default::default(),
+        hybrid: None,
     };
 
     backend.initialize("test2", &schema).await.unwrap();

@@ -82,7 +82,11 @@ impl SchemaDiscoverer {
             collection: collection_name,
             description: None,
             backends: Backends {
-                text: Some(TextBackendConfig { fields }),
+                text: Some(TextBackendConfig {
+                    fields,
+                    bm25_k1: None,
+                    bm25_b: None,
+                }),
                 vector: None,
                 graph: None,
             },
@@ -92,6 +96,8 @@ impl SchemaDiscoverer {
             facets: None,
             boosting: None,
             storage: Default::default(),
+            system_fields: Default::default(),
+            hybrid: None,
         })
     }
 

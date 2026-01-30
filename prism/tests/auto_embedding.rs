@@ -13,13 +13,27 @@ async fn test_index_with_embedding_field() {
     let schema = CollectionSchema {
         collection: "test_collection".into(),
         description: None,
-        backends: prism::schema::types::Backends { text: None, vector: Some(prism::schema::types::VectorBackendConfig { embedding_field: "embedding".into(), dimension: 8, distance: prism::schema::types::VectorDistance::Cosine, hnsw_m: 16, hnsw_ef_construction: 200, hnsw_ef_search: 100, vector_weight: 0.5 }), graph: None },
+        backends: prism::schema::types::Backends {
+            text: None,
+            vector: Some(prism::schema::types::VectorBackendConfig {
+                embedding_field: "embedding".into(),
+                dimension: 8,
+                distance: prism::schema::types::VectorDistance::Cosine,
+                hnsw_m: 16,
+                hnsw_ef_construction: 200,
+                hnsw_ef_search: 100,
+                vector_weight: 0.5,
+            }),
+            graph: None,
+        },
         indexing: prism::schema::types::IndexingConfig::default(),
         quota: prism::schema::types::QuotaConfig::default(),
         embedding_generation: None,
         facets: None,
         boosting: None,
         storage: Default::default(),
+        system_fields: Default::default(),
+        hybrid: None,
     };
     backend.initialize("test_collection", &schema).await.unwrap();
 

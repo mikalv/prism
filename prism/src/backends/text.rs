@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use tantivy::{
      collector::TopDocs, query::QueryParser, schema::*,
      Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
-     Term,
+     Term, DateTime,
 };
 use tantivy::aggregation::agg_req::Aggregations;
 use tantivy::aggregation::agg_result::AggregationResults;
@@ -36,6 +36,10 @@ struct CollectionIndex {
     field_map: HashMap<String, Field>,
     reader: IndexReader,
     writer: Arc<parking_lot::Mutex<IndexWriter>>,
+    /// Whether _indexed_at system field is enabled
+    indexed_at_enabled: bool,
+    /// Whether _boost system field is enabled
+    boost_enabled: bool,
 }
 
 impl TextBackend {
@@ -88,6 +92,27 @@ impl TextBackend {
         // Add ID field (always present)
         let id_field = schema_builder.add_text_field("id", STRING | STORED);
         field_map.insert("id".to_string(), id_field);
+
+        // Add system fields based on configuration
+        let system_fields = &schema.system_fields;
+
+        // _indexed_at: timestamp when document was indexed (for recency scoring)
+        if system_fields.indexed_at {
+            let indexed_at_field = schema_builder.add_date_field(
+                "_indexed_at",
+                DateOptions::default().set_indexed().set_stored().set_fast(),
+            );
+            field_map.insert("_indexed_at".to_string(), indexed_at_field);
+        }
+
+        // _boost: per-document boost multiplier (for popularity signals)
+        if system_fields.document_boost {
+            let boost_field = schema_builder.add_f64_field(
+                "_boost",
+                NumericOptions::default().set_indexed().set_stored().set_fast(),
+            );
+            field_map.insert("_boost".to_string(), boost_field);
+        }
 
         // Add configured fields
         for field_def in &text_config.fields {
@@ -197,12 +222,18 @@ impl TextBackend {
 
         let writer = Arc::new(parking_lot::Mutex::new(index.writer(50_000_000)?));
 
+        // Check if system fields exist in the loaded schema
+        let indexed_at_enabled = existing_field_map.contains_key("_indexed_at");
+        let boost_enabled = existing_field_map.contains_key("_boost");
+
         let collection_index = CollectionIndex {
             index,
             schema: existing_schema,
             field_map: existing_field_map,
             reader,
             writer,
+            indexed_at_enabled,
+            boost_enabled,
         };
 
         self.collections
@@ -224,12 +255,38 @@ impl SearchBackend for TextBackend {
 
         let mut writer = coll.writer.lock();
 
+        // Get current timestamp for _indexed_at
+        let now = DateTime::from_timestamp_micros(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros() as i64
+        );
+
         for doc in docs {
             let mut tantivy_doc = TantivyDocument::new();
 
             // Add ID
             let id_field = coll.field_map.get("id").unwrap();
             tantivy_doc.add_text(*id_field, &doc.id);
+
+            // Add system field: _indexed_at (auto-injected timestamp)
+            if coll.indexed_at_enabled {
+                if let Some(field) = coll.field_map.get("_indexed_at") {
+                    tantivy_doc.add_date(*field, now);
+                }
+            }
+
+            // Add system field: _boost (from document or default 1.0)
+            if coll.boost_enabled {
+                if let Some(field) = coll.field_map.get("_boost") {
+                    let boost_value = doc.fields
+                        .get("_boost")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0);
+                    tantivy_doc.add_f64(*field, boost_value);
+                }
+            }
 
             // Add other fields
             for (field_name, value) in doc.fields {
