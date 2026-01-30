@@ -279,6 +279,7 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
 // ============================================================================
 
 use crate::query::aggregations::{AggregationRequest, AggregationType, AggregationResult};
+use crate::backends::text::{TermInfo, SegmentsInfo, ReconstructedDocument};
 
 /// Aggregation API request
 #[derive(Deserialize)]
@@ -385,4 +386,87 @@ pub async fn aggregate(
         scanned_docs,
         took_ms,
     }))
+}
+
+// ============================================================================
+// Index Inspection API (Issue #24)
+// ============================================================================
+
+/// Top terms response
+#[derive(Serialize)]
+pub struct TopTermsResponse {
+    pub field: String,
+    pub terms: Vec<TermInfo>,
+}
+
+/// Query params for terms endpoint
+#[derive(Deserialize)]
+pub struct TermsQuery {
+    #[serde(default = "default_terms_limit")]
+    pub limit: usize,
+}
+
+fn default_terms_limit() -> usize {
+    25
+}
+
+/// GET /collections/:collection/terms/:field
+pub async fn get_top_terms(
+    Path((collection, field)): Path<(String, String)>,
+    axum::extract::Query(params): axum::extract::Query<TermsQuery>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<TopTermsResponse>, StatusCode> {
+    // Check if collection exists
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let terms = manager
+        .get_top_terms(&collection, &field, params.limit)
+        .map_err(|e| {
+            tracing::error!("Failed to get top terms for {}/{}: {:?}", collection, field, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(TopTermsResponse { field, terms }))
+}
+
+/// GET /collections/:collection/segments
+pub async fn get_segments(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<SegmentsInfo>, StatusCode> {
+    // Check if collection exists
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let segments = manager
+        .get_segments(&collection)
+        .map_err(|e| {
+            tracing::error!("Failed to get segments for {}: {:?}", collection, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(segments))
+}
+
+/// GET /collections/:collection/doc/:id/reconstruct
+pub async fn reconstruct_document(
+    Path((collection, id)): Path<(String, String)>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<Option<ReconstructedDocument>>, StatusCode> {
+    // Check if collection exists
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let doc = manager
+        .reconstruct_document(&collection, &id)
+        .map_err(|e| {
+            tracing::error!("Failed to reconstruct document {}/{}: {:?}", collection, id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(doc))
 }

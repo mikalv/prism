@@ -211,6 +211,19 @@ impl ApiServer {
                 "/collections/:collection/aggregate",
                 post(crate::api::routes::aggregate),
             )
+            // Index Inspection API (Issue #24)
+            .route(
+                "/collections/:collection/terms/:field",
+                get(crate::api::routes::get_top_terms),
+            )
+            .route(
+                "/collections/:collection/segments",
+                get(crate::api::routes::get_segments),
+            )
+            .route(
+                "/collections/:collection/doc/:id/reconstruct",
+                get(crate::api::routes::reconstruct_document),
+            )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",

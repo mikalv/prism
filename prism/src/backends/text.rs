@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use tantivy::{
      collector::TopDocs, query::QueryParser, schema::*,
      Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
-     Term, DateTime,
+     Term, DateTime, DocSet, TERMINATED,
 };
 use tantivy::aggregation::agg_req::Aggregations;
 use tantivy::aggregation::agg_result::AggregationResults;
@@ -783,6 +783,227 @@ impl SearchBackend for TextBackend {
             total,
             aggregations: agg_results,
         })
+    }
+}
+
+// ============================================================================
+// Index Inspection API (Issue #24)
+// ============================================================================
+
+/// Term information for index inspection
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TermInfo {
+    pub term: String,
+    pub doc_freq: u64,
+}
+
+/// Segment information for index inspection
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SegmentInfo {
+    pub id: String,
+    pub doc_count: u32,
+    pub deleted_count: u32,
+    pub size_bytes: u64,
+}
+
+/// Segments overview response
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SegmentsInfo {
+    pub segments: Vec<SegmentInfo>,
+    pub total_docs: u64,
+    pub total_deleted: u64,
+    pub delete_ratio: f64,
+}
+
+/// Reconstructed document with indexed terms
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReconstructedDocument {
+    pub id: String,
+    pub stored_fields: HashMap<String, serde_json::Value>,
+    pub indexed_terms: HashMap<String, Vec<String>>,
+}
+
+impl TextBackend {
+    /// Get top-k most frequent terms for a field.
+    pub fn get_top_terms(&self, collection: &str, field: &str, limit: usize) -> Result<Vec<TermInfo>> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        let field_obj = coll.field_map.get(field)
+            .ok_or_else(|| Error::Schema(format!("Field '{}' not found", field)))?;
+
+        let searcher = coll.reader.searcher();
+        let mut term_counts: HashMap<String, u64> = HashMap::new();
+
+        // Iterate through all segments
+        for segment_reader in searcher.segment_readers() {
+            let inverted_index = segment_reader.inverted_index(*field_obj)?;
+            let term_dict = inverted_index.terms();
+            let mut term_stream = term_dict.stream()?;
+
+            while term_stream.advance() {
+                let term_bytes = term_stream.key();
+                if let Ok(term_str) = std::str::from_utf8(term_bytes) {
+                    let doc_freq = term_stream.value().doc_freq as u64;
+                    *term_counts.entry(term_str.to_string()).or_insert(0) += doc_freq;
+                }
+            }
+        }
+
+        // Sort by frequency and take top-k
+        let mut terms: Vec<_> = term_counts.into_iter().collect();
+        terms.sort_by(|a, b| b.1.cmp(&a.1));
+
+        Ok(terms
+            .into_iter()
+            .take(limit)
+            .map(|(term, doc_freq)| TermInfo { term, doc_freq })
+            .collect())
+    }
+
+    /// Get segment information for a collection.
+    pub fn get_segments(&self, collection: &str) -> Result<SegmentsInfo> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        let searcher = coll.reader.searcher();
+        let mut segments = Vec::new();
+        let mut total_docs: u64 = 0;
+        let mut total_deleted: u64 = 0;
+
+        for segment_reader in searcher.segment_readers() {
+            let segment_id = segment_reader.segment_id();
+            let doc_count = segment_reader.num_docs();
+            let deleted_count = segment_reader.num_deleted_docs();
+
+            // Estimate size from segment ordinal (actual size requires file system access)
+            let size_bytes = (doc_count as u64) * 500; // Rough estimate
+
+            segments.push(SegmentInfo {
+                id: format!("{:?}", segment_id),
+                doc_count,
+                deleted_count,
+                size_bytes,
+            });
+
+            total_docs += doc_count as u64;
+            total_deleted += deleted_count as u64;
+        }
+
+        let delete_ratio = if total_docs > 0 {
+            total_deleted as f64 / (total_docs + total_deleted) as f64
+        } else {
+            0.0
+        };
+
+        Ok(SegmentsInfo {
+            segments,
+            total_docs,
+            total_deleted,
+            delete_ratio,
+        })
+    }
+
+    /// Reconstruct a document showing stored fields and indexed terms.
+    pub fn reconstruct_document(&self, collection: &str, id: &str) -> Result<Option<ReconstructedDocument>> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        let searcher = coll.reader.searcher();
+        let id_field = coll.field_map.get("id").unwrap();
+
+        // Find document by ID
+        let term = Term::from_field_text(*id_field, id);
+        let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+
+        let (_, doc_addr) = match top_docs.first() {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+
+        let doc: TantivyDocument = searcher.doc(*doc_addr)?;
+
+        // Collect stored fields
+        let mut stored_fields = HashMap::new();
+        for (field, entry) in coll.schema.fields() {
+            if entry.is_stored() {
+                if let Some(value) = doc.get_first(field) {
+                    let json_value = match value {
+                        tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
+                        tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
+                        tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
+                        tantivy::schema::OwnedValue::F64(n) => {
+                            serde_json::Number::from_f64(*n)
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null)
+                        }
+                        tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
+                        _ => continue,
+                    };
+                    stored_fields.insert(entry.name().to_string(), json_value);
+                }
+            }
+        }
+
+        // Collect indexed terms for text fields
+        let mut indexed_terms: HashMap<String, Vec<String>> = HashMap::new();
+
+        // Get the segment reader for this document
+        let segment_ord = doc_addr.segment_ord;
+        let segment_reader = &searcher.segment_readers()[segment_ord as usize];
+        let doc_id = doc_addr.doc_id;
+
+        for (field, entry) in coll.schema.fields() {
+            if entry.field_type().is_indexed() {
+                if let tantivy::schema::FieldType::Str(_) = entry.field_type() {
+                    let mut terms_for_field = Vec::new();
+
+                    // Get inverted index for this field
+                    if let Ok(inverted_index) = segment_reader.inverted_index(field) {
+                        let term_dict = inverted_index.terms();
+                        let mut term_stream = term_dict.stream()?;
+
+                        while term_stream.advance() {
+                            let term_bytes = term_stream.key();
+                            if let Ok(postings) = inverted_index.read_postings_from_terminfo(
+                                &term_stream.value(),
+                                IndexRecordOption::Basic,
+                            ) {
+                                // Check if this document contains this term
+                                let mut postings = postings;
+                                while postings.doc() < doc_id {
+                                    if postings.advance() == tantivy::TERMINATED {
+                                        break;
+                                    }
+                                }
+                                if postings.doc() == doc_id {
+                                    if let Ok(term_str) = std::str::from_utf8(term_bytes) {
+                                        terms_for_field.push(term_str.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !terms_for_field.is_empty() {
+                        indexed_terms.insert(entry.name().to_string(), terms_for_field);
+                    }
+                }
+            }
+        }
+
+        Ok(Some(ReconstructedDocument {
+            id: id.to_string(),
+            stored_fields,
+            indexed_terms,
+        }))
     }
 }
 

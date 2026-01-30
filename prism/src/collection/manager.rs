@@ -299,6 +299,34 @@ impl CollectionManager {
 
         Ok(merged)
     }
+
+    // ========================================================================
+    // Index Inspection API (Issue #24)
+    // ========================================================================
+
+    /// Get top-k most frequent terms for a field.
+    pub fn get_top_terms(
+        &self,
+        collection: &str,
+        field: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::backends::text::TermInfo>> {
+        self.text_backend.get_top_terms(collection, field, limit)
+    }
+
+    /// Get segment information for a collection.
+    pub fn get_segments(&self, collection: &str) -> Result<crate::backends::text::SegmentsInfo> {
+        self.text_backend.get_segments(collection)
+    }
+
+    /// Reconstruct a document showing stored fields and indexed terms.
+    pub fn reconstruct_document(
+        &self,
+        collection: &str,
+        id: &str,
+    ) -> Result<Option<crate::backends::text::ReconstructedDocument>> {
+        self.text_backend.reconstruct_document(collection, id)
+    }
 }
 
 #[cfg(test)]
