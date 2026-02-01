@@ -35,6 +35,8 @@ pub struct ServerConfig {
     pub unix_socket: Option<PathBuf>,
     #[serde(default)]
     pub cors: CorsConfig,
+    #[serde(default)]
+    pub tls: TlsConfig,
 }
 
 fn default_bind_addr() -> String {
@@ -47,6 +49,7 @@ impl Default for ServerConfig {
             bind_addr: default_bind_addr(),
             unix_socket: None,
             cors: CorsConfig::default(),
+            tls: TlsConfig::default(),
         }
     }
 }
@@ -76,6 +79,41 @@ impl Default for CorsConfig {
         Self {
             enabled: true,
             origins: default_cors_origins(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_tls_bind_addr")]
+    pub bind_addr: String,
+    #[serde(default = "default_tls_cert_path")]
+    pub cert_path: PathBuf,
+    #[serde(default = "default_tls_key_path")]
+    pub key_path: PathBuf,
+}
+
+fn default_tls_bind_addr() -> String {
+    "127.0.0.1:3443".to_string()
+}
+
+fn default_tls_cert_path() -> PathBuf {
+    PathBuf::from("./conf/tls/cert.pem")
+}
+
+fn default_tls_key_path() -> PathBuf {
+    PathBuf::from("./conf/tls/key.pem")
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind_addr: default_tls_bind_addr(),
+            cert_path: default_tls_cert_path(),
+            key_path: default_tls_key_path(),
         }
     }
 }
@@ -234,6 +272,10 @@ impl Config {
         self.storage.data_dir = expand_tilde(&self.storage.data_dir)?;
         if let Some(ref sock) = self.server.unix_socket {
             self.server.unix_socket = Some(expand_tilde(sock)?);
+        }
+        if self.server.tls.enabled {
+            self.server.tls.cert_path = expand_tilde(&self.server.tls.cert_path)?;
+            self.server.tls.key_path = expand_tilde(&self.server.tls.key_path)?;
         }
         if let Some(ref f) = self.logging.file {
             self.logging.file = Some(expand_tilde(f)?);

@@ -123,3 +123,50 @@ file = "/var/log/engraph.log"
     assert_eq!(config.logging.level, "trace");
     assert_eq!(config.logging.file, Some(PathBuf::from("/var/log/engraph.log")));
 }
+
+#[test]
+fn test_default_tls_config() {
+    let config = Config::default();
+    assert!(!config.server.tls.enabled);
+    assert_eq!(config.server.tls.bind_addr, "127.0.0.1:3443");
+    assert_eq!(config.server.tls.cert_path, PathBuf::from("./conf/tls/cert.pem"));
+    assert_eq!(config.server.tls.key_path, PathBuf::from("./conf/tls/key.pem"));
+}
+
+#[test]
+fn test_parse_toml_with_tls() {
+    let toml_content = r#"
+[server]
+bind_addr = "0.0.0.0:3080"
+
+[server.tls]
+enabled = true
+bind_addr = "0.0.0.0:3443"
+cert_path = "/etc/prism/cert.pem"
+key_path = "/etc/prism/key.pem"
+
+[storage]
+data_dir = "/tmp/prism"
+"#;
+
+    let config: Config = toml::from_str(toml_content).unwrap();
+    assert!(config.server.tls.enabled);
+    assert_eq!(config.server.tls.bind_addr, "0.0.0.0:3443");
+    assert_eq!(config.server.tls.cert_path, PathBuf::from("/etc/prism/cert.pem"));
+    assert_eq!(config.server.tls.key_path, PathBuf::from("/etc/prism/key.pem"));
+}
+
+#[test]
+fn test_parse_toml_without_tls_section() {
+    let toml_content = r#"
+[server]
+bind_addr = "127.0.0.1:3080"
+
+[storage]
+data_dir = "/tmp/prism"
+"#;
+
+    let config: Config = toml::from_str(toml_content).unwrap();
+    assert!(!config.server.tls.enabled);
+    assert_eq!(config.server.tls.bind_addr, "127.0.0.1:3443");
+}
