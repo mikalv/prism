@@ -84,6 +84,7 @@ vector-usearch = ["dep:usearch"]
 provider-ollama = []
 provider-openai = []
 provider-onnx = ["dep:ort", "dep:tokenizers", "dep:ndarray"]
+provider-onnx-real = ["provider-onnx"]
 all-providers = ["provider-ollama", "provider-openai", "provider-onnx"]
 
 # Cache backends

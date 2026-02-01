@@ -60,6 +60,9 @@ use prism_storage::{
     LocalStorage, SegmentStorage,
 };
 
+#[cfg(feature = "storage-s3")]
+use prism_storage::{CacheConfig, CachedStorage};
+
 /// Unified storage configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UnifiedStorageConfig {

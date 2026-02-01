@@ -1,6 +1,6 @@
 // Real ONNX embedder + deterministic fallback (feature-gated)
 
-#[cfg(feature = "embedding-gen")]
+#[cfg(feature = "provider-onnx")]
 mod _inner {
     use anyhow::Result;
     use crate::embedding::ModelConfig;
@@ -11,7 +11,7 @@ mod _inner {
         use super::ModelConfig;
         use crate::embedding::ModelCache;
 
-        #[cfg(feature = "embedding-gen-real")]
+        #[cfg(feature = "provider-onnx-real")]
         mod full {
             use anyhow::{Result, anyhow};
             use ort::session::Session;
@@ -164,22 +164,22 @@ mod _inner {
             }
         }
 
-        #[cfg(not(feature = "embedding-gen-real"))]
+        #[cfg(not(feature = "provider-onnx-real"))]
         pub struct RealEmbedder {
             pub dimension: usize,
         }
 
-        #[cfg(not(feature = "embedding-gen-real"))]
+        #[cfg(not(feature = "provider-onnx-real"))]
         impl RealEmbedder {
             pub async fn new(_config: &ModelConfig) -> Result<Self> {
-                Err(anyhow!("Real embedder not enabled; compile with --features embedding-gen-real"))
+                Err(anyhow!("Real embedder not enabled; compile with --features provider-onnx-real"))
             }
             pub fn embed_batch(&self, _texts: &[&str]) -> Result<Vec<Vec<f32>>> {
                 Err(anyhow!("Real embedder not enabled"))
             }
         }
 
-        #[cfg(feature = "embedding-gen-real")]
+        #[cfg(feature = "provider-onnx-real")]
         pub use full::RealEmbedderFull as RealEmbedder;
     }
 
@@ -269,5 +269,5 @@ mod _inner {
 
 }
 
-#[cfg(feature = "embedding-gen")]
+#[cfg(feature = "provider-onnx")]
 pub use _inner::Embedder;

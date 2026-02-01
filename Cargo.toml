@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["prism", "prism-server", "prism-cli", "prism-storage"]
+members = ["prism", "prism-server", "prism-cli", "prism-storage", "xtask"]
 
 [workspace.package]
 version = "0.3.0"
