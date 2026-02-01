@@ -1,4 +1,4 @@
-use crate::backends::{Document, Query, SearchResults};
+use crate::backends::{Document, Query, SearchResults, SearchResult};
 use crate::collection::CollectionManager;
 use axum::{
     extract::{Path, State},
@@ -34,6 +34,49 @@ fn default_limit() -> usize {
     10
 }
 
+#[derive(Deserialize)]
+pub struct SimpleSearchRequest {
+    pub query: String,
+    #[serde(default = "default_simple_limit")]
+    pub limit: usize,
+}
+
+fn default_simple_limit() -> usize {
+    10
+}
+
+#[derive(Serialize)]
+pub struct SimpleSearchResult {
+    pub id: String,
+    pub title: Option<String>,
+    pub url: Option<String>,
+    pub snippet: Option<String>,
+    pub score: f32,
+}
+
+#[derive(Serialize)]
+pub struct SimpleSearchResponse {
+    pub results: Vec<SimpleSearchResult>,
+    pub total: usize,
+}
+
+fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
+    let title = result.fields.get("title").and_then(|v| v.as_str()).map(String::from);
+    let url = result.fields.get("url").or_else(|| result.fields.get("link"))
+        .and_then(|v| v.as_str()).map(String::from);
+    let snippet = result.fields.get("snippet").or_else(|| result.fields.get("content"))
+        .or_else(|| result.fields.get("description"))
+        .and_then(|v| v.as_str()).map(String::from);
+
+    SimpleSearchResult {
+        id: result.id,
+        title,
+        url,
+        snippet,
+        score: result.score,
+    }
+}
+
 pub async fn search(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
@@ -61,6 +104,47 @@ pub async fn search(
             tracing::error!("Search error: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })
+}
+
+pub async fn simple_search(
+    State(manager): State<Arc<CollectionManager>>,
+    Json(request): Json<SimpleSearchRequest>,
+) -> Result<Json<SimpleSearchResponse>, StatusCode> {
+    let collections = manager.list_collections();
+    
+    if collections.is_empty() {
+        return Ok(Json(SimpleSearchResponse {
+            results: vec![],
+            total: 0,
+        }));
+    }
+
+    let default_collection = collections.first().unwrap();
+    
+    let query = Query {
+        query_string: request.query,
+        fields: vec![],
+        limit: request.limit,
+        offset: 0,
+        merge_strategy: None,
+        text_weight: None,
+        vector_weight: None,
+    };
+
+    let results = manager
+        .search(default_collection, query)
+        .await
+        .map_err(|e| {
+            tracing::error!("Simple search error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let simple_results: Vec<SimpleSearchResult> = results.results.into_iter().map(result_to_simple).collect();
+
+    Ok(Json(SimpleSearchResponse {
+        results: simple_results,
+        total: results.total,
+    }))
 }
 
 #[derive(Deserialize)]

@@ -176,6 +176,7 @@ impl ApiServer {
 
         // Routes that use Arc<CollectionManager>
         let legacy_routes = Router::new()
+            .route("/api/search", post(crate::api::routes::simple_search))
             .route(
                 "/collections/:collection/search",
                 post(crate::api::routes::search),

@@ -57,7 +57,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use prism_storage::{
-    CacheConfig, CachedStorage, LocalStorage, SegmentStorage,
+    LocalStorage, SegmentStorage,
 };
 
 /// Unified storage configuration.

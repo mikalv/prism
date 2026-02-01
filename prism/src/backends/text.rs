@@ -16,11 +16,8 @@ use std::sync::{Arc, RwLock};
 use tantivy::{
      collector::TopDocs, query::QueryParser, schema::*,
      Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
-     Term, DateTime, DocSet, TERMINATED,
+     Term, DateTime, DocSet,
 };
-use tantivy::aggregation::agg_req::Aggregations;
-use tantivy::aggregation::agg_result::AggregationResults;
-use tantivy::aggregation::AggregationCollector;
 
 pub struct TextBackend {
     /// Base path for local buffer directory (used for Tantivy temp files)
@@ -608,7 +605,7 @@ impl SearchBackend for TextBackend {
         query: &Query,
         aggregations: Vec<AggregationRequest>,
     ) -> Result<SearchResultsWithAggs> {
-        let start = std::time::Instant::now();
+        let _start = std::time::Instant::now();
 
         let collections = self.collections.read().unwrap();
         let coll = collections
