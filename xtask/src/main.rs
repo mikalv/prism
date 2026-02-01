@@ -158,7 +158,7 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     let base = staging.join(prefix);
 
     // Create directory skeleton
-    for dir in &["bin", "conf/schemas", "models", "data", "logs"] {
+    for dir in &["bin", "conf/schemas", "conf/tls", "models", "data", "logs"] {
         fs::create_dir_all(base.join(dir))?;
     }
 
@@ -177,6 +177,12 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
             base.join("bin/start.sh"),
             fs::Permissions::from_mode(0o755),
         )?;
+    }
+
+    // Copy generate-cert.sh for TLS certificate generation
+    let cert_script_src = root.join("bin/generate-cert.sh");
+    if cert_script_src.exists() {
+        copy_file(&cert_script_src, &base.join("bin/generate-cert.sh"))?;
     }
 
     // -- conf/ --------------------------------------------------------------
@@ -325,6 +331,14 @@ model = "all-MiniLM-L6-v2"
 [logging]
 level = "info"
 # file = "./logs/prism.log"
+
+[server.tls]
+# To enable HTTPS, run: bin/generate-cert.sh
+# Then set enabled = true
+enabled = false
+bind_addr = "127.0.0.1:3443"
+cert_path = "./conf/tls/cert.pem"
+key_path = "./conf/tls/key.pem"
 "#
 }
 
