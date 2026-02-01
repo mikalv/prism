@@ -247,7 +247,6 @@ impl ApiServer {
                 post(crate::api::mnemos_compat::session_init),
             )
             .route("/api/context", post(crate::api::mnemos_compat::context))
-            .route("/api/search", post(crate::api::mnemos_compat::search))
             .with_state(self.manager.clone());
 
         // MCP SSE routes that use AppState
@@ -370,7 +369,11 @@ fn load_rustls_config(tls: &TlsConfig) -> crate::Result<rustls::ServerConfig> {
         .map_err(|e| crate::Error::Config(format!("Failed to parse TLS key: {}", e)))?
         .ok_or_else(|| crate::Error::Config("No private key found in key file".into()))?;
 
-    let config = rustls::ServerConfig::builder()
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| crate::Error::Config(format!("Invalid TLS protocol config: {}", e)))?
         .with_no_client_auth()
         .with_single_cert(certs, key)
         .map_err(|e| crate::Error::Config(format!("Invalid TLS config: {}", e)))?;
