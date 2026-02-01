@@ -1,5 +1,5 @@
 use crate::collection::CollectionManager;
-use crate::config::CorsConfig;
+use crate::config::{CorsConfig, TlsConfig};
 use crate::Result;
 use axum::{
     extract::State,
@@ -14,6 +14,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tokio_rustls::TlsAcceptor;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -266,14 +267,113 @@ impl ApiServer {
             .layer(TraceLayer::new_for_http())
     }
 
-    pub async fn serve(self, addr: &str) -> Result<()> {
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        tracing::info!("Server listening on {}", addr);
+    pub async fn serve(self, addr: &str, tls_config: Option<&TlsConfig>) -> Result<()> {
+        let router = self.router();
 
-        axum::serve(listener, self.router())
-            .await
-            .map_err(|e| crate::Error::Backend(e.to_string()))?;
+        let tls_enabled = tls_config.map_or(false, |t| t.enabled);
+
+        if tls_enabled {
+            let tls = tls_config.unwrap();
+            let rustls_config = load_rustls_config(tls)?;
+            let acceptor = TlsAcceptor::from(Arc::new(rustls_config));
+
+            // Spawn HTTP listener
+            let http_router = router.clone();
+            let http_addr = addr.to_string();
+            let http_handle = tokio::spawn(async move {
+                let listener = tokio::net::TcpListener::bind(&http_addr).await?;
+                tracing::info!("HTTP server listening on {}", http_addr);
+                axum::serve(listener, http_router)
+                    .await
+                    .map_err(|e| crate::Error::Backend(e.to_string()))
+            });
+
+            // Run TLS accept loop
+            let tls_addr = tls.bind_addr.clone();
+            let tls_handle = tokio::spawn(async move {
+                let listener = tokio::net::TcpListener::bind(&tls_addr).await?;
+                tracing::info!("HTTPS server listening on {}", tls_addr);
+
+                loop {
+                    let (tcp_stream, peer_addr) = listener.accept().await?;
+                    let acceptor = acceptor.clone();
+                    let svc = router.clone();
+
+                    tokio::spawn(async move {
+                        let tls_stream = match acceptor.accept(tcp_stream).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                tracing::debug!("TLS handshake failed from {}: {}", peer_addr, e);
+                                return;
+                            }
+                        };
+
+                        let io = hyper_util::rt::TokioIo::new(tls_stream);
+                        let hyper_svc =
+                            hyper_util::service::TowerToHyperService::new(svc);
+                        let builder = hyper_util::server::conn::auto::Builder::new(
+                            hyper_util::rt::TokioExecutor::new(),
+                        );
+
+                        if let Err(e) = builder
+                            .serve_connection(io, hyper_svc)
+                            .await
+                        {
+                            tracing::debug!("HTTPS connection error from {}: {}", peer_addr, e);
+                        }
+                    });
+                }
+
+                #[allow(unreachable_code)]
+                Ok::<(), crate::Error>(())
+            });
+
+            tokio::select! {
+                res = http_handle => {
+                    res.map_err(|e| crate::Error::Backend(format!("HTTP task panicked: {}", e)))??;
+                }
+                res = tls_handle => {
+                    res.map_err(|e| crate::Error::Backend(format!("HTTPS task panicked: {}", e)))??;
+                }
+            }
+        } else {
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            tracing::info!("Server listening on {}", addr);
+            axum::serve(listener, router)
+                .await
+                .map_err(|e| crate::Error::Backend(e.to_string()))?;
+        }
 
         Ok(())
     }
+}
+
+fn load_rustls_config(tls: &TlsConfig) -> crate::Result<rustls::ServerConfig> {
+    let cert_file = std::fs::File::open(&tls.cert_path).map_err(|e| {
+        crate::Error::Config(format!(
+            "Cannot open TLS cert '{}': {}. Run bin/generate-cert.sh to create a self-signed certificate.",
+            tls.cert_path.display(), e
+        ))
+    })?;
+    let key_file = std::fs::File::open(&tls.key_path).map_err(|e| {
+        crate::Error::Config(format!(
+            "Cannot open TLS key '{}': {}. Run bin/generate-cert.sh to create a self-signed certificate.",
+            tls.key_path.display(), e
+        ))
+    })?;
+
+    let certs: Vec<_> = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_file))
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|e| crate::Error::Config(format!("Failed to parse TLS certs: {}", e)))?;
+
+    let key = rustls_pemfile::private_key(&mut std::io::BufReader::new(key_file))
+        .map_err(|e| crate::Error::Config(format!("Failed to parse TLS key: {}", e)))?
+        .ok_or_else(|| crate::Error::Config("No private key found in key file".into()))?;
+
+    let config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| crate::Error::Config(format!("Invalid TLS config: {}", e)))?;
+
+    Ok(config)
 }
