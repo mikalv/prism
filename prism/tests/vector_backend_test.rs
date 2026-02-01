@@ -92,7 +92,7 @@ async fn test_index_and_search() {
 
     // Query with vector close to doc1
     let q = serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap();
-    let query = prism::backends::r#trait::Query { query_string: q, fields: vec![], limit: 10, offset: 0, merge_strategy: None, text_weight: None, vector_weight: None };
+    let query = prism::backends::r#trait::Query { query_string: q, fields: vec![], limit: 10, offset: 0, merge_strategy: None, text_weight: None, vector_weight: None, highlight: None };
     let results = SearchBackend::search(&backend, "test2", query).await.unwrap();
     assert_eq!(results.total, 2);
     assert_eq!(results.results[0].id, "d1");

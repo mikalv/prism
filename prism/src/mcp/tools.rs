@@ -151,6 +151,7 @@ impl McpTool for SearchTool {
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         let results = ctx.manager.search(collection, query).await?;

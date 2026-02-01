@@ -21,13 +21,42 @@ pub struct Query {
     pub merge_strategy: Option<String>, // "rrf" or "weighted"
     pub text_weight: Option<f32>,
     pub vector_weight: Option<f32>,
+    /// Optional highlight configuration for search results
+    pub highlight: Option<HighlightConfig>,
 }
+
+/// Configuration for search result highlighting
+#[derive(Debug, Clone, Deserialize)]
+pub struct HighlightConfig {
+    /// Fields to generate highlights for
+    pub fields: Vec<String>,
+    /// Opening tag for highlighted terms (default: "<em>")
+    #[serde(default = "default_pre_tag")]
+    pub pre_tag: String,
+    /// Closing tag for highlighted terms (default: "</em>")
+    #[serde(default = "default_post_tag")]
+    pub post_tag: String,
+    /// Maximum number of characters per fragment (default: 150)
+    #[serde(default = "default_fragment_size")]
+    pub fragment_size: usize,
+    /// Maximum number of fragments per field (default: 3)
+    #[serde(default = "default_number_of_fragments")]
+    pub number_of_fragments: usize,
+}
+
+fn default_pre_tag() -> String { "<em>".to_string() }
+fn default_post_tag() -> String { "</em>".to_string() }
+fn default_fragment_size() -> usize { 150 }
+fn default_number_of_fragments() -> usize { 3 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
     pub id: String,
     pub score: f32,
     pub fields: HashMap<String, Value>,
+    /// Highlighted snippets per field (only present when highlight is requested)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub highlight: Option<HashMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -477,13 +477,56 @@ impl SearchBackend for TextBackend {
                 id,
                 score: *score,
                 fields,
+                highlight: None,
             });
+        }
+
+        // Generate highlights if requested
+        if let Some(ref hl_config) = query.highlight {
+            use tantivy::snippet::SnippetGenerator;
+
+            for hl_field_name in &hl_config.fields {
+                if let Some(&field) = coll.field_map.get(hl_field_name) {
+                    // Only generate snippets for text fields
+                    let entry = coll.schema.get_field_entry(field);
+                    if !matches!(entry.field_type(), tantivy::schema::FieldType::Str(_)) {
+                        continue;
+                    }
+
+                    if let Ok(mut generator) = SnippetGenerator::create(&searcher, &*parsed_query, field) {
+                        generator.set_max_num_chars(hl_config.fragment_size);
+
+                        for result in &mut results {
+                            // Get the stored text for this field
+                            if let Some(text_value) = result.fields.get(hl_field_name).and_then(|v| v.as_str()) {
+                                let mut snippet = generator.snippet(text_value);
+                                if !snippet.is_empty() {
+                                    snippet.set_snippet_prefix_postfix(&hl_config.pre_tag, &hl_config.post_tag);
+                                    let html = snippet.to_html();
+
+                                    let highlights = result.highlight.get_or_insert_with(HashMap::new);
+                                    let fragments = highlights.entry(hl_field_name.clone()).or_insert_with(Vec::new);
+                                    fragments.push(html);
+                                    // Tantivy returns one best fragment per call; truncate to configured max
+                                    fragments.truncate(hl_config.number_of_fragments);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Apply ranking adjustments if boosting is configured
         let results = if let Some(boosting_config) = &coll.boosting_config {
             let ranking_config = RankingConfig::from_boosting_config(boosting_config);
             let now = std::time::SystemTime::now();
+
+            // Preserve highlights before moving results into ranking pipeline
+            let highlight_map: HashMap<String, Option<HashMap<String, Vec<String>>>> = results
+                .iter()
+                .map(|r| (r.id.clone(), r.highlight.clone()))
+                .collect();
 
             // Convert to rankable results
             let mut rankable: Vec<RankableResult> = results
@@ -494,13 +537,17 @@ impl SearchBackend for TextBackend {
             // Apply ranking adjustments (recency decay, popularity boost)
             apply_ranking_adjustments(&mut rankable, &ranking_config, now);
 
-            // Convert back to SearchResult
+            // Convert back to SearchResult, restoring highlights
             rankable
                 .into_iter()
-                .map(|r| SearchResult {
-                    id: r.id,
-                    score: r.adjusted_score,
-                    fields: r.fields,
+                .map(|r| {
+                    let hl = highlight_map.get(&r.id).cloned().flatten();
+                    SearchResult {
+                        id: r.id,
+                        score: r.adjusted_score,
+                        fields: r.fields,
+                        highlight: hl,
+                    }
                 })
                 .collect()
         } else {
@@ -692,6 +739,7 @@ impl SearchBackend for TextBackend {
                 id,
                 score: *score,
                 fields,
+                highlight: None,
             });
         }
 
@@ -1023,6 +1071,194 @@ impl TextBackend {
         entries.truncate(size);
 
         Ok(entries)
+    }
+
+    /// More Like This: find documents similar to a given document or text.
+    ///
+    /// Extracts significant terms from the source (by ID or raw text), builds
+    /// a disjunction query, and returns the top matching documents (excluding
+    /// the source document when searching by ID).
+    pub fn more_like_this(
+        &self,
+        collection: &str,
+        doc_id: Option<&str>,
+        like_text: Option<&str>,
+        fields: &[String],
+        min_term_freq: usize,
+        min_doc_freq: u64,
+        max_query_terms: usize,
+        size: usize,
+    ) -> Result<SearchResults> {
+        let start = std::time::Instant::now();
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        let searcher = coll.reader.searcher();
+
+        // Determine source text: either from an existing document or from provided text
+        let source_text: String;
+        let exclude_id: Option<String>;
+
+        if let Some(id) = doc_id {
+            exclude_id = Some(id.to_string());
+            // Fetch the document
+            let id_field = coll.field_map.get("id").unwrap();
+            let term = Term::from_field_text(*id_field, id);
+            let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
+            let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+
+            if let Some((_score, doc_addr)) = top_docs.first() {
+                let doc: TantivyDocument = searcher.doc(*doc_addr)?;
+                let mut texts = Vec::new();
+                for field_name in fields {
+                    if let Some(&field) = coll.field_map.get(field_name) {
+                        if let Some(val) = doc.get_first(field) {
+                            if let Some(s) = val.as_str() {
+                                texts.push(s.to_string());
+                            }
+                        }
+                    }
+                }
+                source_text = texts.join(" ");
+            } else {
+                return Ok(SearchResults { results: vec![], total: 0, latency_ms: 0 });
+            }
+        } else if let Some(text) = like_text {
+            exclude_id = None;
+            source_text = text.to_string();
+        } else {
+            return Err(Error::InvalidQuery("Either 'like._id' or 'like_text' must be provided".to_string()));
+        }
+
+        if source_text.is_empty() {
+            return Ok(SearchResults { results: vec![], total: 0, latency_ms: 0 });
+        }
+
+        // Extract significant terms: tokenize the source text and count term frequencies
+        let mut term_freqs: HashMap<String, usize> = HashMap::new();
+        for word in source_text.split_whitespace() {
+            let w = word.to_lowercase();
+            // Skip very short tokens
+            if w.len() >= 2 {
+                *term_freqs.entry(w).or_insert(0) += 1;
+            }
+        }
+
+        // Filter by min_term_freq and min_doc_freq, then score by TF-IDF-like weighting
+        let resolve_fields: Vec<Field> = if fields.is_empty() {
+            coll.schema.fields()
+                .filter(|(_, e)| matches!(e.field_type(), tantivy::schema::FieldType::Str(_)) && e.field_type().is_indexed())
+                .map(|(f, _)| f)
+                .collect()
+        } else {
+            fields.iter()
+                .filter_map(|f| coll.field_map.get(f).copied())
+                .collect()
+        };
+
+        let num_docs = searcher.num_docs() as f32;
+        let mut scored_terms: Vec<(String, f32)> = Vec::new();
+
+        for (term_str, tf) in &term_freqs {
+            if *tf < min_term_freq {
+                continue;
+            }
+            // Sum doc_freq across all target fields
+            let mut total_df: u64 = 0;
+            for &field in &resolve_fields {
+                let t = Term::from_field_text(field, term_str);
+                total_df += searcher.doc_freq(&t)? as u64;
+            }
+            if total_df < min_doc_freq {
+                continue;
+            }
+            // TF-IDF score
+            let idf = (num_docs / (1.0 + total_df as f32)).ln() + 1.0;
+            let score = (*tf as f32) * idf;
+            scored_terms.push((term_str.clone(), score));
+        }
+
+        // Sort by score desc and take top max_query_terms
+        scored_terms.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored_terms.truncate(max_query_terms);
+
+        if scored_terms.is_empty() {
+            return Ok(SearchResults { results: vec![], total: 0, latency_ms: 0 });
+        }
+
+        // Build a disjunction query from the top terms
+        let query_string = scored_terms.iter()
+            .map(|(t, _)| t.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let query_parser = QueryParser::for_index(&coll.index, resolve_fields);
+        let parsed_query = query_parser
+            .parse_query(&query_string)
+            .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+
+        // Search for size + 1 to allow excluding the source doc
+        let fetch_limit = if exclude_id.is_some() { size + 1 } else { size };
+        let top_docs = searcher.search(&parsed_query, &TopDocs::with_limit(fetch_limit))?;
+
+        let id_field = coll.field_map.get("id").unwrap();
+        let mut results = Vec::new();
+
+        for (score, doc_addr) in &top_docs {
+            let doc: TantivyDocument = searcher.doc(*doc_addr)?;
+            let id = doc.get_first(*id_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            // Skip the source document
+            if let Some(ref eid) = exclude_id {
+                if id == *eid {
+                    continue;
+                }
+            }
+
+            let mut fields_map = HashMap::new();
+            for (field, entry) in coll.schema.fields() {
+                if entry.is_stored() {
+                    if let Some(value) = doc.get_first(field) {
+                        let json_value = match value {
+                            tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
+                            tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
+                            tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
+                            tantivy::schema::OwnedValue::F64(n) => {
+                                serde_json::Number::from_f64(*n)
+                                    .map(serde_json::Value::Number)
+                                    .unwrap_or(serde_json::Value::Null)
+                            }
+                            tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
+                            tantivy::schema::OwnedValue::Date(dt) => {
+                                serde_json::Value::Number(dt.into_timestamp_micros().into())
+                            }
+                            _ => continue,
+                        };
+                        fields_map.insert(entry.name().to_string(), json_value);
+                    }
+                }
+            }
+
+            results.push(SearchResult {
+                id,
+                score: *score,
+                fields: fields_map,
+                highlight: None,
+            });
+
+            if results.len() >= size {
+                break;
+            }
+        }
+
+        let total = results.len();
+        let latency_ms = start.elapsed().as_millis() as u64;
+        Ok(SearchResults { results, total, latency_ms })
     }
 
     /// Get segment information for a collection.

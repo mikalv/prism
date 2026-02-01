@@ -224,6 +224,26 @@ pub struct BoostingConfig {
     /// Field-specific weights
     #[serde(default)]
     pub field_weights: std::collections::HashMap<String, f32>,
+
+    /// Custom ranking signals: named numeric fields with scoring weights.
+    /// Each signal references a stored f64/i64/u64 field in the document
+    /// and contributes `field_value * weight` to the final score.
+    #[serde(default)]
+    pub signals: Vec<RankingSignal>,
+}
+
+/// A custom ranking signal that maps a document field to a scoring weight.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RankingSignal {
+    /// Name of the document field (must be a stored numeric field)
+    pub name: String,
+    /// Weight multiplier for this signal's contribution to the score
+    #[serde(default = "default_signal_weight")]
+    pub weight: f32,
+}
+
+fn default_signal_weight() -> f32 {
+    1.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

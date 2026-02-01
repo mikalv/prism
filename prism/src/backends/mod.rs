@@ -4,7 +4,7 @@ pub mod r#trait;
 pub mod vector;
 pub mod hybrid;
 
-pub use r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
+pub use r#trait::{BackendStats, Document, HighlightConfig, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
 pub use graph::{GraphBackend, GraphEdge, GraphNode, GraphStats};
 pub use text::TextBackend;
 pub use vector::VectorBackend;

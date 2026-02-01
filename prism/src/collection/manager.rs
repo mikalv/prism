@@ -233,6 +233,7 @@ impl CollectionManager {
                 merge_strategy: None,
                 text_weight: None,
                 vector_weight: None,
+                highlight: None,
             };
             return self.text_backend.search(collection, query).await;
         }
@@ -248,6 +249,7 @@ impl CollectionManager {
                 merge_strategy: None,
                 text_weight: None,
                 vector_weight: None,
+                highlight: None,
             };
             return self.vector_backend.search(collection, query).await;
         }
@@ -263,6 +265,7 @@ impl CollectionManager {
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         let vec_query_obj = Query {
@@ -273,6 +276,7 @@ impl CollectionManager {
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         // Run searches in parallel
@@ -312,6 +316,24 @@ impl CollectionManager {
         limit: usize,
     ) -> Result<Vec<crate::backends::text::TermInfo>> {
         self.text_backend.get_top_terms(collection, field, limit)
+    }
+
+    /// Find documents similar to a given document or text.
+    pub fn more_like_this(
+        &self,
+        collection: &str,
+        doc_id: Option<&str>,
+        like_text: Option<&str>,
+        fields: &[String],
+        min_term_freq: usize,
+        min_doc_freq: u64,
+        max_query_terms: usize,
+        size: usize,
+    ) -> Result<SearchResults> {
+        self.text_backend.more_like_this(
+            collection, doc_id, like_text, fields,
+            min_term_freq, min_doc_freq, max_query_terms, size,
+        )
     }
 
     /// Suggest terms from the index using prefix matching and optional fuzzy correction.
@@ -401,6 +423,7 @@ backends:
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         let results = manager.search("articles", query).await?;

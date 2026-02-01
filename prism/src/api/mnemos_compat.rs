@@ -138,6 +138,7 @@ pub async fn context(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let mut context_items = Vec::new();
@@ -170,6 +171,7 @@ pub async fn context(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     if let Ok(results) = manager.search("memories", query2).await {
@@ -222,6 +224,7 @@ pub async fn search(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let mut all_results = Vec::new();

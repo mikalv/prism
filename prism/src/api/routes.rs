@@ -1,4 +1,4 @@
-use crate::backends::{Document, Query, SearchResults, SearchResult};
+use crate::backends::{Document, Query, SearchResults, SearchResult, HighlightConfig};
 use crate::collection::CollectionManager;
 use axum::{
     extract::{Path, State},
@@ -28,6 +28,9 @@ pub struct SearchRequest {
     pub text_weight: Option<f32>,
     #[serde(default)]
     pub vector_weight: Option<f32>,
+    /// Optional highlight configuration
+    #[serde(default)]
+    pub highlight: Option<HighlightConfig>,
 }
 
 fn default_limit() -> usize {
@@ -94,6 +97,7 @@ pub async fn search(
         merge_strategy: request.merge_strategy.clone(),
         text_weight: request.text_weight,
         vector_weight: request.vector_weight,
+        highlight: request.highlight,
     };
 
     manager
@@ -129,6 +133,7 @@ pub async fn simple_search(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager
@@ -413,6 +418,7 @@ pub async fn aggregate(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     // Execute search to get documents
@@ -640,4 +646,93 @@ pub async fn suggest(
     };
 
     Ok(Json(SuggestResponse { suggestions, did_you_mean }))
+}
+
+// ============================================================================
+// More Like This API (Issue #48)
+// ============================================================================
+
+fn default_min_term_freq() -> usize {
+    2
+}
+
+fn default_min_doc_freq() -> u64 {
+    5
+}
+
+fn default_max_query_terms() -> usize {
+    25
+}
+
+fn default_mlt_size() -> usize {
+    10
+}
+
+/// Like target — either a document ID or raw text
+#[derive(Deserialize)]
+pub struct MltLike {
+    #[serde(rename = "_id")]
+    pub id: Option<String>,
+}
+
+/// Request body for POST /collections/:collection/_mlt
+#[derive(Deserialize)]
+pub struct MltRequest {
+    /// Find docs like this document
+    #[serde(default)]
+    pub like: Option<MltLike>,
+    /// Or find docs like this text
+    #[serde(default)]
+    pub like_text: Option<String>,
+    /// Fields to extract terms from
+    #[serde(default)]
+    pub fields: Vec<String>,
+    /// Minimum term frequency in source doc
+    #[serde(default = "default_min_term_freq")]
+    pub min_term_freq: usize,
+    /// Minimum document frequency in the index
+    #[serde(default = "default_min_doc_freq")]
+    pub min_doc_freq: u64,
+    /// Maximum number of query terms to use
+    #[serde(default = "default_max_query_terms")]
+    pub max_query_terms: usize,
+    /// Number of results to return
+    #[serde(default = "default_mlt_size")]
+    pub size: usize,
+}
+
+/// POST /collections/:collection/_mlt
+pub async fn more_like_this(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(req): Json<MltRequest>,
+) -> Result<Json<SearchResults>, StatusCode> {
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let doc_id = req.like.as_ref().and_then(|l| l.id.as_deref());
+    let like_text = req.like_text.as_deref();
+
+    if doc_id.is_none() && like_text.is_none() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let results = manager
+        .more_like_this(
+            &collection,
+            doc_id,
+            like_text,
+            &req.fields,
+            req.min_term_freq,
+            req.min_doc_freq,
+            req.max_query_terms,
+            req.size,
+        )
+        .map_err(|e| {
+            tracing::error!("MLT error for {}: {:?}", collection, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(results))
 }

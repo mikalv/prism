@@ -84,6 +84,7 @@ boosting:
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager.search("articles", query).await.expect("Failed to search");
@@ -154,6 +155,7 @@ boosting:
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager.search("articles", query).await.expect("Failed to search");
@@ -230,6 +232,7 @@ boosting:
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager.search("articles", query).await.expect("Failed to search");
@@ -309,6 +312,7 @@ boosting:
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager.search("articles", query).await.expect("Failed to search");
@@ -359,6 +363,7 @@ backends:
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager.search("articles", query).await.expect("Failed to search");

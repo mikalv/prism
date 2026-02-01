@@ -230,6 +230,11 @@ impl ApiServer {
                 "/collections/:collection/_suggest",
                 post(crate::api::routes::suggest),
             )
+            // More Like This API (Issue #48)
+            .route(
+                "/collections/:collection/_mlt",
+                post(crate::api::routes::more_like_this),
+            )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",

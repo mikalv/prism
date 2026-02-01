@@ -21,6 +21,8 @@ pub struct RankingConfig {
     pub field_weights: HashMap<String, f32>,
     /// Recency decay configuration
     pub recency_decay: Option<DecayConfig>,
+    /// Custom ranking signals: (field_name, weight)
+    pub signals: Vec<(String, f32)>,
 }
 
 impl RankingConfig {
@@ -38,9 +40,14 @@ impl RankingConfig {
             decay_config
         });
 
+        let signals = config.signals.iter()
+            .map(|s| (s.name.clone(), s.weight))
+            .collect();
+
         Self {
             field_weights: config.field_weights.clone(),
             recency_decay,
+            signals,
         }
     }
 }
@@ -79,6 +86,18 @@ pub fn apply_ranking_adjustments(
         // Apply document boost if present
         if let Some(boost) = result.boost {
             score *= boost;
+        }
+
+        // Apply custom ranking signals: each contributes field_value * weight
+        for (field_name, weight) in &config.signals {
+            if let Some(val) = result.fields.get(field_name) {
+                let numeric = val.as_f64()
+                    .or_else(|| val.as_i64().map(|i| i as f64))
+                    .or_else(|| val.as_u64().map(|u| u as f64));
+                if let Some(v) = numeric {
+                    score += v * (*weight as f64);
+                }
+            }
         }
 
         result.adjusted_score = score as f32;
@@ -153,6 +172,7 @@ mod tests {
         let config = RankingConfig {
             field_weights: HashMap::new(),
             recency_decay: None,
+            signals: vec![],
         };
 
         let now = SystemTime::now();
@@ -183,6 +203,7 @@ mod tests {
 
         let config = RankingConfig {
             field_weights: HashMap::new(),
+            signals: vec![],
             recency_decay: Some(DecayConfig::new(
                 DecayFunction::Exponential,
                 Duration::from_secs(7 * 86400), // 7 days
@@ -230,6 +251,7 @@ mod tests {
 
         let config = RankingConfig {
             field_weights: HashMap::new(),
+            signals: vec![],
             recency_decay: Some(DecayConfig::new(
                 DecayFunction::Exponential,
                 Duration::from_secs(7 * 86400),
