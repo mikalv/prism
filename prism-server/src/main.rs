@@ -35,12 +35,45 @@ async fn main() -> Result<()> {
     tracing::info!("Starting Prism server on {}:{}", args.host, args.port);
     tracing::info!("Config file: {}", args.config);
 
-    // TODO: Load config and start server
-    // let config = prism::Config::from_file(&args.config)?;
-    // let server = prism::api::Server::new(config)?;
-    // server.run(&args.host, args.port).await?;
+    // Load config
+    let config = prism::config::Config::load_or_create(std::path::Path::new(&args.config))?;
+    config.ensure_dirs()?;
 
-    tracing::warn!("Server implementation pending - see prism/src/api/");
+    let addr = format!("{}:{}", args.host, args.port);
+
+    // Create backends
+    let text_backend = std::sync::Arc::new(
+        prism::backends::text::TextBackend::new(&config.storage.data_dir)?,
+    );
+    let vector_backend = std::sync::Arc::new(
+        prism::backends::VectorBackend::new(&config.storage.data_dir)?,
+    );
+
+    // Create collection manager
+    let manager = std::sync::Arc::new(
+        prism::collection::CollectionManager::new(
+            config.schemas_dir(),
+            text_backend,
+            vector_backend,
+        )?,
+    );
+    manager.initialize().await?;
+
+    // Create and start server
+    let server = prism::api::ApiServer::with_cors(manager, config.server.cors.clone());
+
+    let tls = if config.server.tls.enabled {
+        Some(&config.server.tls)
+    } else {
+        None
+    };
+
+    tracing::info!("Listening on {}", addr);
+    if tls.is_some() {
+        tracing::info!("TLS enabled");
+    }
+
+    server.serve(&addr, tls).await?;
 
     Ok(())
 }
