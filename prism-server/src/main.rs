@@ -60,7 +60,11 @@ async fn main() -> Result<()> {
     manager.initialize().await?;
 
     // Create and start server
-    let server = prism::api::ApiServer::with_cors(manager, config.server.cors.clone());
+    let server = prism::api::ApiServer::with_security(
+        manager,
+        config.server.cors.clone(),
+        config.security.clone(),
+    );
 
     let tls = if config.server.tls.enabled {
         Some(&config.server.tls)
@@ -71,6 +75,12 @@ async fn main() -> Result<()> {
     tracing::info!("Listening on {}", addr);
     if tls.is_some() {
         tracing::info!("TLS enabled");
+    }
+    if config.security.enabled {
+        tracing::info!("Security enabled ({} API keys, {} roles)", config.security.api_keys.len(), config.security.roles.len());
+    }
+    if config.security.audit.enabled {
+        tracing::info!("Audit logging enabled (index_to_collection: {})", config.security.audit.index_to_collection);
     }
 
     server.serve(&addr, tls).await?;

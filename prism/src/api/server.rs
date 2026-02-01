@@ -1,5 +1,6 @@
 use crate::collection::CollectionManager;
-use crate::config::{CorsConfig, TlsConfig};
+use crate::config::{CorsConfig, SecurityConfig, TlsConfig};
+use crate::security::permissions::PermissionChecker;
 use crate::Result;
 use axum::{
     extract::State,
@@ -35,6 +36,7 @@ pub struct ApiServer {
     session_manager: Arc<SessionManager>,
     mcp_handler: Arc<McpHandler>,
     cors_config: CorsConfig,
+    security_config: SecurityConfig,
 }
 
 impl ApiServer {
@@ -43,6 +45,14 @@ impl ApiServer {
     }
 
     pub fn with_cors(manager: Arc<CollectionManager>, cors_config: CorsConfig) -> Self {
+        Self::with_security(manager, cors_config, SecurityConfig::default())
+    }
+
+    pub fn with_security(
+        manager: Arc<CollectionManager>,
+        cors_config: CorsConfig,
+        security_config: SecurityConfig,
+    ) -> Self {
         // Initialize MCP components
         let session_manager = Arc::new(SessionManager::new());
         let mut tool_registry = ToolRegistry::new();
@@ -55,6 +65,7 @@ impl ApiServer {
             session_manager,
             mcp_handler,
             cors_config,
+            security_config,
         }
     }
 
@@ -259,11 +270,31 @@ impl ApiServer {
         let cors = self.build_cors_layer();
 
         // Merge routers
-        Router::new()
+        let mut app = Router::new()
             .merge(legacy_routes)
             .merge(mcp_routes)
             .layer(cors)
-            .layer(TraceLayer::new_for_http())
+            .layer(TraceLayer::new_for_http());
+
+        // Add audit middleware (independent of security.enabled)
+        if self.security_config.audit.enabled {
+            let mgr = self.manager.clone();
+            let index = self.security_config.audit.index_to_collection;
+            app = app.layer(axum::middleware::from_fn(move |req, next| {
+                crate::security::audit::audit_middleware(mgr.clone(), index, req, next)
+            }));
+        }
+
+        // Add auth middleware (only when security.enabled)
+        // Added last so it runs first (tower layers are LIFO)
+        if self.security_config.enabled {
+            let checker = Arc::new(PermissionChecker::new(&self.security_config));
+            app = app.layer(axum::middleware::from_fn(move |req, next| {
+                crate::security::middleware::auth_middleware(checker.clone(), req, next)
+            }));
+        }
+
+        app
     }
 
     pub async fn serve(self, addr: &str, tls_config: Option<&TlsConfig>) -> Result<()> {
