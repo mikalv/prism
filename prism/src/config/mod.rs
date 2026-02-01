@@ -9,6 +9,7 @@ pub use storage::{CacheStorageConfig, S3StorageConfig, UnifiedStorageConfig};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Main configuration
@@ -26,6 +27,8 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -119,6 +122,60 @@ impl Default for TlsConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub api_keys: Vec<ApiKeyConfig>,
+    #[serde(default)]
+    pub roles: HashMap<String, RoleConfig>,
+    #[serde(default)]
+    pub audit: AuditConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApiKeyConfig {
+    pub key: String,
+    pub name: String,
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RoleConfig {
+    #[serde(default)]
+    pub collections: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AuditConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub index_to_collection: bool,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_keys: Vec::new(),
+            roles: HashMap::new(),
+            audit: AuditConfig::default(),
+        }
+    }
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            index_to_collection: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StorageConfig {
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
@@ -198,6 +255,7 @@ impl Default for Config {
             unified_storage: None,
             embedding: EmbeddingConfig::default(),
             logging: LoggingConfig::default(),
+            security: SecurityConfig::default(),
         }
     }
 }
