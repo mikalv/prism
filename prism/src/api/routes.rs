@@ -554,3 +554,90 @@ pub async fn reconstruct_document(
 
     Ok(Json(doc))
 }
+
+// ============================================================================
+// Suggestions / Autocomplete API (Issue #47)
+// ============================================================================
+
+fn default_suggest_size() -> usize {
+    5
+}
+
+fn default_max_distance() -> usize {
+    2
+}
+
+/// Request body for POST /collections/:collection/_suggest
+#[derive(Deserialize)]
+pub struct SuggestRequest {
+    pub prefix: String,
+    pub field: String,
+    #[serde(default = "default_suggest_size")]
+    pub size: usize,
+    #[serde(default)]
+    pub fuzzy: bool,
+    #[serde(default = "default_max_distance")]
+    pub max_distance: usize,
+}
+
+/// A single suggestion entry in the response
+#[derive(Serialize)]
+pub struct SuggestionEntry {
+    pub term: String,
+    pub score: f32,
+    pub doc_freq: u64,
+}
+
+/// Response body for POST /collections/:collection/_suggest
+#[derive(Serialize)]
+pub struct SuggestResponse {
+    pub suggestions: Vec<SuggestionEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub did_you_mean: Option<String>,
+}
+
+/// POST /collections/:collection/_suggest
+pub async fn suggest(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(req): Json<SuggestRequest>,
+) -> Result<Json<SuggestResponse>, StatusCode> {
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let entries = manager
+        .suggest(&collection, &req.field, &req.prefix, req.size, req.fuzzy, req.max_distance)
+        .map_err(|e| {
+            tracing::error!("Failed to suggest for {}/{}: {:?}", collection, req.field, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let suggestions: Vec<SuggestionEntry> = entries
+        .into_iter()
+        .map(|e| SuggestionEntry {
+            term: e.term,
+            score: e.score,
+            doc_freq: e.doc_freq,
+        })
+        .collect();
+
+    // Populate did_you_mean when fuzzy is enabled
+    let did_you_mean = if req.fuzzy {
+        // Gather vocabulary from the top terms for the field
+        let top_terms = manager
+            .get_top_terms(&collection, &req.field, 1000)
+            .unwrap_or_default();
+        let vocabulary: Vec<String> = top_terms.into_iter().map(|t| t.term).collect();
+        let corrections = crate::query::suggestions::suggest_query_corrections(
+            &req.prefix,
+            &vocabulary,
+            req.max_distance,
+        );
+        corrections.into_iter().next()
+    } else {
+        None
+    };
+
+    Ok(Json(SuggestResponse { suggestions, did_you_mean }))
+}

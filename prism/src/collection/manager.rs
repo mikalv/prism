@@ -314,6 +314,19 @@ impl CollectionManager {
         self.text_backend.get_top_terms(collection, field, limit)
     }
 
+    /// Suggest terms from the index using prefix matching and optional fuzzy correction.
+    pub fn suggest(
+        &self,
+        collection: &str,
+        field: &str,
+        prefix: &str,
+        size: usize,
+        fuzzy: bool,
+        max_distance: usize,
+    ) -> Result<Vec<crate::backends::text::SuggestEntry>> {
+        self.text_backend.suggest_terms(collection, field, prefix, size, fuzzy, max_distance)
+    }
+
     /// Get segment information for a collection.
     pub fn get_segments(&self, collection: &str) -> Result<crate::backends::text::SegmentsInfo> {
         self.text_backend.get_segments(collection)

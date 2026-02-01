@@ -225,6 +225,11 @@ impl ApiServer {
                 "/collections/:collection/doc/:id/reconstruct",
                 get(crate::api::routes::reconstruct_document),
             )
+            // Suggestions / Autocomplete API (Issue #47)
+            .route(
+                "/collections/:collection/_suggest",
+                post(crate::api::routes::suggest),
+            )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",

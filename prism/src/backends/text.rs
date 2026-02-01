@@ -842,6 +842,14 @@ pub struct TermInfo {
     pub doc_freq: u64,
 }
 
+/// Suggestion entry returned by suggest_terms
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SuggestEntry {
+    pub term: String,
+    pub score: f32,
+    pub doc_freq: u64,
+}
+
 /// Segment information for index inspection
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SegmentInfo {
@@ -906,6 +914,115 @@ impl TextBackend {
             .take(limit)
             .map(|(term, doc_freq)| TermInfo { term, doc_freq })
             .collect())
+    }
+
+    /// Suggest terms from the index using prefix matching and optional fuzzy correction.
+    pub fn suggest_terms(
+        &self,
+        collection: &str,
+        field: &str,
+        prefix: &str,
+        size: usize,
+        fuzzy: bool,
+        max_distance: usize,
+    ) -> Result<Vec<SuggestEntry>> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        let field_obj = coll.field_map.get(field)
+            .ok_or_else(|| Error::Schema(format!("Field '{}' not found", field)))?;
+
+        let searcher = coll.reader.searcher();
+        let prefix_bytes = prefix.as_bytes();
+        let mut term_counts: HashMap<String, u64> = HashMap::new();
+
+        // Prefix-filtered term stream across all segments
+        for segment_reader in searcher.segment_readers() {
+            let inverted_index = segment_reader.inverted_index(*field_obj)?;
+            let term_dict = inverted_index.terms();
+            let mut term_stream = term_dict.range().ge(prefix_bytes).into_stream()?;
+
+            while term_stream.advance() {
+                let term_bytes = term_stream.key();
+                // Stop once we pass the prefix range
+                if !term_bytes.starts_with(prefix_bytes) {
+                    break;
+                }
+                if let Ok(term_str) = std::str::from_utf8(term_bytes) {
+                    let doc_freq = term_stream.value().doc_freq as u64;
+                    *term_counts.entry(term_str.to_string()).or_insert(0) += doc_freq;
+                }
+            }
+        }
+
+        // Find max doc_freq for normalization
+        let max_df = term_counts.values().copied().max().unwrap_or(1) as f32;
+
+        let mut entries: Vec<SuggestEntry> = term_counts
+            .into_iter()
+            .map(|(term, doc_freq)| {
+                // Prefix matches get score=1.0 weighted by doc_freq
+                let score = doc_freq as f32 / max_df;
+                SuggestEntry { term, score, doc_freq }
+            })
+            .collect();
+
+        // If fuzzy is enabled and we have few prefix results, add fuzzy matches
+        if fuzzy && entries.len() < size {
+            // Collect all terms from the field for fuzzy matching
+            let mut all_terms: Vec<String> = Vec::new();
+            for segment_reader in searcher.segment_readers() {
+                let inverted_index = segment_reader.inverted_index(*field_obj)?;
+                let term_dict = inverted_index.terms();
+                let mut term_stream = term_dict.stream()?;
+                while term_stream.advance() {
+                    if let Ok(t) = std::str::from_utf8(term_stream.key()) {
+                        all_terms.push(t.to_string());
+                    }
+                }
+            }
+            all_terms.sort();
+            all_terms.dedup();
+
+            let fuzzy_suggestions = crate::query::suggestions::suggest_corrections(
+                prefix,
+                &all_terms,
+                max_distance,
+                size,
+            );
+
+            let existing_terms: std::collections::HashSet<String> =
+                entries.iter().map(|e| e.term.clone()).collect();
+
+            for suggestion in fuzzy_suggestions {
+                if existing_terms.contains(&suggestion.term) {
+                    continue;
+                }
+                // Look up doc_freq for the fuzzy match
+                let mut doc_freq: u64 = 0;
+                for segment_reader in searcher.segment_readers() {
+                    let inverted_index = segment_reader.inverted_index(*field_obj)?;
+                    let term = Term::from_field_text(*field_obj, &suggestion.term);
+                    doc_freq += inverted_index.doc_freq(&term)? as u64;
+                }
+                entries.push(SuggestEntry {
+                    term: suggestion.term,
+                    score: suggestion.score * 0.8, // Discount fuzzy matches
+                    doc_freq,
+                });
+            }
+        }
+
+        // Sort by score descending, then by doc_freq descending
+        entries.sort_by(|a, b| {
+            b.score.partial_cmp(&a.score).unwrap()
+                .then_with(|| b.doc_freq.cmp(&a.doc_freq))
+        });
+        entries.truncate(size);
+
+        Ok(entries)
     }
 
     /// Get segment information for a collection.
