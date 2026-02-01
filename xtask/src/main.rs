@@ -339,6 +339,23 @@ enabled = false
 bind_addr = "127.0.0.1:3443"
 cert_path = "./conf/tls/cert.pem"
 key_path = "./conf/tls/key.pem"
+
+[security]
+# Enable API key authentication and RBAC
+# enabled = true
+
+# [[security.api_keys]]
+# key = "prism_ak_change_me_to_a_random_string"
+# name = "default-admin"
+# roles = ["admin"]
+
+# [security.roles.admin]
+# collections = { "*" = ["*"] }
+
+[security.audit]
+# Enable audit logging
+enabled = false
+index_to_collection = true
 "#
 }
 
