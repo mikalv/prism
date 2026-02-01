@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -367,7 +368,7 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
 // Aggregations API (Issue #23)
 // ============================================================================
 
-use crate::query::aggregations::{AggregationRequest, AggregationType, AggregationResult};
+use crate::aggregations::{AggregationRequest as AggRequest, AggregationResult as AggResult};
 use crate::backends::text::{TermInfo, SegmentsInfo, ReconstructedDocument};
 
 /// Aggregation API request
@@ -377,7 +378,7 @@ pub struct AggregateRequest {
     #[serde(default)]
     pub query: Option<String>,
     /// List of aggregations to run
-    pub aggregations: Vec<AggregationRequest>,
+    pub aggregations: Vec<AggRequest>,
     /// Max documents to scan (default 10000)
     #[serde(default = "default_scan_limit")]
     pub scan_limit: usize,
@@ -390,8 +391,7 @@ fn default_scan_limit() -> usize {
 /// Aggregation API response
 #[derive(Serialize)]
 pub struct AggregateResponse {
-    pub results: Vec<AggregationResult>,
-    pub scanned_docs: usize,
+    pub results: HashMap<String, AggResult>,
     pub took_ms: u64,
 }
 
@@ -408,7 +408,7 @@ pub async fn aggregate(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Build search query to get documents
+    // Build search query
     let query_string = request.query.unwrap_or_else(|| "*".to_string());
     let query = Query {
         query_string,
@@ -421,59 +421,19 @@ pub async fn aggregate(
         highlight: None,
     };
 
-    // Execute search to get documents
-    let search_results = manager
-        .search(&collection, query)
+    // Use search_with_aggs to run aggregations in the text backend
+    let agg_results = manager
+        .search_with_aggs(&collection, &query, request.aggregations)
         .await
         .map_err(|e| {
-            tracing::error!("Aggregation search error: {:?}", e);
+            tracing::error!("Aggregation error: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-
-    let scanned_docs = search_results.results.len();
-
-    // Run each aggregation
-    let mut results = Vec::new();
-    for agg_req in request.aggregations {
-        let field_values: Vec<String> = search_results
-            .results
-            .iter()
-            .filter_map(|hit| {
-                hit.fields
-                    .get(&agg_req.field)
-                    .and_then(|v: &serde_json::Value| {
-                        if v.is_string() {
-                            Some(v.as_str().unwrap().to_string())
-                        } else {
-                            Some(v.to_string())
-                        }
-                    })
-            })
-            .collect();
-
-        let mut result = match agg_req.agg_type {
-            AggregationType::Terms => {
-                crate::query::aggregations::terms::aggregate_terms(field_values, agg_req.size)
-            }
-            // DateHistogram, Range, Stats require more complex type handling
-            // Not yet implemented for REST API - return empty result
-            AggregationType::DateHistogram | AggregationType::Range | AggregationType::Stats => {
-                AggregationResult {
-                    field: agg_req.field.clone(),
-                    buckets: vec![],
-                }
-            }
-        };
-
-        result.field = agg_req.field;
-        results.push(result);
-    }
 
     let took_ms = start.elapsed().as_millis() as u64;
 
     Ok(Json(AggregateResponse {
-        results,
-        scanned_docs,
+        results: agg_results.aggregations,
         took_ms,
     }))
 }

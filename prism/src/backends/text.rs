@@ -672,7 +672,7 @@ impl SearchBackend for TextBackend {
         }
 
         let fields_to_search: Vec<Field> = if query.fields.is_empty() {
-            searchable_fields
+            searchable_fields.clone()
         } else {
             query
                 .fields
@@ -689,7 +689,7 @@ impl SearchBackend for TextBackend {
             });
         }
 
-        let query_parser = QueryParser::for_index(&coll.index, fields_to_search);
+        let query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
         let parsed_query = query_parser
             .parse_query(&query.query_string)
             .map_err(|e| Error::InvalidQuery(e.to_string()))?;
@@ -743,131 +743,17 @@ impl SearchBackend for TextBackend {
             });
         }
 
-        // Run aggregations using simple value-based computation
-        let mut agg_results: HashMap<String, AggregationResult> = HashMap::new();
+        // Collect all doc addresses for aggregation processing
+        let doc_addrs: Vec<tantivy::DocAddress> = all_docs.iter().map(|(_s, addr)| *addr).collect();
 
-        for agg_req in aggregations {
-            // Extract field name from aggregation type
-            let field_name = match &agg_req.agg_type {
-                AggregationType::Count => None,
-                AggregationType::Sum { field } => Some(field.clone()),
-                AggregationType::Avg { field } => Some(field.clone()),
-                AggregationType::Min { field } => Some(field.clone()),
-                AggregationType::Max { field } => Some(field.clone()),
-                AggregationType::Stats { field } => Some(field.clone()),
-                AggregationType::Terms { field, .. } => Some(field.clone()),
-                AggregationType::Histogram { field, .. } => Some(field.clone()),
-                AggregationType::DateHistogram { field, .. } => Some(field.clone()),
-            };
-
-            // Count doesn't need a field
-            if matches!(agg_req.agg_type, AggregationType::Count) {
-                agg_results.insert(
-                    agg_req.name.clone(),
-                    AggregationResult {
-                        name: agg_req.name.clone(),
-                        value: AggregationValue::Single(all_docs.len() as f64),
-                    },
-                );
-                continue;
-            }
-
-            let field_name = match field_name {
-                Some(f) => f,
-                None => continue,
-            };
-
-            let field = match coll.field_map.get(&field_name) {
-                Some(f) => *f,
-                None => continue,
-            };
-
-            // Collect numeric values from all matching documents
-            let mut numeric_values: Vec<f64> = Vec::new();
-            let mut string_values: Vec<String> = Vec::new();
-
-            for (_score, doc_addr) in &all_docs {
-                let doc: TantivyDocument = searcher.doc(*doc_addr)?;
-                if let Some(value) = doc.get_first(field) {
-                    match value {
-                        tantivy::schema::OwnedValue::U64(n) => numeric_values.push(*n as f64),
-                        tantivy::schema::OwnedValue::I64(n) => numeric_values.push(*n as f64),
-                        tantivy::schema::OwnedValue::F64(n) => numeric_values.push(*n),
-                        tantivy::schema::OwnedValue::Str(s) => string_values.push(s.to_string()),
-                        _ => {}
-                    }
-                }
-            }
-
-            let agg_value = match &agg_req.agg_type {
-                AggregationType::Sum { .. } => {
-                    let sum: f64 = numeric_values.iter().sum();
-                    AggregationValue::Single(sum)
-                }
-                AggregationType::Avg { .. } => {
-                    let avg = if numeric_values.is_empty() {
-                        0.0
-                    } else {
-                        numeric_values.iter().sum::<f64>() / numeric_values.len() as f64
-                    };
-                    AggregationValue::Single(avg)
-                }
-                AggregationType::Min { .. } => {
-                    let min = numeric_values.iter().cloned().fold(f64::INFINITY, f64::min);
-                    AggregationValue::Single(if min.is_infinite() { 0.0 } else { min })
-                }
-                AggregationType::Max { .. } => {
-                    let max = numeric_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                    AggregationValue::Single(if max.is_infinite() { 0.0 } else { max })
-                }
-                AggregationType::Stats { .. } => {
-                    let count = numeric_values.len() as u64;
-                    let sum: f64 = numeric_values.iter().sum();
-                    let min = numeric_values.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let max = numeric_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                    let avg = if count == 0 { None } else { Some(sum / count as f64) };
-                    AggregationValue::Stats(StatsResult {
-                        count,
-                        min: if min.is_infinite() { None } else { Some(min) },
-                        max: if max.is_infinite() { None } else { Some(max) },
-                        sum: Some(sum),
-                        avg,
-                    })
-                }
-                AggregationType::Terms { size, .. } => {
-                    let mut counts: HashMap<String, u64> = HashMap::new();
-                    for s in &string_values {
-                        *counts.entry(s.clone()).or_insert(0) += 1;
-                    }
-                    // Also count numeric values as strings
-                    for n in &numeric_values {
-                        *counts.entry(n.to_string()).or_insert(0) += 1;
-                    }
-                    let mut bucket_vec: Vec<_> = counts.into_iter().collect();
-                    bucket_vec.sort_by(|a, b| b.1.cmp(&a.1));
-                    let size = size.unwrap_or(10);
-                    let buckets: Vec<Bucket> = bucket_vec
-                        .into_iter()
-                        .take(size)
-                        .map(|(key, doc_count)| Bucket {
-                            key,
-                            doc_count,
-                            sub_aggs: None,
-                        })
-                        .collect();
-                    AggregationValue::Buckets(buckets)
-                }
-                _ => AggregationValue::Single(0.0),
-            };
-
-            agg_results.insert(
-                agg_req.name.clone(),
-                AggregationResult {
-                    name: agg_req.name.clone(),
-                    value: agg_value,
-                },
-            );
-        }
+        // Run aggregations
+        let agg_results = execute_aggregations(
+            &searcher,
+            coll,
+            &searchable_fields,
+            &doc_addrs,
+            &aggregations,
+        )?;
 
         let total = all_docs.len() as u64;
 
@@ -876,6 +762,626 @@ impl SearchBackend for TextBackend {
             total,
             aggregations: agg_results,
         })
+    }
+}
+
+// ============================================================================
+// Aggregation execution engine
+// ============================================================================
+
+use crate::aggregations::types::{PercentilesResult, RangeEntry, HistogramBounds};
+
+/// Collect field values from a set of document addresses
+fn collect_field_values(
+    searcher: &tantivy::Searcher,
+    field: Field,
+    doc_addrs: &[tantivy::DocAddress],
+) -> Result<(Vec<f64>, Vec<String>)> {
+    let mut numeric_values = Vec::new();
+    let mut string_values = Vec::new();
+
+    for doc_addr in doc_addrs {
+        let doc: TantivyDocument = searcher.doc(*doc_addr)?;
+        if let Some(value) = doc.get_first(field) {
+            match value {
+                tantivy::schema::OwnedValue::U64(n) => numeric_values.push(*n as f64),
+                tantivy::schema::OwnedValue::I64(n) => numeric_values.push(*n as f64),
+                tantivy::schema::OwnedValue::F64(n) => numeric_values.push(*n),
+                tantivy::schema::OwnedValue::Str(s) => string_values.push(s.to_string()),
+                _ => {}
+            }
+        }
+    }
+
+    Ok((numeric_values, string_values))
+}
+
+/// Compute percentile value from a sorted array using linear interpolation
+fn compute_percentile(sorted: &[f64], p: f64) -> Option<f64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    if sorted.len() == 1 {
+        return Some(sorted[0]);
+    }
+    let rank = (p / 100.0) * (sorted.len() as f64 - 1.0);
+    let lower = rank.floor() as usize;
+    let upper = rank.ceil() as usize;
+    if lower == upper || upper >= sorted.len() {
+        Some(sorted[lower.min(sorted.len() - 1)])
+    } else {
+        let frac = rank - lower as f64;
+        Some(sorted[lower] * (1.0 - frac) + sorted[upper] * frac)
+    }
+}
+
+/// Collect per-bucket document addresses keyed by bucket key, for sub-aggregation
+fn collect_docs_per_bucket_terms(
+    searcher: &tantivy::Searcher,
+    field: Field,
+    doc_addrs: &[tantivy::DocAddress],
+) -> Result<HashMap<String, Vec<tantivy::DocAddress>>> {
+    let mut map: HashMap<String, Vec<tantivy::DocAddress>> = HashMap::new();
+    for &doc_addr in doc_addrs {
+        let doc: TantivyDocument = searcher.doc(doc_addr)?;
+        if let Some(value) = doc.get_first(field) {
+            let key = match value {
+                tantivy::schema::OwnedValue::Str(s) => s.to_string(),
+                tantivy::schema::OwnedValue::U64(n) => n.to_string(),
+                tantivy::schema::OwnedValue::I64(n) => n.to_string(),
+                tantivy::schema::OwnedValue::F64(n) => n.to_string(),
+                _ => continue,
+            };
+            map.entry(key).or_default().push(doc_addr);
+        }
+    }
+    Ok(map)
+}
+
+/// Execute a list of aggregation requests against a set of document addresses
+fn execute_aggregations(
+    searcher: &tantivy::Searcher,
+    coll: &CollectionIndex,
+    searchable_fields: &[Field],
+    doc_addrs: &[tantivy::DocAddress],
+    aggregations: &[AggregationRequest],
+) -> Result<HashMap<String, AggregationResult>> {
+    let mut agg_results: HashMap<String, AggregationResult> = HashMap::new();
+
+    for agg_req in aggregations {
+        let result = execute_single_agg(searcher, coll, searchable_fields, doc_addrs, agg_req)?;
+        agg_results.insert(agg_req.name.clone(), result);
+    }
+
+    Ok(agg_results)
+}
+
+/// Execute a single aggregation request
+fn execute_single_agg(
+    searcher: &tantivy::Searcher,
+    coll: &CollectionIndex,
+    searchable_fields: &[Field],
+    doc_addrs: &[tantivy::DocAddress],
+    agg_req: &AggregationRequest,
+) -> Result<AggregationResult> {
+    let sub_aggs = agg_req.aggs.as_deref().unwrap_or(&[]);
+
+    let value = match &agg_req.agg_type {
+        AggregationType::Count => {
+            AggregationValue::Single(doc_addrs.len() as f64)
+        }
+
+        AggregationType::Sum { field } => {
+            let f = resolve_field(coll, field)?;
+            let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+            AggregationValue::Single(nums.iter().sum())
+        }
+
+        AggregationType::Avg { field } => {
+            let f = resolve_field(coll, field)?;
+            let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+            let avg = if nums.is_empty() { 0.0 } else { nums.iter().sum::<f64>() / nums.len() as f64 };
+            AggregationValue::Single(avg)
+        }
+
+        AggregationType::Min { field } => {
+            let f = resolve_field(coll, field)?;
+            let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+            let min = nums.iter().cloned().fold(f64::INFINITY, f64::min);
+            AggregationValue::Single(if min.is_infinite() { 0.0 } else { min })
+        }
+
+        AggregationType::Max { field } => {
+            let f = resolve_field(coll, field)?;
+            let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+            let max = nums.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            AggregationValue::Single(if max.is_infinite() { 0.0 } else { max })
+        }
+
+        AggregationType::Stats { field } => {
+            let f = resolve_field(coll, field)?;
+            let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+            let count = nums.len() as u64;
+            let sum: f64 = nums.iter().sum();
+            let min = nums.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max = nums.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let avg = if count == 0 { None } else { Some(sum / count as f64) };
+            AggregationValue::Stats(StatsResult {
+                count,
+                min: if min.is_infinite() { None } else { Some(min) },
+                max: if max.is_infinite() { None } else { Some(max) },
+                sum: Some(sum),
+                avg,
+            })
+        }
+
+        AggregationType::Percentiles { field, percents } => {
+            let f = resolve_field(coll, field)?;
+            let (mut nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+            nums.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let mut values = HashMap::new();
+            for &p in percents {
+                let key = format!("{}", p);
+                values.insert(key, compute_percentile(&nums, p));
+            }
+            AggregationValue::Percentiles(PercentilesResult { values })
+        }
+
+        AggregationType::Terms { field, size } => {
+            let f = resolve_field(coll, field)?;
+            let size = size.unwrap_or(10);
+
+            if sub_aggs.is_empty() {
+                // Simple case: no sub-aggregations
+                let (nums, strings) = collect_field_values(searcher, f, doc_addrs)?;
+                let mut counts: HashMap<String, u64> = HashMap::new();
+                for s in &strings {
+                    *counts.entry(s.clone()).or_insert(0) += 1;
+                }
+                for n in &nums {
+                    *counts.entry(n.to_string()).or_insert(0) += 1;
+                }
+                let mut bucket_vec: Vec<_> = counts.into_iter().collect();
+                bucket_vec.sort_by(|a, b| b.1.cmp(&a.1));
+                let buckets: Vec<Bucket> = bucket_vec
+                    .into_iter()
+                    .take(size)
+                    .map(|(key, doc_count)| Bucket {
+                        key,
+                        doc_count,
+                        from: None,
+                        to: None,
+                        sub_aggs: None,
+                    })
+                    .collect();
+                AggregationValue::Buckets(buckets)
+            } else {
+                // With sub-aggregations: need per-bucket doc sets
+                let docs_per_bucket = collect_docs_per_bucket_terms(searcher, f, doc_addrs)?;
+                let mut bucket_vec: Vec<_> = docs_per_bucket.iter()
+                    .map(|(k, addrs)| (k.clone(), addrs.len() as u64, addrs.clone()))
+                    .collect();
+                bucket_vec.sort_by(|a, b| b.1.cmp(&a.1));
+                bucket_vec.truncate(size);
+
+                let mut buckets = Vec::new();
+                for (key, doc_count, addrs) in bucket_vec {
+                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &addrs, sub_aggs)?;
+                    let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                    buckets.push(Bucket {
+                        key,
+                        doc_count,
+                        from: None,
+                        to: None,
+                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    });
+                }
+                AggregationValue::Buckets(buckets)
+            }
+        }
+
+        AggregationType::Histogram { field, interval, min_doc_count, extended_bounds } => {
+            let f = resolve_field(coll, field)?;
+            let interval = *interval;
+
+            if sub_aggs.is_empty() {
+                let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+                let buckets = compute_histogram_buckets(&nums, interval, *min_doc_count, extended_bounds.as_ref());
+                AggregationValue::Buckets(buckets)
+            } else {
+                // Per-bucket doc addresses for sub-aggs
+                let mut bucket_docs: std::collections::BTreeMap<i64, Vec<tantivy::DocAddress>> = std::collections::BTreeMap::new();
+                for &doc_addr in doc_addrs {
+                    let doc: TantivyDocument = searcher.doc(doc_addr)?;
+                    if let Some(value) = doc.get_first(f) {
+                        let v = match value {
+                            tantivy::schema::OwnedValue::U64(n) => Some(*n as f64),
+                            tantivy::schema::OwnedValue::I64(n) => Some(*n as f64),
+                            tantivy::schema::OwnedValue::F64(n) => Some(*n),
+                            _ => None,
+                        };
+                        if let Some(v) = v {
+                            let bucket_key = (v / interval).floor() as i64;
+                            bucket_docs.entry(bucket_key).or_default().push(doc_addr);
+                        }
+                    }
+                }
+
+                // Apply extended bounds
+                if let Some(bounds) = extended_bounds {
+                    let min_key = (bounds.min / interval).floor() as i64;
+                    let max_key = (bounds.max / interval).floor() as i64;
+                    for k in min_key..=max_key {
+                        bucket_docs.entry(k).or_default();
+                    }
+                }
+
+                let min_count = min_doc_count.unwrap_or(0);
+                let mut buckets = Vec::new();
+                for (bucket_key, addrs) in &bucket_docs {
+                    let doc_count = addrs.len() as u64;
+                    if doc_count < min_count {
+                        continue;
+                    }
+                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
+                    let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                    buckets.push(Bucket {
+                        key: format!("{}", (*bucket_key as f64) * interval),
+                        doc_count,
+                        from: None,
+                        to: None,
+                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    });
+                }
+                AggregationValue::Buckets(buckets)
+            }
+        }
+
+        AggregationType::DateHistogram { field, calendar_interval, min_doc_count } => {
+            let f = resolve_field(coll, field)?;
+            let interval = crate::query::aggregations::date_histogram::DateInterval::parse_interval(calendar_interval);
+
+            if sub_aggs.is_empty() {
+                let buckets = compute_date_histogram_buckets(searcher, f, doc_addrs, &interval, *min_doc_count)?;
+                AggregationValue::Buckets(buckets)
+            } else {
+                // Per-bucket doc addresses for sub-aggs
+                let mut bucket_docs: std::collections::BTreeMap<String, Vec<tantivy::DocAddress>> = std::collections::BTreeMap::new();
+                for &doc_addr in doc_addrs {
+                    let doc: TantivyDocument = searcher.doc(doc_addr)?;
+                    if let Some(value) = doc.get_first(f) {
+                        if let Some(key) = date_value_to_bucket_key(value, &interval) {
+                            bucket_docs.entry(key).or_default().push(doc_addr);
+                        }
+                    }
+                }
+                let min_count = min_doc_count.unwrap_or(0);
+                let mut buckets = Vec::new();
+                for (key, addrs) in &bucket_docs {
+                    let doc_count = addrs.len() as u64;
+                    if doc_count < min_count {
+                        continue;
+                    }
+                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
+                    let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                    buckets.push(Bucket {
+                        key: key.clone(),
+                        doc_count,
+                        from: None,
+                        to: None,
+                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    });
+                }
+                AggregationValue::Buckets(buckets)
+            }
+        }
+
+        AggregationType::Range { field, ranges } => {
+            let f = resolve_field(coll, field)?;
+
+            if sub_aggs.is_empty() {
+                let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
+                let buckets = compute_range_buckets(&nums, ranges);
+                AggregationValue::Buckets(buckets)
+            } else {
+                // Per-range bucket doc addresses
+                let mut range_docs: Vec<(RangeEntry, Vec<tantivy::DocAddress>)> = ranges.iter().map(|r| (r.clone(), Vec::new())).collect();
+                for &doc_addr in doc_addrs {
+                    let doc: TantivyDocument = searcher.doc(doc_addr)?;
+                    if let Some(value) = doc.get_first(f) {
+                        let v = match value {
+                            tantivy::schema::OwnedValue::U64(n) => Some(*n as f64),
+                            tantivy::schema::OwnedValue::I64(n) => Some(*n as f64),
+                            tantivy::schema::OwnedValue::F64(n) => Some(*n),
+                            _ => None,
+                        };
+                        if let Some(v) = v {
+                            for (range, addrs) in &mut range_docs {
+                                let above_from = range.from.map_or(true, |from| v >= from);
+                                let below_to = range.to.map_or(true, |to| v < to);
+                                if above_from && below_to {
+                                    addrs.push(doc_addr);
+                                }
+                            }
+                        }
+                    }
+                }
+                let mut buckets = Vec::new();
+                for (range, addrs) in &range_docs {
+                    let key = range_bucket_key(range);
+                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
+                    let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                    buckets.push(Bucket {
+                        key,
+                        doc_count: addrs.len() as u64,
+                        from: range.from,
+                        to: range.to,
+                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    });
+                }
+                AggregationValue::Buckets(buckets)
+            }
+        }
+
+        AggregationType::Filter { filter } => {
+            // Parse the filter query, run on the full index, then intersect with doc_addrs
+            let filter_addrs = resolve_filter_docs(searcher, coll, searchable_fields, filter, Some(doc_addrs))?;
+            let doc_count = filter_addrs.len() as u64;
+
+            if sub_aggs.is_empty() {
+                AggregationValue::Buckets(vec![Bucket {
+                    key: "filter".to_string(),
+                    doc_count,
+                    from: None,
+                    to: None,
+                    sub_aggs: None,
+                }])
+            } else {
+                let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &filter_addrs, sub_aggs)?;
+                let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                AggregationValue::Buckets(vec![Bucket {
+                    key: "filter".to_string(),
+                    doc_count,
+                    from: None,
+                    to: None,
+                    sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                }])
+            }
+        }
+
+        AggregationType::Filters { filters } => {
+            let mut buckets = Vec::new();
+            for (name, filter_query) in filters {
+                let filter_addrs = resolve_filter_docs(searcher, coll, searchable_fields, filter_query, Some(doc_addrs))?;
+                let doc_count = filter_addrs.len() as u64;
+
+                if sub_aggs.is_empty() {
+                    buckets.push(Bucket {
+                        key: name.clone(),
+                        doc_count,
+                        from: None,
+                        to: None,
+                        sub_aggs: None,
+                    });
+                } else {
+                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &filter_addrs, sub_aggs)?;
+                    let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                    buckets.push(Bucket {
+                        key: name.clone(),
+                        doc_count,
+                        from: None,
+                        to: None,
+                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    });
+                }
+            }
+            AggregationValue::Buckets(buckets)
+        }
+
+        AggregationType::Global {} => {
+            // Run on ALL documents, ignoring the query filter
+            let all_addrs = resolve_filter_docs(searcher, coll, searchable_fields, "*", None)?;
+            let doc_count = all_addrs.len() as u64;
+
+            if sub_aggs.is_empty() {
+                AggregationValue::Buckets(vec![Bucket {
+                    key: "global".to_string(),
+                    doc_count,
+                    from: None,
+                    to: None,
+                    sub_aggs: None,
+                }])
+            } else {
+                let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &all_addrs, sub_aggs)?;
+                let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
+                AggregationValue::Buckets(vec![Bucket {
+                    key: "global".to_string(),
+                    doc_count,
+                    from: None,
+                    to: None,
+                    sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                }])
+            }
+        }
+    };
+
+    Ok(AggregationResult {
+        name: agg_req.name.clone(),
+        value,
+    })
+}
+
+/// Resolve a field name to a tantivy Field
+fn resolve_field(coll: &CollectionIndex, field_name: &str) -> Result<Field> {
+    coll.field_map
+        .get(field_name)
+        .copied()
+        .ok_or_else(|| Error::InvalidQuery(format!("Unknown field: {}", field_name)))
+}
+
+/// Compute histogram buckets from numeric values
+fn compute_histogram_buckets(
+    values: &[f64],
+    interval: f64,
+    min_doc_count: Option<u64>,
+    extended_bounds: Option<&HistogramBounds>,
+) -> Vec<Bucket> {
+    let mut counts: std::collections::BTreeMap<i64, u64> = std::collections::BTreeMap::new();
+
+    for &v in values {
+        let bucket_key = (v / interval).floor() as i64;
+        *counts.entry(bucket_key).or_insert(0) += 1;
+    }
+
+    // Apply extended bounds: ensure all buckets within range exist
+    if let Some(bounds) = extended_bounds {
+        let min_key = (bounds.min / interval).floor() as i64;
+        let max_key = (bounds.max / interval).floor() as i64;
+        for k in min_key..=max_key {
+            counts.entry(k).or_insert(0);
+        }
+    }
+
+    let min_count = min_doc_count.unwrap_or(0);
+
+    counts
+        .into_iter()
+        .filter(|(_, count)| *count >= min_count)
+        .map(|(k, count)| Bucket {
+            key: format!("{}", (k as f64) * interval),
+            doc_count: count,
+            from: None,
+            to: None,
+            sub_aggs: None,
+        })
+        .collect()
+}
+
+/// Compute date histogram buckets from document field values
+fn compute_date_histogram_buckets(
+    searcher: &tantivy::Searcher,
+    field: Field,
+    doc_addrs: &[tantivy::DocAddress],
+    interval: &Option<crate::query::aggregations::date_histogram::DateInterval>,
+    min_doc_count: Option<u64>,
+) -> Result<Vec<Bucket>> {
+    let mut counts: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+
+    for &doc_addr in doc_addrs {
+        let doc: TantivyDocument = searcher.doc(doc_addr)?;
+        if let Some(value) = doc.get_first(field) {
+            if let Some(key) = date_value_to_bucket_key(value, interval) {
+                *counts.entry(key).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let min_count = min_doc_count.unwrap_or(0);
+
+    Ok(counts
+        .into_iter()
+        .filter(|(_, count)| *count >= min_count)
+        .map(|(key, count)| Bucket {
+            key,
+            doc_count: count,
+            from: None,
+            to: None,
+            sub_aggs: None,
+        })
+        .collect())
+}
+
+/// Convert a tantivy field value to a date histogram bucket key
+fn date_value_to_bucket_key(
+    value: &tantivy::schema::OwnedValue,
+    interval: &Option<crate::query::aggregations::date_histogram::DateInterval>,
+) -> Option<String> {
+    // Try to extract a timestamp (stored as i64 micros or u64 micros or Date)
+    let micros = match value {
+        tantivy::schema::OwnedValue::I64(n) => Some(*n),
+        tantivy::schema::OwnedValue::U64(n) => Some(*n as i64),
+        tantivy::schema::OwnedValue::Date(dt) => {
+            Some(dt.into_timestamp_micros())
+        }
+        _ => None,
+    };
+
+    if let Some(micros) = micros {
+        let secs = micros / 1_000_000;
+        let dt = chrono::DateTime::from_timestamp(secs, 0)?;
+        let dt_utc: chrono::DateTime<chrono::Utc> = dt;
+
+        if let Some(interval) = interval {
+            Some(interval.floor(dt_utc).to_rfc3339())
+        } else {
+            // Default to day if no interval parsed
+            Some(crate::query::aggregations::date_histogram::DateInterval::Day.floor(dt_utc).to_rfc3339())
+        }
+    } else {
+        None
+    }
+}
+
+/// Compute range buckets from numeric values
+fn compute_range_buckets(values: &[f64], ranges: &[RangeEntry]) -> Vec<Bucket> {
+    ranges
+        .iter()
+        .map(|range| {
+            let count = values
+                .iter()
+                .filter(|&&v| {
+                    let above_from = range.from.map_or(true, |from| v >= from);
+                    let below_to = range.to.map_or(true, |to| v < to);
+                    above_from && below_to
+                })
+                .count() as u64;
+
+            Bucket {
+                key: range_bucket_key(range),
+                doc_count: count,
+                from: range.from,
+                to: range.to,
+                sub_aggs: None,
+            }
+        })
+        .collect()
+}
+
+/// Generate a bucket key for a range entry
+fn range_bucket_key(range: &RangeEntry) -> String {
+    if let Some(ref key) = range.key {
+        return key.clone();
+    }
+    match (range.from, range.to) {
+        (Some(from), Some(to)) => format!("{}-{}", from, to),
+        (Some(from), None) => format!("{}-*", from),
+        (None, Some(to)) => format!("*-{}", to),
+        (None, None) => "*-*".to_string(),
+    }
+}
+
+/// Run a filter query and return matching doc addresses, optionally intersected with a parent set
+fn resolve_filter_docs(
+    searcher: &tantivy::Searcher,
+    coll: &CollectionIndex,
+    searchable_fields: &[Field],
+    query_str: &str,
+    parent_addrs: Option<&[tantivy::DocAddress]>,
+) -> Result<Vec<tantivy::DocAddress>> {
+    let qp = QueryParser::for_index(&coll.index, searchable_fields.to_vec());
+    let parsed = qp
+        .parse_query(query_str)
+        .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+
+    let results = searcher.search(&parsed, &TopDocs::with_limit(10000))?;
+    let addrs: Vec<tantivy::DocAddress> = results.into_iter().map(|(_s, addr)| addr).collect();
+
+    if let Some(parent) = parent_addrs {
+        // Intersect: only keep addresses that are in the parent set
+        let parent_set: std::collections::HashSet<_> = parent.iter().collect();
+        Ok(addrs.into_iter().filter(|a| parent_set.contains(a)).collect())
+    } else {
+        Ok(addrs)
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResults, TextBackend, VectorBackend, HybridSearchCoordinator};
+use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResults, SearchResultsWithAggs, TextBackend, VectorBackend, HybridSearchCoordinator};
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -103,6 +103,30 @@ impl CollectionManager {
 
         if schema.backends.text.is_some() {
             return self.text_backend.search(collection, query).await;
+        }
+
+        Err(Error::Backend(
+            "No backend available for collection".to_string(),
+        ))
+    }
+
+    pub async fn search_with_aggs(
+        &self,
+        collection: &str,
+        query: &Query,
+        aggregations: Vec<crate::aggregations::AggregationRequest>,
+    ) -> Result<SearchResultsWithAggs> {
+        let schema = self
+            .schemas
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        if let Some(backend) = self.per_collection_backends.get(collection) {
+            return backend.search_with_aggs(collection, query, aggregations).await;
+        }
+
+        if schema.backends.text.is_some() {
+            return self.text_backend.search_with_aggs(collection, query, aggregations).await;
         }
 
         Err(Error::Backend(
