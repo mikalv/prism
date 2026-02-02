@@ -22,21 +22,48 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,prism=debug".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
     let args = Args::parse();
+
+    // Load config first (tracing init depends on it)
+    let config = prism::config::Config::load_or_create(std::path::Path::new(&args.config))?;
+
+    // Determine log format: env var overrides config
+    let log_format = std::env::var("LOG_FORMAT")
+        .unwrap_or_else(|_| config.observability.log_format.clone());
+
+    // Determine log level: RUST_LOG overrides config
+    let log_level = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| config.observability.log_level.clone());
+
+    // Initialize tracing with configured format
+    let env_filter = tracing_subscriber::EnvFilter::new(&log_level);
+    let registry = tracing_subscriber::registry().with(env_filter);
+
+    if log_format == "json" {
+        registry
+            .with(tracing_subscriber::fmt::layer().json())
+            .init();
+    } else {
+        registry
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
+
+    // Initialize Prometheus metrics recorder
+    let metrics_handle = if config.observability.metrics_enabled {
+        let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+        let handle = builder
+            .install_recorder()
+            .expect("Failed to install Prometheus metrics recorder");
+        tracing::info!("Prometheus metrics enabled at /metrics");
+        Some(handle)
+    } else {
+        None
+    };
 
     tracing::info!("Starting Prism server on {}:{}", args.host, args.port);
     tracing::info!("Config file: {}", args.config);
 
-    // Load config
-    let config = prism::config::Config::load_or_create(std::path::Path::new(&args.config))?;
     config.ensure_dirs()?;
 
     let addr = format!("{}:{}", args.host, args.port);
@@ -71,7 +98,8 @@ async fn main() -> Result<()> {
         config.server.cors.clone(),
         config.security.clone(),
         pipeline_registry,
-    );
+    )
+    .with_metrics(metrics_handle);
 
     let tls = if config.server.tls.enabled {
         Some(&config.server.tls)
