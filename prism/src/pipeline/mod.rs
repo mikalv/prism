@@ -1,4 +1,5 @@
 pub mod processors;
+pub mod registry;
 
 use crate::backends::Document;
 use crate::Result;

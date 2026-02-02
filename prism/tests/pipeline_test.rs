@@ -95,3 +95,79 @@ fn test_rename_missing_field_errors() {
     let mut doc = make_doc(vec![]);
     assert!(proc.process(&mut doc).is_err());
 }
+
+use prism::pipeline::registry::PipelineRegistry;
+use tempfile::TempDir;
+
+#[test]
+fn test_load_pipeline_from_yaml() {
+    let tmp = TempDir::new().unwrap();
+    let yaml = r#"
+name: normalize
+description: Normalize text fields
+processors:
+  - lowercase:
+      field: title
+  - html_strip:
+      field: content
+  - set:
+      field: indexed_at
+      value: "{{_now}}"
+  - remove:
+      field: _internal
+  - rename:
+      from: old
+      to: new
+"#;
+    std::fs::write(tmp.path().join("normalize.yaml"), yaml).unwrap();
+
+    let registry = PipelineRegistry::load(tmp.path()).unwrap();
+    assert!(registry.get("normalize").is_some());
+    assert!(registry.get("nonexistent").is_none());
+
+    let pipeline = registry.get("normalize").unwrap();
+    assert_eq!(pipeline.name, "normalize");
+    assert_eq!(pipeline.processors.len(), 5);
+}
+
+#[test]
+fn test_pipeline_processes_document() {
+    let tmp = TempDir::new().unwrap();
+    let yaml = r#"
+name: test
+description: Test pipeline
+processors:
+  - lowercase:
+      field: title
+  - remove:
+      field: secret
+"#;
+    std::fs::write(tmp.path().join("test.yaml"), yaml).unwrap();
+
+    let registry = PipelineRegistry::load(tmp.path()).unwrap();
+    let pipeline = registry.get("test").unwrap();
+
+    let mut doc = make_doc(vec![
+        ("title", Value::String("HELLO".to_string())),
+        ("secret", Value::String("password".to_string())),
+    ]);
+
+    pipeline.process(&mut doc).unwrap();
+    assert_eq!(doc.fields["title"], Value::String("hello".to_string()));
+    assert!(!doc.fields.contains_key("secret"));
+}
+
+#[test]
+fn test_empty_pipeline_dir() {
+    let tmp = TempDir::new().unwrap();
+    let registry = PipelineRegistry::load(tmp.path()).unwrap();
+    assert!(registry.get("anything").is_none());
+}
+
+#[test]
+fn test_load_nonexistent_dir() {
+    let registry = PipelineRegistry::load(std::path::Path::new("/nonexistent/path"));
+    // Should succeed with empty registry, not crash
+    assert!(registry.is_ok());
+    assert!(registry.unwrap().get("anything").is_none());
+}
