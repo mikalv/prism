@@ -1,0 +1,30 @@
+services:
+  prism:
+    build: .
+    ports:
+      - "${PRISM_PORT:-3080}:3000"
+    volumes:
+      - ./tests/e2e/testdata/schemas:/data/schemas:ro
+      - ./tests/e2e/testdata/config/prism.toml:/config/prism.toml:ro
+      - ./tests/e2e/testdata/pipelines:/config/conf/pipelines:ro
+    environment:
+      - RUST_LOG=info
+    command: ["--config", "/config/prism.toml", "--host", "0.0.0.0", "--port", "3000"]
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /bin/ollama serve &
+        sleep 5
+        /bin/ollama pull nomic-embed-text
+        wait
+    profiles: ["full"]
+
+volumes:
+  ollama-data:
