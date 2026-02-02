@@ -1,0 +1,18 @@
+name: E2E Full Suite
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+jobs:
+  e2e-full:
+    name: E2E Full Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run E2E full test suite
+        run: ./tests/e2e/full.sh
+        env:
+          E2E_TIMEOUT: "180"
