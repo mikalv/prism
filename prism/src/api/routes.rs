@@ -1,5 +1,5 @@
 use crate::api::server::AppState;
-use crate::backends::{Document, Query, SearchResults, SearchResult, HighlightConfig};
+use crate::backends::{Document, HighlightConfig, Query, SearchResult, SearchResults};
 use crate::collection::CollectionManager;
 use axum::{
     extract::{Path, State},
@@ -66,12 +66,24 @@ pub struct SimpleSearchResponse {
 }
 
 fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
-    let title = result.fields.get("title").and_then(|v| v.as_str()).map(String::from);
-    let url = result.fields.get("url").or_else(|| result.fields.get("link"))
-        .and_then(|v| v.as_str()).map(String::from);
-    let snippet = result.fields.get("snippet").or_else(|| result.fields.get("content"))
+    let title = result
+        .fields
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let url = result
+        .fields
+        .get("url")
+        .or_else(|| result.fields.get("link"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let snippet = result
+        .fields
+        .get("snippet")
+        .or_else(|| result.fields.get("content"))
         .or_else(|| result.fields.get("description"))
-        .and_then(|v| v.as_str()).map(String::from);
+        .and_then(|v| v.as_str())
+        .map(String::from);
 
     SimpleSearchResult {
         id: result.id,
@@ -89,7 +101,9 @@ pub async fn search(
 ) -> Result<Json<SearchResults>, StatusCode> {
     let qstr = if let Some(vec) = request.vector.clone() {
         serde_json::to_string(&vec).unwrap_or_default()
-    } else { request.query.clone().unwrap_or_default() };
+    } else {
+        request.query.clone().unwrap_or_default()
+    };
 
     let query = Query {
         query_string: qstr,
@@ -117,7 +131,7 @@ pub async fn simple_search(
     Json(request): Json<SimpleSearchRequest>,
 ) -> Result<Json<SimpleSearchResponse>, StatusCode> {
     let collections = manager.list_collections();
-    
+
     if collections.is_empty() {
         return Ok(Json(SimpleSearchResponse {
             results: vec![],
@@ -126,7 +140,7 @@ pub async fn simple_search(
     }
 
     let default_collection = collections.first().unwrap();
-    
+
     let query = Query {
         query_string: request.query,
         fields: vec![],
@@ -146,7 +160,8 @@ pub async fn simple_search(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let simple_results: Vec<SimpleSearchResult> = results.results.into_iter().map(result_to_simple).collect();
+    let simple_results: Vec<SimpleSearchResult> =
+        results.results.into_iter().map(result_to_simple).collect();
 
     Ok(Json(SimpleSearchResponse {
         results: simple_results,
@@ -186,16 +201,19 @@ pub async fn index_documents(
 ) -> Result<(StatusCode, Json<IndexResponse>), StatusCode> {
     let mut documents = request.documents;
     let total = documents.len();
-    tracing::info!("Indexing {} documents to collection '{}'", total, collection);
+    tracing::info!(
+        "Indexing {} documents to collection '{}'",
+        total,
+        collection
+    );
 
     // Apply pipeline if specified
     let mut errors = Vec::new();
     if let Some(ref pipeline_name) = query.pipeline {
-        let pipeline = state.pipeline_registry.get(pipeline_name)
-            .ok_or_else(|| {
-                tracing::warn!("Unknown pipeline: {}", pipeline_name);
-                StatusCode::BAD_REQUEST
-            })?;
+        let pipeline = state.pipeline_registry.get(pipeline_name).ok_or_else(|| {
+            tracing::warn!("Unknown pipeline: {}", pipeline_name);
+            StatusCode::BAD_REQUEST
+        })?;
 
         let mut processed = Vec::with_capacity(documents.len());
         for mut doc in documents {
@@ -216,7 +234,8 @@ pub async fn index_documents(
     let failed = errors.len();
 
     if !documents.is_empty() {
-        state.manager
+        state
+            .manager
             .index(&collection, documents)
             .await
             .map_err(|e| {
@@ -225,8 +244,21 @@ pub async fn index_documents(
             })?;
     }
 
-    tracing::info!("Indexed {}/{} documents to '{}' ({} failed)", indexed, total, collection, failed);
-    Ok((StatusCode::CREATED, Json(IndexResponse { indexed, failed, errors })))
+    tracing::info!(
+        "Indexed {}/{} documents to '{}' ({} failed)",
+        indexed,
+        total,
+        collection,
+        failed
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(IndexResponse {
+            indexed,
+            failed,
+            errors,
+        }),
+    ))
 }
 
 // ============================================================================
@@ -245,10 +277,10 @@ pub struct PipelineListResponse {
     pub pipelines: Vec<PipelineInfo>,
 }
 
-pub async fn list_pipelines(
-    State(state): State<AppState>,
-) -> Json<PipelineListResponse> {
-    let pipelines = state.pipeline_registry.list()
+pub async fn list_pipelines(State(state): State<AppState>) -> Json<PipelineListResponse> {
+    let pipelines = state
+        .pipeline_registry
+        .list()
         .into_iter()
         .map(|(name, desc, count)| PipelineInfo {
             name,
@@ -350,7 +382,10 @@ pub async fn get_collection_schema(
     }
 
     let (vector_dimensions, vector_field) = if let Some(vector_config) = &schema.backends.vector {
-        (Some(vector_config.dimension), Some(vector_config.embedding_field.clone()))
+        (
+            Some(vector_config.dimension),
+            Some(vector_config.embedding_field.clone()),
+        )
     } else {
         (None, None)
     };
@@ -382,13 +417,14 @@ pub async fn get_collection_stats(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let stats = manager
-        .stats(&collection)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get stats for collection '{}': {:?}", collection, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let stats = manager.stats(&collection).await.map_err(|e| {
+        tracing::error!(
+            "Failed to get stats for collection '{}': {:?}",
+            collection,
+            e
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(CollectionStatsResponse {
         collection,
@@ -449,7 +485,7 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
 // ============================================================================
 
 use crate::aggregations::{AggregationRequest as AggRequest, AggregationResult as AggResult};
-use crate::backends::text::{TermInfo, SegmentsInfo, ReconstructedDocument};
+use crate::backends::text::{ReconstructedDocument, SegmentsInfo, TermInfo};
 
 /// Aggregation API request
 #[derive(Deserialize)]
@@ -554,7 +590,12 @@ pub async fn get_top_terms(
     let terms = manager
         .get_top_terms(&collection, &field, params.limit)
         .map_err(|e| {
-            tracing::error!("Failed to get top terms for {}/{}: {:?}", collection, field, e);
+            tracing::error!(
+                "Failed to get top terms for {}/{}: {:?}",
+                collection,
+                field,
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -571,12 +612,10 @@ pub async fn get_segments(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let segments = manager
-        .get_segments(&collection)
-        .map_err(|e| {
-            tracing::error!("Failed to get segments for {}: {:?}", collection, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let segments = manager.get_segments(&collection).map_err(|e| {
+        tracing::error!("Failed to get segments for {}: {:?}", collection, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(segments))
 }
@@ -594,7 +633,12 @@ pub async fn reconstruct_document(
     let doc = manager
         .reconstruct_document(&collection, &id)
         .map_err(|e| {
-            tracing::error!("Failed to reconstruct document {}/{}: {:?}", collection, id, e);
+            tracing::error!(
+                "Failed to reconstruct document {}/{}: {:?}",
+                collection,
+                id,
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -653,9 +697,21 @@ pub async fn suggest(
     }
 
     let entries = manager
-        .suggest(&collection, &req.field, &req.prefix, req.size, req.fuzzy, req.max_distance)
+        .suggest(
+            &collection,
+            &req.field,
+            &req.prefix,
+            req.size,
+            req.fuzzy,
+            req.max_distance,
+        )
         .map_err(|e| {
-            tracing::error!("Failed to suggest for {}/{}: {:?}", collection, req.field, e);
+            tracing::error!(
+                "Failed to suggest for {}/{}: {:?}",
+                collection,
+                req.field,
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -685,7 +741,10 @@ pub async fn suggest(
         None
     };
 
-    Ok(Json(SuggestResponse { suggestions, did_you_mean }))
+    Ok(Json(SuggestResponse {
+        suggestions,
+        did_you_mean,
+    }))
 }
 
 // ============================================================================

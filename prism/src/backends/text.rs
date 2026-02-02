@@ -2,21 +2,25 @@
 //!
 //! All storage (local, S3, cached) goes through the SegmentStorage trait via TantivyStorageAdapter.
 
-use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
-use crate::schema::{CollectionSchema, FieldType};
-use crate::ranking::{RankableResult, RankingConfig, apply_ranking_adjustments};
-use crate::{Error, Result};
-use crate::aggregations::{AggregationRequest, AggregationResult, AggregationType, AggregationValue, Bucket};
 use crate::aggregations::types::StatsResult;
+use crate::aggregations::{
+    AggregationRequest, AggregationResult, AggregationType, AggregationValue, Bucket,
+};
+use crate::backends::{
+    BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults,
+    SearchResultsWithAggs,
+};
+use crate::ranking::{apply_ranking_adjustments, RankableResult, RankingConfig};
+use crate::schema::{CollectionSchema, FieldType};
+use crate::{Error, Result};
 use async_trait::async_trait;
 use prism_storage::{LocalStorage, SegmentStorage, TantivyStorageAdapter};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
-     collector::TopDocs, query::QueryParser, schema::*,
-     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument,
-     Term, DateTime, DocSet,
+    collector::TopDocs, query::QueryParser, schema::*, DateTime, DocSet, Index, IndexReader,
+    IndexWriter, ReloadPolicy, TantivyDocument, Term,
 };
 
 pub struct TextBackend {
@@ -109,7 +113,10 @@ impl TextBackend {
         if system_fields.document_boost {
             let boost_field = schema_builder.add_f64_field(
                 "_boost",
-                NumericOptions::default().set_indexed().set_stored().set_fast(),
+                NumericOptions::default()
+                    .set_indexed()
+                    .set_stored()
+                    .set_fast(),
             );
             field_map.insert("_boost".to_string(), boost_field);
         }
@@ -191,7 +198,8 @@ impl TextBackend {
             collection.to_string(),
             "default".to_string(),
             buffer_dir,
-        ).map_err(|e| Error::Storage(e.to_string()))?;
+        )
+        .map_err(|e| Error::Storage(e.to_string()))?;
 
         // Check if index exists by looking for meta.json file (Tantivy always creates this)
         use tantivy::directory::Directory;
@@ -261,7 +269,7 @@ impl SearchBackend for TextBackend {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_micros() as i64
+                .as_micros() as i64,
         );
 
         for doc in docs {
@@ -281,7 +289,8 @@ impl SearchBackend for TextBackend {
             // Add system field: _boost (from document or default 1.0)
             if coll.boost_enabled {
                 if let Some(field) = coll.field_map.get("_boost") {
-                    let boost_value = doc.fields
+                    let boost_value = doc
+                        .fields
                         .get("_boost")
                         .and_then(|v| v.as_f64())
                         .unwrap_or(1.0);
@@ -428,7 +437,10 @@ impl SearchBackend for TextBackend {
             .parse_query(&query.query_string)
             .map_err(|e| Error::InvalidQuery(e.to_string()))?;
 
-        let top_docs = searcher.search(&parsed_query, &TopDocs::with_limit(query.limit + query.offset))?;
+        let top_docs = searcher.search(
+            &parsed_query,
+            &TopDocs::with_limit(query.limit + query.offset),
+        )?;
 
         let id_field = coll.field_map.get("id").unwrap();
         let mut results = Vec::new();
@@ -453,14 +465,18 @@ impl SearchBackend for TextBackend {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
                         let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
-                            tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::F64(n) => {
-                                serde_json::Number::from_f64(*n)
-                                    .map(serde_json::Value::Number)
-                                    .unwrap_or(serde_json::Value::Null)
+                            tantivy::schema::OwnedValue::Str(s) => {
+                                serde_json::Value::String(s.to_string())
                             }
+                            tantivy::schema::OwnedValue::U64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::I64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null),
                             tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
                             tantivy::schema::OwnedValue::Date(dt) => {
                                 // Store DateTime as microseconds since epoch for ranking
@@ -493,19 +509,29 @@ impl SearchBackend for TextBackend {
                         continue;
                     }
 
-                    if let Ok(mut generator) = SnippetGenerator::create(&searcher, &*parsed_query, field) {
+                    if let Ok(mut generator) =
+                        SnippetGenerator::create(&searcher, &*parsed_query, field)
+                    {
                         generator.set_max_num_chars(hl_config.fragment_size);
 
                         for result in &mut results {
                             // Get the stored text for this field
-                            if let Some(text_value) = result.fields.get(hl_field_name).and_then(|v| v.as_str()) {
+                            if let Some(text_value) =
+                                result.fields.get(hl_field_name).and_then(|v| v.as_str())
+                            {
                                 let mut snippet = generator.snippet(text_value);
                                 if !snippet.is_empty() {
-                                    snippet.set_snippet_prefix_postfix(&hl_config.pre_tag, &hl_config.post_tag);
+                                    snippet.set_snippet_prefix_postfix(
+                                        &hl_config.pre_tag,
+                                        &hl_config.post_tag,
+                                    );
                                     let html = snippet.to_html();
 
-                                    let highlights = result.highlight.get_or_insert_with(HashMap::new);
-                                    let fragments = highlights.entry(hl_field_name.clone()).or_insert_with(Vec::new);
+                                    let highlights =
+                                        result.highlight.get_or_insert_with(HashMap::new);
+                                    let fragments = highlights
+                                        .entry(hl_field_name.clone())
+                                        .or_insert_with(Vec::new);
                                     fragments.push(html);
                                     // Tantivy returns one best fragment per call; truncate to configured max
                                     fragments.truncate(hl_config.number_of_fragments);
@@ -585,14 +611,18 @@ impl SearchBackend for TextBackend {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
                         let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
-                            tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::F64(n) => {
-                                serde_json::Number::from_f64(*n)
-                                    .map(serde_json::Value::Number)
-                                    .unwrap_or(serde_json::Value::Null)
+                            tantivy::schema::OwnedValue::Str(s) => {
+                                serde_json::Value::String(s.to_string())
                             }
+                            tantivy::schema::OwnedValue::U64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::I64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null),
                             tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
                             _ => continue,
                         };
@@ -638,7 +668,10 @@ impl SearchBackend for TextBackend {
         let segment_readers = searcher.segment_readers();
 
         let document_count: usize = segment_readers.iter().map(|r| r.num_docs() as usize).sum();
-        let size_bytes: usize = segment_readers.iter().map(|r| r.num_deleted_docs() as usize * 100).sum();
+        let size_bytes: usize = segment_readers
+            .iter()
+            .map(|r| r.num_deleted_docs() as usize * 100)
+            .sum();
 
         Ok(BackendStats {
             document_count,
@@ -719,14 +752,18 @@ impl SearchBackend for TextBackend {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
                         let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
-                            tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::F64(n) => {
-                                serde_json::Number::from_f64(*n)
-                                    .map(serde_json::Value::Number)
-                                    .unwrap_or(serde_json::Value::Null)
+                            tantivy::schema::OwnedValue::Str(s) => {
+                                serde_json::Value::String(s.to_string())
                             }
+                            tantivy::schema::OwnedValue::U64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::I64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null),
                             tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
                             _ => continue,
                         };
@@ -769,7 +806,7 @@ impl SearchBackend for TextBackend {
 // Aggregation execution engine
 // ============================================================================
 
-use crate::aggregations::types::{PercentilesResult, RangeEntry, HistogramBounds};
+use crate::aggregations::types::{HistogramBounds, PercentilesResult, RangeEntry};
 
 /// Collect field values from a set of document addresses
 fn collect_field_values(
@@ -867,9 +904,7 @@ fn execute_single_agg(
     let sub_aggs = agg_req.aggs.as_deref().unwrap_or(&[]);
 
     let value = match &agg_req.agg_type {
-        AggregationType::Count => {
-            AggregationValue::Single(doc_addrs.len() as f64)
-        }
+        AggregationType::Count => AggregationValue::Single(doc_addrs.len() as f64),
 
         AggregationType::Sum { field } => {
             let f = resolve_field(coll, field)?;
@@ -880,7 +915,11 @@ fn execute_single_agg(
         AggregationType::Avg { field } => {
             let f = resolve_field(coll, field)?;
             let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
-            let avg = if nums.is_empty() { 0.0 } else { nums.iter().sum::<f64>() / nums.len() as f64 };
+            let avg = if nums.is_empty() {
+                0.0
+            } else {
+                nums.iter().sum::<f64>() / nums.len() as f64
+            };
             AggregationValue::Single(avg)
         }
 
@@ -905,7 +944,11 @@ fn execute_single_agg(
             let sum: f64 = nums.iter().sum();
             let min = nums.iter().cloned().fold(f64::INFINITY, f64::min);
             let max = nums.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let avg = if count == 0 { None } else { Some(sum / count as f64) };
+            let avg = if count == 0 {
+                None
+            } else {
+                Some(sum / count as f64)
+            };
             AggregationValue::Stats(StatsResult {
                 count,
                 min: if min.is_infinite() { None } else { Some(min) },
@@ -958,7 +1001,8 @@ fn execute_single_agg(
             } else {
                 // With sub-aggregations: need per-bucket doc sets
                 let docs_per_bucket = collect_docs_per_bucket_terms(searcher, f, doc_addrs)?;
-                let mut bucket_vec: Vec<_> = docs_per_bucket.iter()
+                let mut bucket_vec: Vec<_> = docs_per_bucket
+                    .iter()
                     .map(|(k, addrs)| (k.clone(), addrs.len() as u64, addrs.clone()))
                     .collect();
                 bucket_vec.sort_by(|a, b| b.1.cmp(&a.1));
@@ -966,31 +1010,47 @@ fn execute_single_agg(
 
                 let mut buckets = Vec::new();
                 for (key, doc_count, addrs) in bucket_vec {
-                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &addrs, sub_aggs)?;
+                    let child_aggs =
+                        execute_aggregations(searcher, coll, searchable_fields, &addrs, sub_aggs)?;
                     let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                     buckets.push(Bucket {
                         key,
                         doc_count,
                         from: None,
                         to: None,
-                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                        sub_aggs: if child_vec.is_empty() {
+                            None
+                        } else {
+                            Some(child_vec)
+                        },
                     });
                 }
                 AggregationValue::Buckets(buckets)
             }
         }
 
-        AggregationType::Histogram { field, interval, min_doc_count, extended_bounds } => {
+        AggregationType::Histogram {
+            field,
+            interval,
+            min_doc_count,
+            extended_bounds,
+        } => {
             let f = resolve_field(coll, field)?;
             let interval = *interval;
 
             if sub_aggs.is_empty() {
                 let (nums, _) = collect_field_values(searcher, f, doc_addrs)?;
-                let buckets = compute_histogram_buckets(&nums, interval, *min_doc_count, extended_bounds.as_ref());
+                let buckets = compute_histogram_buckets(
+                    &nums,
+                    interval,
+                    *min_doc_count,
+                    extended_bounds.as_ref(),
+                );
                 AggregationValue::Buckets(buckets)
             } else {
                 // Per-bucket doc addresses for sub-aggs
-                let mut bucket_docs: std::collections::BTreeMap<i64, Vec<tantivy::DocAddress>> = std::collections::BTreeMap::new();
+                let mut bucket_docs: std::collections::BTreeMap<i64, Vec<tantivy::DocAddress>> =
+                    std::collections::BTreeMap::new();
                 for &doc_addr in doc_addrs {
                     let doc: TantivyDocument = searcher.doc(doc_addr)?;
                     if let Some(value) = doc.get_first(f) {
@@ -1023,30 +1083,48 @@ fn execute_single_agg(
                     if doc_count < min_count {
                         continue;
                     }
-                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
+                    let child_aggs =
+                        execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
                     let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                     buckets.push(Bucket {
                         key: format!("{}", (*bucket_key as f64) * interval),
                         doc_count,
                         from: None,
                         to: None,
-                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                        sub_aggs: if child_vec.is_empty() {
+                            None
+                        } else {
+                            Some(child_vec)
+                        },
                     });
                 }
                 AggregationValue::Buckets(buckets)
             }
         }
 
-        AggregationType::DateHistogram { field, calendar_interval, min_doc_count } => {
+        AggregationType::DateHistogram {
+            field,
+            calendar_interval,
+            min_doc_count,
+        } => {
             let f = resolve_field(coll, field)?;
-            let interval = crate::query::aggregations::date_histogram::DateInterval::parse_interval(calendar_interval);
+            let interval = crate::query::aggregations::date_histogram::DateInterval::parse_interval(
+                calendar_interval,
+            );
 
             if sub_aggs.is_empty() {
-                let buckets = compute_date_histogram_buckets(searcher, f, doc_addrs, &interval, *min_doc_count)?;
+                let buckets = compute_date_histogram_buckets(
+                    searcher,
+                    f,
+                    doc_addrs,
+                    &interval,
+                    *min_doc_count,
+                )?;
                 AggregationValue::Buckets(buckets)
             } else {
                 // Per-bucket doc addresses for sub-aggs
-                let mut bucket_docs: std::collections::BTreeMap<String, Vec<tantivy::DocAddress>> = std::collections::BTreeMap::new();
+                let mut bucket_docs: std::collections::BTreeMap<String, Vec<tantivy::DocAddress>> =
+                    std::collections::BTreeMap::new();
                 for &doc_addr in doc_addrs {
                     let doc: TantivyDocument = searcher.doc(doc_addr)?;
                     if let Some(value) = doc.get_first(f) {
@@ -1062,14 +1140,19 @@ fn execute_single_agg(
                     if doc_count < min_count {
                         continue;
                     }
-                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
+                    let child_aggs =
+                        execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
                     let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                     buckets.push(Bucket {
                         key: key.clone(),
                         doc_count,
                         from: None,
                         to: None,
-                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                        sub_aggs: if child_vec.is_empty() {
+                            None
+                        } else {
+                            Some(child_vec)
+                        },
                     });
                 }
                 AggregationValue::Buckets(buckets)
@@ -1085,7 +1168,8 @@ fn execute_single_agg(
                 AggregationValue::Buckets(buckets)
             } else {
                 // Per-range bucket doc addresses
-                let mut range_docs: Vec<(RangeEntry, Vec<tantivy::DocAddress>)> = ranges.iter().map(|r| (r.clone(), Vec::new())).collect();
+                let mut range_docs: Vec<(RangeEntry, Vec<tantivy::DocAddress>)> =
+                    ranges.iter().map(|r| (r.clone(), Vec::new())).collect();
                 for &doc_addr in doc_addrs {
                     let doc: TantivyDocument = searcher.doc(doc_addr)?;
                     if let Some(value) = doc.get_first(f) {
@@ -1109,14 +1193,19 @@ fn execute_single_agg(
                 let mut buckets = Vec::new();
                 for (range, addrs) in &range_docs {
                     let key = range_bucket_key(range);
-                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
+                    let child_aggs =
+                        execute_aggregations(searcher, coll, searchable_fields, addrs, sub_aggs)?;
                     let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                     buckets.push(Bucket {
                         key,
                         doc_count: addrs.len() as u64,
                         from: range.from,
                         to: range.to,
-                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                        sub_aggs: if child_vec.is_empty() {
+                            None
+                        } else {
+                            Some(child_vec)
+                        },
                     });
                 }
                 AggregationValue::Buckets(buckets)
@@ -1125,7 +1214,8 @@ fn execute_single_agg(
 
         AggregationType::Filter { filter } => {
             // Parse the filter query, run on the full index, then intersect with doc_addrs
-            let filter_addrs = resolve_filter_docs(searcher, coll, searchable_fields, filter, Some(doc_addrs))?;
+            let filter_addrs =
+                resolve_filter_docs(searcher, coll, searchable_fields, filter, Some(doc_addrs))?;
             let doc_count = filter_addrs.len() as u64;
 
             if sub_aggs.is_empty() {
@@ -1137,14 +1227,24 @@ fn execute_single_agg(
                     sub_aggs: None,
                 }])
             } else {
-                let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &filter_addrs, sub_aggs)?;
+                let child_aggs = execute_aggregations(
+                    searcher,
+                    coll,
+                    searchable_fields,
+                    &filter_addrs,
+                    sub_aggs,
+                )?;
                 let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                 AggregationValue::Buckets(vec![Bucket {
                     key: "filter".to_string(),
                     doc_count,
                     from: None,
                     to: None,
-                    sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    sub_aggs: if child_vec.is_empty() {
+                        None
+                    } else {
+                        Some(child_vec)
+                    },
                 }])
             }
         }
@@ -1152,7 +1252,13 @@ fn execute_single_agg(
         AggregationType::Filters { filters } => {
             let mut buckets = Vec::new();
             for (name, filter_query) in filters {
-                let filter_addrs = resolve_filter_docs(searcher, coll, searchable_fields, filter_query, Some(doc_addrs))?;
+                let filter_addrs = resolve_filter_docs(
+                    searcher,
+                    coll,
+                    searchable_fields,
+                    filter_query,
+                    Some(doc_addrs),
+                )?;
                 let doc_count = filter_addrs.len() as u64;
 
                 if sub_aggs.is_empty() {
@@ -1164,14 +1270,24 @@ fn execute_single_agg(
                         sub_aggs: None,
                     });
                 } else {
-                    let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &filter_addrs, sub_aggs)?;
+                    let child_aggs = execute_aggregations(
+                        searcher,
+                        coll,
+                        searchable_fields,
+                        &filter_addrs,
+                        sub_aggs,
+                    )?;
                     let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                     buckets.push(Bucket {
                         key: name.clone(),
                         doc_count,
                         from: None,
                         to: None,
-                        sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                        sub_aggs: if child_vec.is_empty() {
+                            None
+                        } else {
+                            Some(child_vec)
+                        },
                     });
                 }
             }
@@ -1192,14 +1308,19 @@ fn execute_single_agg(
                     sub_aggs: None,
                 }])
             } else {
-                let child_aggs = execute_aggregations(searcher, coll, searchable_fields, &all_addrs, sub_aggs)?;
+                let child_aggs =
+                    execute_aggregations(searcher, coll, searchable_fields, &all_addrs, sub_aggs)?;
                 let child_vec: Vec<AggregationResult> = child_aggs.into_values().collect();
                 AggregationValue::Buckets(vec![Bucket {
                     key: "global".to_string(),
                     doc_count,
                     from: None,
                     to: None,
-                    sub_aggs: if child_vec.is_empty() { None } else { Some(child_vec) },
+                    sub_aggs: if child_vec.is_empty() {
+                        None
+                    } else {
+                        Some(child_vec)
+                    },
                 }])
             }
         }
@@ -1300,9 +1421,7 @@ fn date_value_to_bucket_key(
     let micros = match value {
         tantivy::schema::OwnedValue::I64(n) => Some(*n),
         tantivy::schema::OwnedValue::U64(n) => Some(*n as i64),
-        tantivy::schema::OwnedValue::Date(dt) => {
-            Some(dt.into_timestamp_micros())
-        }
+        tantivy::schema::OwnedValue::Date(dt) => Some(dt.into_timestamp_micros()),
         _ => None,
     };
 
@@ -1315,7 +1434,11 @@ fn date_value_to_bucket_key(
             Some(interval.floor(dt_utc).to_rfc3339())
         } else {
             // Default to day if no interval parsed
-            Some(crate::query::aggregations::date_histogram::DateInterval::Day.floor(dt_utc).to_rfc3339())
+            Some(
+                crate::query::aggregations::date_histogram::DateInterval::Day
+                    .floor(dt_utc)
+                    .to_rfc3339(),
+            )
         }
     } else {
         None
@@ -1379,7 +1502,10 @@ fn resolve_filter_docs(
     if let Some(parent) = parent_addrs {
         // Intersect: only keep addresses that are in the parent set
         let parent_set: std::collections::HashSet<_> = parent.iter().collect();
-        Ok(addrs.into_iter().filter(|a| parent_set.contains(a)).collect())
+        Ok(addrs
+            .into_iter()
+            .filter(|a| parent_set.contains(a))
+            .collect())
     } else {
         Ok(addrs)
     }
@@ -1432,13 +1558,20 @@ pub struct ReconstructedDocument {
 
 impl TextBackend {
     /// Get top-k most frequent terms for a field.
-    pub fn get_top_terms(&self, collection: &str, field: &str, limit: usize) -> Result<Vec<TermInfo>> {
+    pub fn get_top_terms(
+        &self,
+        collection: &str,
+        field: &str,
+        limit: usize,
+    ) -> Result<Vec<TermInfo>> {
         let collections = self.collections.read().unwrap();
         let coll = collections
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
-        let field_obj = coll.field_map.get(field)
+        let field_obj = coll
+            .field_map
+            .get(field)
             .ok_or_else(|| Error::Schema(format!("Field '{}' not found", field)))?;
 
         let searcher = coll.reader.searcher();
@@ -1485,7 +1618,9 @@ impl TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
-        let field_obj = coll.field_map.get(field)
+        let field_obj = coll
+            .field_map
+            .get(field)
             .ok_or_else(|| Error::Schema(format!("Field '{}' not found", field)))?;
 
         let searcher = coll.reader.searcher();
@@ -1519,7 +1654,11 @@ impl TextBackend {
             .map(|(term, doc_freq)| {
                 // Prefix matches get score=1.0 weighted by doc_freq
                 let score = doc_freq as f32 / max_df;
-                SuggestEntry { term, score, doc_freq }
+                SuggestEntry {
+                    term,
+                    score,
+                    doc_freq,
+                }
             })
             .collect();
 
@@ -1571,7 +1710,9 @@ impl TextBackend {
 
         // Sort by score descending, then by doc_freq descending
         entries.sort_by(|a, b| {
-            b.score.partial_cmp(&a.score).unwrap()
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap()
                 .then_with(|| b.doc_freq.cmp(&a.doc_freq))
         });
         entries.truncate(size);
@@ -1629,17 +1770,27 @@ impl TextBackend {
                 }
                 source_text = texts.join(" ");
             } else {
-                return Ok(SearchResults { results: vec![], total: 0, latency_ms: 0 });
+                return Ok(SearchResults {
+                    results: vec![],
+                    total: 0,
+                    latency_ms: 0,
+                });
             }
         } else if let Some(text) = like_text {
             exclude_id = None;
             source_text = text.to_string();
         } else {
-            return Err(Error::InvalidQuery("Either 'like._id' or 'like_text' must be provided".to_string()));
+            return Err(Error::InvalidQuery(
+                "Either 'like._id' or 'like_text' must be provided".to_string(),
+            ));
         }
 
         if source_text.is_empty() {
-            return Ok(SearchResults { results: vec![], total: 0, latency_ms: 0 });
+            return Ok(SearchResults {
+                results: vec![],
+                total: 0,
+                latency_ms: 0,
+            });
         }
 
         // Extract significant terms: tokenize the source text and count term frequencies
@@ -1654,12 +1805,17 @@ impl TextBackend {
 
         // Filter by min_term_freq and min_doc_freq, then score by TF-IDF-like weighting
         let resolve_fields: Vec<Field> = if fields.is_empty() {
-            coll.schema.fields()
-                .filter(|(_, e)| matches!(e.field_type(), tantivy::schema::FieldType::Str(_)) && e.field_type().is_indexed())
+            coll.schema
+                .fields()
+                .filter(|(_, e)| {
+                    matches!(e.field_type(), tantivy::schema::FieldType::Str(_))
+                        && e.field_type().is_indexed()
+                })
                 .map(|(f, _)| f)
                 .collect()
         } else {
-            fields.iter()
+            fields
+                .iter()
                 .filter_map(|f| coll.field_map.get(f).copied())
                 .collect()
         };
@@ -1691,11 +1847,16 @@ impl TextBackend {
         scored_terms.truncate(max_query_terms);
 
         if scored_terms.is_empty() {
-            return Ok(SearchResults { results: vec![], total: 0, latency_ms: 0 });
+            return Ok(SearchResults {
+                results: vec![],
+                total: 0,
+                latency_ms: 0,
+            });
         }
 
         // Build a disjunction query from the top terms
-        let query_string = scored_terms.iter()
+        let query_string = scored_terms
+            .iter()
             .map(|(t, _)| t.as_str())
             .collect::<Vec<_>>()
             .join(" ");
@@ -1714,7 +1875,8 @@ impl TextBackend {
 
         for (score, doc_addr) in &top_docs {
             let doc: TantivyDocument = searcher.doc(*doc_addr)?;
-            let id = doc.get_first(*id_field)
+            let id = doc
+                .get_first(*id_field)
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -1731,14 +1893,18 @@ impl TextBackend {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
                         let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
-                            tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
-                            tantivy::schema::OwnedValue::F64(n) => {
-                                serde_json::Number::from_f64(*n)
-                                    .map(serde_json::Value::Number)
-                                    .unwrap_or(serde_json::Value::Null)
+                            tantivy::schema::OwnedValue::Str(s) => {
+                                serde_json::Value::String(s.to_string())
                             }
+                            tantivy::schema::OwnedValue::U64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::I64(n) => {
+                                serde_json::Value::Number((*n).into())
+                            }
+                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+                                .map(serde_json::Value::Number)
+                                .unwrap_or(serde_json::Value::Null),
                             tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
                             tantivy::schema::OwnedValue::Date(dt) => {
                                 serde_json::Value::Number(dt.into_timestamp_micros().into())
@@ -1764,7 +1930,11 @@ impl TextBackend {
 
         let total = results.len();
         let latency_ms = start.elapsed().as_millis() as u64;
-        Ok(SearchResults { results, total, latency_ms })
+        Ok(SearchResults {
+            results,
+            total,
+            latency_ms,
+        })
     }
 
     /// Get segment information for a collection.
@@ -1813,7 +1983,11 @@ impl TextBackend {
     }
 
     /// Reconstruct a document showing stored fields and indexed terms.
-    pub fn reconstruct_document(&self, collection: &str, id: &str) -> Result<Option<ReconstructedDocument>> {
+    pub fn reconstruct_document(
+        &self,
+        collection: &str,
+        id: &str,
+    ) -> Result<Option<ReconstructedDocument>> {
         let collections = self.collections.read().unwrap();
         let coll = collections
             .get(collection)
@@ -1840,14 +2014,18 @@ impl TextBackend {
             if entry.is_stored() {
                 if let Some(value) = doc.get_first(field) {
                     let json_value = match value {
-                        tantivy::schema::OwnedValue::Str(s) => serde_json::Value::String(s.to_string()),
-                        tantivy::schema::OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
-                        tantivy::schema::OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),
-                        tantivy::schema::OwnedValue::F64(n) => {
-                            serde_json::Number::from_f64(*n)
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null)
+                        tantivy::schema::OwnedValue::Str(s) => {
+                            serde_json::Value::String(s.to_string())
                         }
+                        tantivy::schema::OwnedValue::U64(n) => {
+                            serde_json::Value::Number((*n).into())
+                        }
+                        tantivy::schema::OwnedValue::I64(n) => {
+                            serde_json::Value::Number((*n).into())
+                        }
+                        tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null),
                         tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
                         _ => continue,
                     };

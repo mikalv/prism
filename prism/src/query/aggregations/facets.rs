@@ -31,10 +31,11 @@ pub fn compute_facets(
                 });
             }
             AggregationType::DateHistogram => {
-                use chrono::{DateTime, Utc};
                 use super::date_histogram::{aggregate_date_histogram, DateInterval};
+                use chrono::{DateTime, Utc};
 
-                let interval = req.interval
+                let interval = req
+                    .interval
                     .as_deref()
                     .and_then(DateInterval::parse_interval)
                     .unwrap_or(DateInterval::Day);
@@ -43,7 +44,8 @@ pub fn compute_facets(
                     .iter()
                     .filter_map(|doc| {
                         doc.get(&req.field).and_then(|v| {
-                            v.as_str().and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                            v.as_str()
+                                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
                         })
                     })
                     .map(|dt| dt.with_timezone(&Utc))
@@ -158,7 +160,10 @@ mod tests {
         doc2.insert("timestamp".to_string(), serde_json::json!(now.to_rfc3339()));
 
         let mut doc3 = HashMap::new();
-        doc3.insert("timestamp".to_string(), serde_json::json!(yesterday.to_rfc3339()));
+        doc3.insert(
+            "timestamp".to_string(),
+            serde_json::json!(yesterday.to_rfc3339()),
+        );
 
         let docs = vec![doc1, doc2, doc3];
         let results = compute_facets(requests, &docs).unwrap();

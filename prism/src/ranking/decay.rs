@@ -102,9 +102,7 @@ pub fn gaussian_decay(age_secs: f64, scale_secs: f64, decay_rate: f64) -> f64 {
 /// Compute decay multiplier based on configuration
 pub fn compute_decay(config: &DecayConfig, document_time: SystemTime, now: SystemTime) -> f64 {
     // Calculate age in seconds
-    let age = now
-        .duration_since(document_time)
-        .unwrap_or(Duration::ZERO);
+    let age = now.duration_since(document_time).unwrap_or(Duration::ZERO);
 
     // Apply offset if configured
     let effective_age = if let Some(offset) = config.offset {
@@ -127,7 +125,11 @@ pub fn compute_decay(config: &DecayConfig, document_time: SystemTime, now: Syste
 }
 
 /// Compute decay from a Unix timestamp in microseconds
-pub fn compute_decay_from_micros(config: &DecayConfig, timestamp_micros: i64, now: SystemTime) -> f64 {
+pub fn compute_decay_from_micros(
+    config: &DecayConfig,
+    timestamp_micros: i64,
+    now: SystemTime,
+) -> f64 {
     let document_time = UNIX_EPOCH + Duration::from_micros(timestamp_micros as u64);
     compute_decay(config, document_time, now)
 }
@@ -221,12 +223,8 @@ mod tests {
 
     #[test]
     fn test_decay_with_offset() {
-        let config = DecayConfig::new(
-            DecayFunction::Exponential,
-            Duration::from_secs(86400),
-            0.5,
-        )
-        .with_offset(Duration::from_secs(3600)); // 1 hour offset
+        let config = DecayConfig::new(DecayFunction::Exponential, Duration::from_secs(86400), 0.5)
+            .with_offset(Duration::from_secs(3600)); // 1 hour offset
 
         let now = SystemTime::now();
 

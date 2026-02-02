@@ -1,5 +1,5 @@
-pub mod index;
 mod backend;
+pub mod index;
 
-pub use index::{HnswIndex, Metric, HnswBackend};
 pub use backend::VectorBackend;
+pub use index::{HnswBackend, HnswIndex, Metric};

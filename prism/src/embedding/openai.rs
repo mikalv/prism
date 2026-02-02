@@ -62,9 +62,7 @@ impl OpenAIProvider {
             format!("Bearer {}", api_key).parse()?,
         );
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()?;
+        let client = Client::builder().default_headers(headers).build()?;
 
         let url = url.trim_end_matches('/').to_string();
 
@@ -80,7 +78,12 @@ impl OpenAIProvider {
     }
 
     /// Create with explicit dimensions (useful for custom models)
-    pub fn with_dimensions(url: &str, api_key: &str, model: &str, dimensions: usize) -> anyhow::Result<Self> {
+    pub fn with_dimensions(
+        url: &str,
+        api_key: &str,
+        model: &str,
+        dimensions: usize,
+    ) -> anyhow::Result<Self> {
         let mut provider = Self::new(url, api_key, model)?;
         provider.dimensions = dimensions;
         Ok(provider)

@@ -96,10 +96,9 @@ fn workspace_root() -> Result<PathBuf> {
 }
 
 fn workspace_version(root: &Path) -> Result<String> {
-    let text = fs::read_to_string(root.join("Cargo.toml"))
-        .context("reading workspace Cargo.toml")?;
-    let ws: CargoWorkspace = toml::from_str(&text)
-        .context("parsing workspace Cargo.toml")?;
+    let text =
+        fs::read_to_string(root.join("Cargo.toml")).context("reading workspace Cargo.toml")?;
+    let ws: CargoWorkspace = toml::from_str(&text).context("parsing workspace Cargo.toml")?;
     Ok(ws.workspace.package.version)
 }
 
@@ -130,7 +129,10 @@ fn cargo_build(args: &DistArgs, root: &Path) -> Result<()> {
         cmd.arg("--target").arg(triple);
     }
 
-    eprintln!("=> cargo build --release -p prism-server -p prism-cli --features {}", feature_flags.join(","));
+    eprintln!(
+        "=> cargo build --release -p prism-server -p prism-cli --features {}",
+        feature_flags.join(",")
+    );
 
     let status = cmd.status().context("spawning cargo build")?;
     if !status.success() {
@@ -158,7 +160,15 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     let base = staging.join(prefix);
 
     // Create directory skeleton
-    for dir in &["bin", "conf/schemas", "conf/tls", "conf/pipelines", "models", "data", "logs"] {
+    for dir in &[
+        "bin",
+        "conf/schemas",
+        "conf/tls",
+        "conf/pipelines",
+        "models",
+        "data",
+        "logs",
+    ] {
         fs::create_dir_all(base.join(dir))?;
     }
 
@@ -173,10 +183,7 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(
-            base.join("bin/start.sh"),
-            fs::Permissions::from_mode(0o755),
-        )?;
+        fs::set_permissions(base.join("bin/start.sh"), fs::Permissions::from_mode(0o755))?;
     }
 
     // Copy generate-cert.sh for TLS certificate generation
@@ -194,7 +201,10 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
         for entry in fs::read_dir(&schemas_src)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
+            if path
+                .extension()
+                .map_or(false, |e| e == "yaml" || e == "yml")
+            {
                 let dest = base.join("conf/schemas").join(entry.file_name());
                 fs::copy(&path, &dest)?;
             }
@@ -216,10 +226,7 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     if args.include_models {
         download_model(&args.model, &base.join("models"))?;
     } else {
-        fs::write(
-            base.join("models/README.md"),
-            generate_models_readme(),
-        )?;
+        fs::write(base.join("models/README.md"), generate_models_readme())?;
     }
 
     // -- top-level README ---------------------------------------------------
@@ -288,8 +295,8 @@ fn create_tarball(staging: &Path, prefix: &str, output: &Path) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    let file = fs::File::create(output)
-        .with_context(|| format!("creating {}", output.display()))?;
+    let file =
+        fs::File::create(output).with_context(|| format!("creating {}", output.display()))?;
     let enc = GzEncoder::new(file, Compression::default());
     let mut ar = tar::Builder::new(enc);
 
@@ -486,7 +493,10 @@ fn main() -> Result<()> {
 
 fn run_dist(args: DistArgs) -> Result<()> {
     if args.format != "tar.gz" {
-        bail!("unsupported format '{}'; only tar.gz is supported", args.format);
+        bail!(
+            "unsupported format '{}'; only tar.gz is supported",
+            args.format
+        );
     }
 
     let root = workspace_root()?;

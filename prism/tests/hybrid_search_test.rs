@@ -1,5 +1,5 @@
 use prism::backends::r#trait::{Document, Query, SearchBackend};
-use prism::backends::{TextBackend, VectorBackend, HybridSearchCoordinator};
+use prism::backends::{HybridSearchCoordinator, TextBackend, VectorBackend};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -54,13 +54,41 @@ async fn test_hybrid_merge_behaviour() {
     vector.initialize("col", &schema).await.unwrap();
 
     // Add documents via hybrid
-    let doc1 = Document { id: "d1".to_string(), fields: { let mut m = HashMap::new(); m.insert("text".to_string(), serde_json::json!("hello world")); m.insert("embedding".to_string(), serde_json::json!([1.0,0.0,0.0])); m }};
-    let doc2 = Document { id: "d2".to_string(), fields: { let mut m = HashMap::new(); m.insert("text".to_string(), serde_json::json!("foo bar")); m.insert("embedding".to_string(), serde_json::json!([0.0,1.0,0.0])); m }};
+    let doc1 = Document {
+        id: "d1".to_string(),
+        fields: {
+            let mut m = HashMap::new();
+            m.insert("text".to_string(), serde_json::json!("hello world"));
+            m.insert("embedding".to_string(), serde_json::json!([1.0, 0.0, 0.0]));
+            m
+        },
+    };
+    let doc2 = Document {
+        id: "d2".to_string(),
+        fields: {
+            let mut m = HashMap::new();
+            m.insert("text".to_string(), serde_json::json!("foo bar"));
+            m.insert("embedding".to_string(), serde_json::json!([0.0, 1.0, 0.0]));
+            m
+        },
+    };
 
-    hybrid.index("col", vec![doc1.clone(), doc2.clone()]).await.unwrap();
+    hybrid
+        .index("col", vec![doc1.clone(), doc2.clone()])
+        .await
+        .unwrap();
 
     // For this test, set query_string to the vector JSON and include text field
-    let q = Query { query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0]).unwrap(), fields: vec!["text".to_string()], limit: 10, offset: 0, merge_strategy: None, text_weight: None, vector_weight: None, highlight: None };
+    let q = Query {
+        query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0]).unwrap(),
+        fields: vec!["text".to_string()],
+        limit: 10,
+        offset: 0,
+        merge_strategy: None,
+        text_weight: None,
+        vector_weight: None,
+        highlight: None,
+    };
     let res = hybrid.search("col", q).await.unwrap();
 
     // Expect results contain at least one document

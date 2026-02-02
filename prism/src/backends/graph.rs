@@ -4,12 +4,12 @@
 //! Supports BFS traversal and weighted shortest path algorithms.
 
 use crate::error::{Error, Result};
-use crate::schema::types::{GraphBackendConfig, EdgeTypeConfig};
+use crate::schema::types::{EdgeTypeConfig, GraphBackendConfig};
 use parking_lot::RwLock;
 use prism_storage::{SegmentStorage, StoragePath};
 use serde::{Deserialize, Serialize};
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 /// A node in the graph.
@@ -177,12 +177,18 @@ impl GraphBackend {
     pub async fn add_edge(&self, edge: GraphEdge) -> Result<()> {
         // Validate edge type if configs are provided
         if !self.edge_configs.is_empty() {
-            let valid = self.edge_configs.iter().any(|c| c.edge_type == edge.edge_type);
+            let valid = self
+                .edge_configs
+                .iter()
+                .any(|c| c.edge_type == edge.edge_type);
             if !valid {
                 return Err(Error::Schema(format!(
                     "Unknown edge type: {}. Valid types: {:?}",
                     edge.edge_type,
-                    self.edge_configs.iter().map(|c| &c.edge_type).collect::<Vec<_>>()
+                    self.edge_configs
+                        .iter()
+                        .map(|c| &c.edge_type)
+                        .collect::<Vec<_>>()
                 )));
             }
         }
@@ -494,7 +500,10 @@ impl Eq for DijkstraState {}
 impl Ord for DijkstraState {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reverse order for min-heap behavior
-        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 
@@ -551,26 +560,35 @@ mod tests {
         let backend = GraphBackend::new("test", &test_config());
 
         // Add nodes
-        backend.add_node(GraphNode {
-            id: "a".to_string(),
-            node_type: "doc".to_string(),
-            title: "A".to_string(),
-            payload: serde_json::Value::Null,
-        }).await.unwrap();
-        backend.add_node(GraphNode {
-            id: "b".to_string(),
-            node_type: "doc".to_string(),
-            title: "B".to_string(),
-            payload: serde_json::Value::Null,
-        }).await.unwrap();
+        backend
+            .add_node(GraphNode {
+                id: "a".to_string(),
+                node_type: "doc".to_string(),
+                title: "A".to_string(),
+                payload: serde_json::Value::Null,
+            })
+            .await
+            .unwrap();
+        backend
+            .add_node(GraphNode {
+                id: "b".to_string(),
+                node_type: "doc".to_string(),
+                title: "B".to_string(),
+                payload: serde_json::Value::Null,
+            })
+            .await
+            .unwrap();
 
         // Add edge
-        backend.add_edge(GraphEdge {
-            from: "a".to_string(),
-            to: "b".to_string(),
-            edge_type: "related".to_string(),
-            weight: 1.0,
-        }).await.unwrap();
+        backend
+            .add_edge(GraphEdge {
+                from: "a".to_string(),
+                to: "b".to_string(),
+                edge_type: "related".to_string(),
+                weight: 1.0,
+            })
+            .await
+            .unwrap();
 
         let edges = backend.get_edges("a");
         assert_eq!(edges.len(), 1);
@@ -583,21 +601,27 @@ mod tests {
 
         // Create a small graph: a -> b -> c -> d
         for id in &["a", "b", "c", "d"] {
-            backend.add_node(GraphNode {
-                id: id.to_string(),
-                node_type: "doc".to_string(),
-                title: id.to_string(),
-                payload: serde_json::Value::Null,
-            }).await.unwrap();
+            backend
+                .add_node(GraphNode {
+                    id: id.to_string(),
+                    node_type: "doc".to_string(),
+                    title: id.to_string(),
+                    payload: serde_json::Value::Null,
+                })
+                .await
+                .unwrap();
         }
 
         for (from, to) in &[("a", "b"), ("b", "c"), ("c", "d")] {
-            backend.add_edge(GraphEdge {
-                from: from.to_string(),
-                to: to.to_string(),
-                edge_type: "related".to_string(),
-                weight: 1.0,
-            }).await.unwrap();
+            backend
+                .add_edge(GraphEdge {
+                    from: from.to_string(),
+                    to: to.to_string(),
+                    edge_type: "related".to_string(),
+                    weight: 1.0,
+                })
+                .await
+                .unwrap();
         }
 
         // BFS from a with depth 2 should find b and c
@@ -613,41 +637,56 @@ mod tests {
 
         // Create a graph with two paths: a->b->d (weight 3) and a->c->d (weight 2)
         for id in &["a", "b", "c", "d"] {
-            backend.add_node(GraphNode {
-                id: id.to_string(),
-                node_type: "doc".to_string(),
-                title: id.to_string(),
-                payload: serde_json::Value::Null,
-            }).await.unwrap();
+            backend
+                .add_node(GraphNode {
+                    id: id.to_string(),
+                    node_type: "doc".to_string(),
+                    title: id.to_string(),
+                    payload: serde_json::Value::Null,
+                })
+                .await
+                .unwrap();
         }
 
         // Path 1: a -> b -> d (total weight: 2.0)
-        backend.add_edge(GraphEdge {
-            from: "a".to_string(),
-            to: "b".to_string(),
-            edge_type: "related".to_string(),
-            weight: 1.0,
-        }).await.unwrap();
-        backend.add_edge(GraphEdge {
-            from: "b".to_string(),
-            to: "d".to_string(),
-            edge_type: "related".to_string(),
-            weight: 1.0,
-        }).await.unwrap();
+        backend
+            .add_edge(GraphEdge {
+                from: "a".to_string(),
+                to: "b".to_string(),
+                edge_type: "related".to_string(),
+                weight: 1.0,
+            })
+            .await
+            .unwrap();
+        backend
+            .add_edge(GraphEdge {
+                from: "b".to_string(),
+                to: "d".to_string(),
+                edge_type: "related".to_string(),
+                weight: 1.0,
+            })
+            .await
+            .unwrap();
 
         // Path 2: a -> c -> d (total weight: 1.5)
-        backend.add_edge(GraphEdge {
-            from: "a".to_string(),
-            to: "c".to_string(),
-            edge_type: "related".to_string(),
-            weight: 0.5,
-        }).await.unwrap();
-        backend.add_edge(GraphEdge {
-            from: "c".to_string(),
-            to: "d".to_string(),
-            edge_type: "related".to_string(),
-            weight: 1.0,
-        }).await.unwrap();
+        backend
+            .add_edge(GraphEdge {
+                from: "a".to_string(),
+                to: "c".to_string(),
+                edge_type: "related".to_string(),
+                weight: 0.5,
+            })
+            .await
+            .unwrap();
+        backend
+            .add_edge(GraphEdge {
+                from: "c".to_string(),
+                to: "d".to_string(),
+                edge_type: "related".to_string(),
+                weight: 1.0,
+            })
+            .await
+            .unwrap();
 
         // Shortest path should be a -> c -> d
         let path = backend.shortest_path("a", "d", None).unwrap();
@@ -661,27 +700,35 @@ mod tests {
 
         // Create and populate graph
         {
-            let backend = GraphBackend::with_segment_storage("test", &test_config(), storage.clone());
+            let backend =
+                GraphBackend::with_segment_storage("test", &test_config(), storage.clone());
             backend.initialize().await.unwrap();
 
-            backend.add_node(GraphNode {
-                id: "n1".to_string(),
-                node_type: "doc".to_string(),
-                title: "Node 1".to_string(),
-                payload: serde_json::Value::Null,
-            }).await.unwrap();
+            backend
+                .add_node(GraphNode {
+                    id: "n1".to_string(),
+                    node_type: "doc".to_string(),
+                    title: "Node 1".to_string(),
+                    payload: serde_json::Value::Null,
+                })
+                .await
+                .unwrap();
 
-            backend.add_edge(GraphEdge {
-                from: "n1".to_string(),
-                to: "n2".to_string(),
-                edge_type: "related".to_string(),
-                weight: 1.5,
-            }).await.unwrap();
+            backend
+                .add_edge(GraphEdge {
+                    from: "n1".to_string(),
+                    to: "n2".to_string(),
+                    edge_type: "related".to_string(),
+                    weight: 1.5,
+                })
+                .await
+                .unwrap();
         }
 
         // Create new backend and verify data loaded
         {
-            let backend = GraphBackend::with_segment_storage("test", &test_config(), storage.clone());
+            let backend =
+                GraphBackend::with_segment_storage("test", &test_config(), storage.clone());
             backend.initialize().await.unwrap();
 
             let node = backend.get_node("n1").unwrap();
@@ -697,25 +744,34 @@ mod tests {
     async fn test_stats() {
         let backend = GraphBackend::new("test", &test_config());
 
-        backend.add_node(GraphNode {
-            id: "a".to_string(),
-            node_type: "doc".to_string(),
-            title: "A".to_string(),
-            payload: serde_json::Value::Null,
-        }).await.unwrap();
-        backend.add_node(GraphNode {
-            id: "b".to_string(),
-            node_type: "doc".to_string(),
-            title: "B".to_string(),
-            payload: serde_json::Value::Null,
-        }).await.unwrap();
+        backend
+            .add_node(GraphNode {
+                id: "a".to_string(),
+                node_type: "doc".to_string(),
+                title: "A".to_string(),
+                payload: serde_json::Value::Null,
+            })
+            .await
+            .unwrap();
+        backend
+            .add_node(GraphNode {
+                id: "b".to_string(),
+                node_type: "doc".to_string(),
+                title: "B".to_string(),
+                payload: serde_json::Value::Null,
+            })
+            .await
+            .unwrap();
 
-        backend.add_edge(GraphEdge {
-            from: "a".to_string(),
-            to: "b".to_string(),
-            edge_type: "related".to_string(),
-            weight: 1.0,
-        }).await.unwrap();
+        backend
+            .add_edge(GraphEdge {
+                from: "a".to_string(),
+                to: "b".to_string(),
+                edge_type: "related".to_string(),
+                weight: 1.0,
+            })
+            .await
+            .unwrap();
 
         let stats = backend.stats();
         assert_eq!(stats.node_count, 2);
@@ -726,12 +782,14 @@ mod tests {
     async fn test_invalid_edge_type() {
         let backend = GraphBackend::new("test", &test_config());
 
-        let result = backend.add_edge(GraphEdge {
-            from: "a".to_string(),
-            to: "b".to_string(),
-            edge_type: "unknown_type".to_string(),
-            weight: 1.0,
-        }).await;
+        let result = backend
+            .add_edge(GraphEdge {
+                from: "a".to_string(),
+                to: "b".to_string(),
+                edge_type: "unknown_type".to_string(),
+                weight: 1.0,
+            })
+            .await;
 
         assert!(result.is_err());
     }

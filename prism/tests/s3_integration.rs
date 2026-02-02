@@ -42,7 +42,10 @@ async fn test_s3_segment_storage_roundtrip() {
     let path = StoragePath::vector("test-collection", "default", "index.bin");
     let data = Bytes::from_static(b"serialized hnsw index data for testing");
 
-    storage.write(&path, data.clone()).await.expect("Failed to write");
+    storage
+        .write(&path, data.clone())
+        .await
+        .expect("Failed to write");
 
     let loaded = storage.read(&path).await.expect("Failed to read");
     assert_eq!(loaded, data);
@@ -127,7 +130,10 @@ async fn test_s3_segment_storage_large_data() {
         .await
         .expect("Failed to write large data");
 
-    let loaded = storage.read(&path).await.expect("Failed to read large data");
+    let loaded = storage
+        .read(&path)
+        .await
+        .expect("Failed to read large data");
     assert_eq!(loaded, large_bytes);
 
     // Cleanup
@@ -144,8 +150,14 @@ async fn test_s3_segment_storage_list() {
     let path1 = StoragePath::vector(collection, "shard1", "index.bin");
     let path2 = StoragePath::vector(collection, "shard2", "index.bin");
 
-    storage.write(&path1, Bytes::from_static(b"shard1")).await.unwrap();
-    storage.write(&path2, Bytes::from_static(b"shard2")).await.unwrap();
+    storage
+        .write(&path1, Bytes::from_static(b"shard1"))
+        .await
+        .unwrap();
+    storage
+        .write(&path2, Bytes::from_static(b"shard2"))
+        .await
+        .unwrap();
 
     // List collection files using StoragePath prefix
     let prefix = StoragePath::new(collection, StorageBackend::Vector);
@@ -166,9 +178,15 @@ async fn test_s3_segment_storage_text_backend_path() {
     let path = StoragePath::tantivy("documents", "default", "meta.json");
     let data = Bytes::from_static(b"{\"version\": 1}");
 
-    storage.write(&path, data.clone()).await.expect("Failed to write text segment");
+    storage
+        .write(&path, data.clone())
+        .await
+        .expect("Failed to write text segment");
 
-    let loaded = storage.read(&path).await.expect("Failed to read text segment");
+    let loaded = storage
+        .read(&path)
+        .await
+        .expect("Failed to read text segment");
     assert_eq!(loaded, data);
 
     // Cleanup
@@ -184,9 +202,15 @@ async fn test_s3_segment_storage_graph_backend_path() {
     let path = StoragePath::graph("knowledge", "default", "nodes.json");
     let data = Bytes::from_static(b"{}");
 
-    storage.write(&path, data.clone()).await.expect("Failed to write graph segment");
+    storage
+        .write(&path, data.clone())
+        .await
+        .expect("Failed to write graph segment");
 
-    let loaded = storage.read(&path).await.expect("Failed to read graph segment");
+    let loaded = storage
+        .read(&path)
+        .await
+        .expect("Failed to read graph segment");
     assert_eq!(loaded, data);
 
     // Cleanup
@@ -211,11 +235,12 @@ fn test_s3_config_from_prism_config() {
         prism_config
     };
 
-    let prism_config = if let (Some(key), Some(secret)) = (&config.access_key_id, &config.secret_access_key) {
-        prism_config.with_credentials(key, secret)
-    } else {
-        prism_config
-    };
+    let prism_config =
+        if let (Some(key), Some(secret)) = (&config.access_key_id, &config.secret_access_key) {
+            prism_config.with_credentials(key, secret)
+        } else {
+            prism_config
+        };
 
     // Should be able to create storage from config
     let storage = S3Storage::new(prism_config);

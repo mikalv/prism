@@ -6,45 +6,66 @@ use serde_json::Value;
 fn make_doc(fields: Vec<(&str, Value)>) -> Document {
     Document {
         id: "test-1".to_string(),
-        fields: fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        fields: fields
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
     }
 }
 
 #[test]
 fn test_lowercase_processor() {
-    let proc = LowercaseProcessor { field: "title".to_string() };
+    let proc = LowercaseProcessor {
+        field: "title".to_string(),
+    };
     let mut doc = make_doc(vec![("title", Value::String("Hello WORLD".to_string()))]);
     proc.process(&mut doc).unwrap();
-    assert_eq!(doc.fields["title"], Value::String("hello world".to_string()));
+    assert_eq!(
+        doc.fields["title"],
+        Value::String("hello world".to_string())
+    );
 }
 
 #[test]
 fn test_lowercase_missing_field_errors() {
-    let proc = LowercaseProcessor { field: "missing".to_string() };
+    let proc = LowercaseProcessor {
+        field: "missing".to_string(),
+    };
     let mut doc = make_doc(vec![("title", Value::String("Hello".to_string()))]);
     assert!(proc.process(&mut doc).is_err());
 }
 
 #[test]
 fn test_lowercase_non_string_errors() {
-    let proc = LowercaseProcessor { field: "count".to_string() };
+    let proc = LowercaseProcessor {
+        field: "count".to_string(),
+    };
     let mut doc = make_doc(vec![("count", Value::Number(42.into()))]);
     assert!(proc.process(&mut doc).is_err());
 }
 
 #[test]
 fn test_html_strip_processor() {
-    let proc = HtmlStripProcessor { field: "content".to_string() };
-    let mut doc = make_doc(vec![
-        ("content", Value::String("<p>Hello <b>world</b></p>".to_string())),
-    ]);
+    let proc = HtmlStripProcessor {
+        field: "content".to_string(),
+    };
+    let mut doc = make_doc(vec![(
+        "content",
+        Value::String("<p>Hello <b>world</b></p>".to_string()),
+    )]);
     proc.process(&mut doc).unwrap();
-    assert_eq!(doc.fields["content"], Value::String("Hello world".to_string()));
+    assert_eq!(
+        doc.fields["content"],
+        Value::String("Hello world".to_string())
+    );
 }
 
 #[test]
 fn test_set_processor_static_value() {
-    let proc = SetProcessor { field: "status".to_string(), value: "indexed".to_string() };
+    let proc = SetProcessor {
+        field: "status".to_string(),
+        value: "indexed".to_string(),
+    };
     let mut doc = make_doc(vec![]);
     proc.process(&mut doc).unwrap();
     assert_eq!(doc.fields["status"], Value::String("indexed".to_string()));
@@ -52,17 +73,26 @@ fn test_set_processor_static_value() {
 
 #[test]
 fn test_set_processor_now_template() {
-    let proc = SetProcessor { field: "ts".to_string(), value: "{{_now}}".to_string() };
+    let proc = SetProcessor {
+        field: "ts".to_string(),
+        value: "{{_now}}".to_string(),
+    };
     let mut doc = make_doc(vec![]);
     proc.process(&mut doc).unwrap();
     // Should be an ISO8601 timestamp string
     let val = doc.fields["ts"].as_str().unwrap();
-    assert!(val.contains("T"), "Expected ISO8601 timestamp, got: {}", val);
+    assert!(
+        val.contains("T"),
+        "Expected ISO8601 timestamp, got: {}",
+        val
+    );
 }
 
 #[test]
 fn test_remove_processor() {
-    let proc = RemoveProcessor { field: "secret".to_string() };
+    let proc = RemoveProcessor {
+        field: "secret".to_string(),
+    };
     let mut doc = make_doc(vec![
         ("title", Value::String("hi".to_string())),
         ("secret", Value::String("password".to_string())),
@@ -74,7 +104,9 @@ fn test_remove_processor() {
 
 #[test]
 fn test_remove_missing_field_is_ok() {
-    let proc = RemoveProcessor { field: "nonexistent".to_string() };
+    let proc = RemoveProcessor {
+        field: "nonexistent".to_string(),
+    };
     let mut doc = make_doc(vec![]);
     // Removing a missing field should not error
     assert!(proc.process(&mut doc).is_ok());
@@ -82,7 +114,10 @@ fn test_remove_missing_field_is_ok() {
 
 #[test]
 fn test_rename_processor() {
-    let proc = RenameProcessor { from: "old".to_string(), to: "new".to_string() };
+    let proc = RenameProcessor {
+        from: "old".to_string(),
+        to: "new".to_string(),
+    };
     let mut doc = make_doc(vec![("old", Value::String("value".to_string()))]);
     proc.process(&mut doc).unwrap();
     assert!(!doc.fields.contains_key("old"));
@@ -91,7 +126,10 @@ fn test_rename_processor() {
 
 #[test]
 fn test_rename_missing_field_errors() {
-    let proc = RenameProcessor { from: "missing".to_string(), to: "new".to_string() };
+    let proc = RenameProcessor {
+        from: "missing".to_string(),
+        to: "new".to_string(),
+    };
     let mut doc = make_doc(vec![]);
     assert!(proc.process(&mut doc).is_err());
 }

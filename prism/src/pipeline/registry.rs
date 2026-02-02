@@ -1,8 +1,8 @@
+use super::processors::*;
+use super::Processor;
 use crate::backends::Document;
 use crate::error::Error;
 use crate::Result;
-use super::Processor;
-use super::processors::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -38,15 +38,24 @@ impl PipelineRegistry {
             return Ok(Self { pipelines });
         }
 
-        let entries = std::fs::read_dir(dir)
-            .map_err(|e| Error::Config(format!("Cannot read pipeline dir '{}': {}", dir.display(), e)))?;
+        let entries = std::fs::read_dir(dir).map_err(|e| {
+            Error::Config(format!(
+                "Cannot read pipeline dir '{}': {}",
+                dir.display(),
+                e
+            ))
+        })?;
 
         for entry in entries {
             let entry = entry.map_err(|e| Error::Config(e.to_string()))?;
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
-                let content = std::fs::read_to_string(&path)
-                    .map_err(|e| Error::Config(format!("Cannot read '{}': {}", path.display(), e)))?;
+            if path
+                .extension()
+                .map_or(false, |e| e == "yaml" || e == "yml")
+            {
+                let content = std::fs::read_to_string(&path).map_err(|e| {
+                    Error::Config(format!("Cannot read '{}': {}", path.display(), e))
+                })?;
                 let def: PipelineDef = serde_yaml::from_str(&content)?;
                 let pipeline = def.into_pipeline()?;
                 pipelines.insert(pipeline.name.clone(), pipeline);
@@ -71,7 +80,9 @@ impl PipelineRegistry {
 
     /// Create an empty registry.
     pub fn empty() -> Self {
-        Self { pipelines: HashMap::new() }
+        Self {
+            pipelines: HashMap::new(),
+        }
     }
 }
 
@@ -92,13 +103,17 @@ impl PipelineDef {
         let mut processors: Vec<Box<dyn Processor>> = Vec::with_capacity(self.processors.len());
 
         for entry in self.processors {
-            let map = entry.as_mapping()
-                .ok_or_else(|| Error::Config("processor entry must be a YAML mapping".to_string()))?;
+            let map = entry.as_mapping().ok_or_else(|| {
+                Error::Config("processor entry must be a YAML mapping".to_string())
+            })?;
             if map.len() != 1 {
-                return Err(Error::Config("each processor entry must have exactly one key".to_string()));
+                return Err(Error::Config(
+                    "each processor entry must have exactly one key".to_string(),
+                ));
             }
             let (key, params) = map.iter().next().unwrap();
-            let name = key.as_str()
+            let name = key
+                .as_str()
                 .ok_or_else(|| Error::Config("processor name must be a string".to_string()))?;
 
             let proc: Box<dyn Processor> = match name {
@@ -138,7 +153,8 @@ impl PipelineDef {
 }
 
 fn get_string_field(params: &serde_yaml::Value, field: &str) -> Result<String> {
-    params.get(field)
+    params
+        .get(field)
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| Error::Config(format!("missing or non-string field '{}'", field)))

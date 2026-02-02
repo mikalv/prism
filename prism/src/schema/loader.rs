@@ -57,7 +57,10 @@ impl SchemaLoader {
                 issues.push("vector.embedding_field must be set".to_string());
             }
             if !(0.0..=1.0).contains(&v.vector_weight) {
-                issues.push(format!("vector.vector_weight must be between 0.0 and 1.0 (got {})", v.vector_weight));
+                issues.push(format!(
+                    "vector.vector_weight must be between 0.0 and 1.0 (got {})",
+                    v.vector_weight
+                ));
             }
         }
         if let Some(t) = &schema.backends.text {

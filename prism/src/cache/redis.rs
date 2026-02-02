@@ -74,7 +74,9 @@ impl EmbeddingCache for RedisCache {
                 // Update access time
                 let now = chrono::Utc::now().timestamp();
                 let meta_key = format!("{}:meta", redis_key);
-                let _: Result<(), _> = conn.hset::<_, _, _, ()>(&meta_key, "accessed_at", now).await;
+                let _: Result<(), _> = conn
+                    .hset::<_, _, _, ()>(&meta_key, "accessed_at", now)
+                    .await;
                 Ok(Some(bytes_to_f32_vec(&bytes)))
             }
             None => {

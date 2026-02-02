@@ -115,9 +115,15 @@ mod tests {
 
     #[test]
     fn test_date_interval_from_str() {
-        assert_eq!(DateInterval::parse_interval("hour"), Some(DateInterval::Hour));
+        assert_eq!(
+            DateInterval::parse_interval("hour"),
+            Some(DateInterval::Hour)
+        );
         assert_eq!(DateInterval::parse_interval("Day"), Some(DateInterval::Day));
-        assert_eq!(DateInterval::parse_interval("WEEK"), Some(DateInterval::Week));
+        assert_eq!(
+            DateInterval::parse_interval("WEEK"),
+            Some(DateInterval::Week)
+        );
         assert_eq!(DateInterval::parse_interval("invalid"), None);
     }
 

@@ -1,16 +1,12 @@
-use axum::{
-    extract::Request,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, middleware::Next, response::Response};
 use chrono::Utc;
 use serde::Serialize;
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::types::AuthUser;
-use crate::collection::CollectionManager;
 use crate::backends::Document;
+use crate::collection::CollectionManager;
 
 /// Routes excluded from audit logging
 const AUDIT_SKIP: &[&str] = &["/health"];
@@ -31,15 +27,42 @@ pub struct AuditEvent {
 impl AuditEvent {
     pub fn to_document(&self) -> Document {
         let mut fields = std::collections::HashMap::new();
-        fields.insert("timestamp".to_string(), serde_json::Value::String(self.timestamp.clone()));
-        fields.insert("event_type".to_string(), serde_json::Value::String(self.event_type.clone()));
-        fields.insert("user".to_string(), serde_json::Value::String(self.user.clone().unwrap_or_default()));
-        fields.insert("roles".to_string(), serde_json::Value::String(self.roles.join(",")));
-        fields.insert("collection".to_string(), serde_json::Value::String(self.collection.clone().unwrap_or_default()));
-        fields.insert("action".to_string(), serde_json::Value::String(self.action.clone()));
-        fields.insert("status_code".to_string(), serde_json::json!(self.status_code));
-        fields.insert("client_ip".to_string(), serde_json::Value::String(self.client_ip.clone()));
-        fields.insert("duration_ms".to_string(), serde_json::json!(self.duration_ms));
+        fields.insert(
+            "timestamp".to_string(),
+            serde_json::Value::String(self.timestamp.clone()),
+        );
+        fields.insert(
+            "event_type".to_string(),
+            serde_json::Value::String(self.event_type.clone()),
+        );
+        fields.insert(
+            "user".to_string(),
+            serde_json::Value::String(self.user.clone().unwrap_or_default()),
+        );
+        fields.insert(
+            "roles".to_string(),
+            serde_json::Value::String(self.roles.join(",")),
+        );
+        fields.insert(
+            "collection".to_string(),
+            serde_json::Value::String(self.collection.clone().unwrap_or_default()),
+        );
+        fields.insert(
+            "action".to_string(),
+            serde_json::Value::String(self.action.clone()),
+        );
+        fields.insert(
+            "status_code".to_string(),
+            serde_json::json!(self.status_code),
+        );
+        fields.insert(
+            "client_ip".to_string(),
+            serde_json::Value::String(self.client_ip.clone()),
+        );
+        fields.insert(
+            "duration_ms".to_string(),
+            serde_json::json!(self.duration_ms),
+        );
 
         Document {
             id: uuid::Uuid::new_v4().to_string(),

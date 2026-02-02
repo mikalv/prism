@@ -1,9 +1,9 @@
+use prism::backends::r#trait::Document;
+use prism::backends::SearchBackend;
 use prism::backends::VectorBackend;
 use prism::schema::types::{Backends, CollectionSchema, VectorBackendConfig, VectorDistance};
-use prism::backends::r#trait::Document;
-use tempfile::TempDir;
 use std::sync::Arc;
-use prism::backends::SearchBackend;
+use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_initialize_collection() {
@@ -81,19 +81,44 @@ async fn test_index_and_search() {
 
     // Index two documents
     let mut fields1 = std::collections::HashMap::new();
-    fields1.insert("embedding".to_string(), serde_json::json!([1.0, 0.0, 0.0, 0.0]));
-    let doc1 = Document { id: "d1".to_string(), fields: fields1 };
+    fields1.insert(
+        "embedding".to_string(),
+        serde_json::json!([1.0, 0.0, 0.0, 0.0]),
+    );
+    let doc1 = Document {
+        id: "d1".to_string(),
+        fields: fields1,
+    };
 
     let mut fields2 = std::collections::HashMap::new();
-    fields2.insert("embedding".to_string(), serde_json::json!([0.0, 1.0, 0.0, 0.0]));
-    let doc2 = Document { id: "d2".to_string(), fields: fields2 };
+    fields2.insert(
+        "embedding".to_string(),
+        serde_json::json!([0.0, 1.0, 0.0, 0.0]),
+    );
+    let doc2 = Document {
+        id: "d2".to_string(),
+        fields: fields2,
+    };
 
-    SearchBackend::index(&backend, "test2", vec![doc1.clone(), doc2.clone()]).await.unwrap();
+    SearchBackend::index(&backend, "test2", vec![doc1.clone(), doc2.clone()])
+        .await
+        .unwrap();
 
     // Query with vector close to doc1
     let q = serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap();
-    let query = prism::backends::r#trait::Query { query_string: q, fields: vec![], limit: 10, offset: 0, merge_strategy: None, text_weight: None, vector_weight: None, highlight: None };
-    let results = SearchBackend::search(&backend, "test2", query).await.unwrap();
+    let query = prism::backends::r#trait::Query {
+        query_string: q,
+        fields: vec![],
+        limit: 10,
+        offset: 0,
+        merge_strategy: None,
+        text_weight: None,
+        vector_weight: None,
+        highlight: None,
+    };
+    let results = SearchBackend::search(&backend, "test2", query)
+        .await
+        .unwrap();
     assert_eq!(results.total, 2);
     assert_eq!(results.results[0].id, "d1");
 }

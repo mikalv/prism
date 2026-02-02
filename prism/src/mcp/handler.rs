@@ -79,7 +79,9 @@ impl McpHandler {
             "tools/list" => self.handle_tools_list(req.id).await,
             "tools/call" => self.handle_tools_call(req.id, req.params).await,
             "ping" => JsonRpcResponse::success(req.id, json!({})),
-            _ => JsonRpcResponse::error(req.id, -32601, &format!("Method not found: {}", req.method)),
+            _ => {
+                JsonRpcResponse::error(req.id, -32601, &format!("Method not found: {}", req.method))
+            }
         }
     }
 

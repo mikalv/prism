@@ -63,7 +63,9 @@ where
     if tokio::runtime::Handle::try_current().is_ok() {
         // We're in an async context - use a thread to avoid nesting
         std::thread::scope(|s| {
-            s.spawn(move || handle.block_on(f)).join().expect("Thread panicked")
+            s.spawn(move || handle.block_on(f))
+                .join()
+                .expect("Thread panicked")
         })
     } else {
         // Not in async context - use block_on directly
@@ -106,7 +108,12 @@ impl RuntimeWrapper {
     }
 
     fn handle(&self) -> tokio::runtime::Handle {
-        self.inner.lock().as_ref().expect("Runtime already dropped").handle().clone()
+        self.inner
+            .lock()
+            .as_ref()
+            .expect("Runtime already dropped")
+            .handle()
+            .clone()
     }
 }
 
@@ -213,15 +220,18 @@ impl TantivyStorageAdapter {
         let storage_path = self.to_storage_path(path);
         let storage = self.storage.clone();
 
-        block_on_safe(&self.runtime, async move { storage.head(&storage_path).await })
-            .map(|meta| meta.size as usize)
-            .map_err(|e| match e {
-                StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path.to_path_buf()),
-                _ => OpenReadError::wrap_io_error(
-                    io::Error::new(io::ErrorKind::Other, e.to_string()),
-                    path.to_path_buf(),
-                ),
-            })
+        block_on_safe(
+            &self.runtime,
+            async move { storage.head(&storage_path).await },
+        )
+        .map(|meta| meta.size as usize)
+        .map_err(|e| match e {
+            StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path.to_path_buf()),
+            _ => OpenReadError::wrap_io_error(
+                io::Error::new(io::ErrorKind::Other, e.to_string()),
+                path.to_path_buf(),
+            ),
+        })
     }
 }
 
@@ -432,13 +442,16 @@ impl Directory for TantivyStorageAdapter {
         let storage = self.storage.clone();
         let path_buf = path.to_path_buf();
 
-        block_on_safe(&self.runtime, async move { storage.exists(&storage_path).await })
-            .map_err(|e| {
-                OpenReadError::wrap_io_error(
-                    io::Error::new(io::ErrorKind::Other, e.to_string()),
-                    path_buf,
-                )
-            })
+        block_on_safe(
+            &self.runtime,
+            async move { storage.exists(&storage_path).await },
+        )
+        .map_err(|e| {
+            OpenReadError::wrap_io_error(
+                io::Error::new(io::ErrorKind::Other, e.to_string()),
+                path_buf,
+            )
+        })
     }
 
     fn atomic_read(&self, path: &Path) -> Result<Vec<u8>, OpenReadError> {
@@ -447,15 +460,18 @@ impl Directory for TantivyStorageAdapter {
         let storage = self.storage.clone();
         let path_buf = path.to_path_buf();
 
-        block_on_safe(&self.runtime, async move { storage.read(&storage_path).await })
-            .map(|b| b.to_vec())
-            .map_err(|e| match e {
-                StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path_buf),
-                _ => OpenReadError::wrap_io_error(
-                    io::Error::new(io::ErrorKind::Other, e.to_string()),
-                    path_buf,
-                ),
-            })
+        block_on_safe(
+            &self.runtime,
+            async move { storage.read(&storage_path).await },
+        )
+        .map(|b| b.to_vec())
+        .map_err(|e| match e {
+            StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path_buf),
+            _ => OpenReadError::wrap_io_error(
+                io::Error::new(io::ErrorKind::Other, e.to_string()),
+                path_buf,
+            ),
+        })
     }
 
     fn atomic_write(&self, path: &Path, data: &[u8]) -> io::Result<()> {
@@ -491,11 +507,14 @@ impl Directory for TantivyStorageAdapter {
         let storage = self.storage.clone();
         let path_buf = path.to_path_buf();
 
-        block_on_safe(&self.runtime, async move { storage.delete(&storage_path).await })
-            .map_err(|e| DeleteError::IoError {
-                io_error: Arc::new(io::Error::new(io::ErrorKind::Other, e.to_string())),
-                filepath: path_buf,
-            })?;
+        block_on_safe(
+            &self.runtime,
+            async move { storage.delete(&storage_path).await },
+        )
+        .map_err(|e| DeleteError::IoError {
+            io_error: Arc::new(io::Error::new(io::ErrorKind::Other, e.to_string())),
+            filepath: path_buf,
+        })?;
 
         // Update cache
         {
@@ -548,13 +567,9 @@ mod tests {
         let buffer_dir = TempDir::new().unwrap();
 
         let storage = Arc::new(LocalStorage::new(storage_dir.path()));
-        let adapter = TantivyStorageAdapter::new(
-            storage,
-            "test-collection",
-            "shard_0",
-            buffer_dir.path(),
-        )
-        .unwrap();
+        let adapter =
+            TantivyStorageAdapter::new(storage, "test-collection", "shard_0", buffer_dir.path())
+                .unwrap();
 
         (storage_dir, buffer_dir, adapter)
     }
