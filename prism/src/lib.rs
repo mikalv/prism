@@ -8,6 +8,7 @@ pub mod embedding;
 pub mod error;
 pub mod mcp;
 pub mod migration;
+pub mod pipeline;
 pub mod query;
 pub mod ranking;
 pub mod schema;
