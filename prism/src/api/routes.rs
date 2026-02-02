@@ -1,3 +1,4 @@
+use crate::api::server::AppState;
 use crate::backends::{Document, Query, SearchResults, SearchResult, HighlightConfig};
 use crate::collection::CollectionManager;
 use axum::{
@@ -158,25 +159,104 @@ pub struct IndexRequest {
     pub documents: Vec<Document>,
 }
 
+#[derive(Deserialize)]
+pub struct IndexQuery {
+    pub pipeline: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct IndexResponse {
+    pub indexed: usize,
+    pub failed: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<IndexError>,
+}
+
+#[derive(Serialize)]
+pub struct IndexError {
+    pub doc_id: String,
+    pub error: String,
+}
+
 pub async fn index_documents(
     Path(collection): Path<String>,
-    State(manager): State<Arc<CollectionManager>>,
+    axum::extract::Query(query): axum::extract::Query<IndexQuery>,
+    State(state): State<AppState>,
     Json(request): Json<IndexRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let doc_count = request.documents.len();
-    tracing::info!("Indexing {} documents to collection '{}'", doc_count, collection);
+) -> Result<(StatusCode, Json<IndexResponse>), StatusCode> {
+    let mut documents = request.documents;
+    let total = documents.len();
+    tracing::info!("Indexing {} documents to collection '{}'", total, collection);
 
-    manager
-        .index(&collection, request.documents)
-        .await
-        .map(|_| {
-            tracing::info!("Successfully indexed {} documents to '{}'", doc_count, collection);
-            StatusCode::CREATED
+    // Apply pipeline if specified
+    let mut errors = Vec::new();
+    if let Some(ref pipeline_name) = query.pipeline {
+        let pipeline = state.pipeline_registry.get(pipeline_name)
+            .ok_or_else(|| {
+                tracing::warn!("Unknown pipeline: {}", pipeline_name);
+                StatusCode::BAD_REQUEST
+            })?;
+
+        let mut processed = Vec::with_capacity(documents.len());
+        for mut doc in documents {
+            match pipeline.process(&mut doc) {
+                Ok(()) => processed.push(doc),
+                Err(e) => {
+                    errors.push(IndexError {
+                        doc_id: doc.id.clone(),
+                        error: e.to_string(),
+                    });
+                }
+            }
+        }
+        documents = processed;
+    }
+
+    let indexed = documents.len();
+    let failed = errors.len();
+
+    if !documents.is_empty() {
+        state.manager
+            .index(&collection, documents)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
+    tracing::info!("Indexed {}/{} documents to '{}' ({} failed)", indexed, total, collection, failed);
+    Ok((StatusCode::CREATED, Json(IndexResponse { indexed, failed, errors })))
+}
+
+// ============================================================================
+// Pipeline Admin API (Issue #44)
+// ============================================================================
+
+#[derive(Serialize)]
+pub struct PipelineInfo {
+    pub name: String,
+    pub description: String,
+    pub processor_count: usize,
+}
+
+#[derive(Serialize)]
+pub struct PipelineListResponse {
+    pub pipelines: Vec<PipelineInfo>,
+}
+
+pub async fn list_pipelines(
+    State(state): State<AppState>,
+) -> Json<PipelineListResponse> {
+    let pipelines = state.pipeline_registry.list()
+        .into_iter()
+        .map(|(name, desc, count)| PipelineInfo {
+            name,
+            description: desc,
+            processor_count: count,
         })
-        .map_err(|e| {
-            tracing::error!("Failed to index {} documents to '{}': {:?}", doc_count, collection, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+        .collect();
+    Json(PipelineListResponse { pipelines })
 }
 
 pub async fn get_document(

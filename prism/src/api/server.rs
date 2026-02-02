@@ -1,5 +1,6 @@
 use crate::collection::CollectionManager;
 use crate::config::{CorsConfig, SecurityConfig, TlsConfig};
+use crate::pipeline::registry::PipelineRegistry;
 use crate::security::permissions::PermissionChecker;
 use crate::Result;
 use axum::{
@@ -29,6 +30,7 @@ pub struct AppState {
     pub manager: Arc<CollectionManager>,
     pub session_manager: Arc<SessionManager>,
     pub mcp_handler: Arc<McpHandler>,
+    pub pipeline_registry: Arc<PipelineRegistry>,
 }
 
 pub struct ApiServer {
@@ -37,6 +39,7 @@ pub struct ApiServer {
     mcp_handler: Arc<McpHandler>,
     cors_config: CorsConfig,
     security_config: SecurityConfig,
+    pipeline_registry: Arc<PipelineRegistry>,
 }
 
 impl ApiServer {
@@ -53,6 +56,15 @@ impl ApiServer {
         cors_config: CorsConfig,
         security_config: SecurityConfig,
     ) -> Self {
+        Self::with_pipelines(manager, cors_config, security_config, PipelineRegistry::empty())
+    }
+
+    pub fn with_pipelines(
+        manager: Arc<CollectionManager>,
+        cors_config: CorsConfig,
+        security_config: SecurityConfig,
+        pipeline_registry: PipelineRegistry,
+    ) -> Self {
         // Initialize MCP components
         let session_manager = Arc::new(SessionManager::new());
         let mut tool_registry = ToolRegistry::new();
@@ -66,6 +78,7 @@ impl ApiServer {
             mcp_handler,
             cors_config,
             security_config,
+            pipeline_registry: Arc::new(pipeline_registry),
         }
     }
 
@@ -184,7 +197,20 @@ impl ApiServer {
             manager: self.manager.clone(),
             session_manager: self.session_manager.clone(),
             mcp_handler: self.mcp_handler.clone(),
+            pipeline_registry: self.pipeline_registry.clone(),
         };
+
+        // Pipeline-aware routes that need AppState
+        let pipeline_routes = Router::new()
+            .route(
+                "/collections/:collection/documents",
+                post(crate::api::routes::index_documents),
+            )
+            .route(
+                "/admin/pipelines",
+                get(crate::api::routes::list_pipelines),
+            )
+            .with_state(app_state.clone());
 
         // Routes that use Arc<CollectionManager>
         let legacy_routes = Router::new()
@@ -192,10 +218,6 @@ impl ApiServer {
             .route(
                 "/collections/:collection/search",
                 post(crate::api::routes::search),
-            )
-            .route(
-                "/collections/:collection/documents",
-                post(crate::api::routes::index_documents),
             )
             .route(
                 "/collections/:collection/documents/:id",
@@ -272,6 +294,7 @@ impl ApiServer {
         // Merge routers
         let mut app = Router::new()
             .merge(legacy_routes)
+            .merge(pipeline_routes)
             .merge(mcp_routes)
             .layer(cors)
             .layer(TraceLayer::new_for_http());

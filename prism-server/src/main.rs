@@ -59,11 +59,18 @@ async fn main() -> Result<()> {
     );
     manager.initialize().await?;
 
+    // Load ingest pipelines
+    let config_dir = std::path::Path::new(&args.config).parent().unwrap_or(std::path::Path::new("."));
+    let pipelines_dir = config_dir.join("conf/pipelines");
+    let pipeline_registry = prism::pipeline::registry::PipelineRegistry::load(&pipelines_dir)?;
+    tracing::info!("Loaded ingest pipelines from {}", pipelines_dir.display());
+
     // Create and start server
-    let server = prism::api::ApiServer::with_security(
+    let server = prism::api::ApiServer::with_pipelines(
         manager,
         config.server.cors.clone(),
         config.security.clone(),
+        pipeline_registry,
     );
 
     let tls = if config.server.tls.enabled {

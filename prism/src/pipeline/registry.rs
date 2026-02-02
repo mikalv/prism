@@ -1,3 +1,4 @@
+use crate::backends::Document;
 use crate::error::Error;
 use crate::Result;
 use super::Processor;
