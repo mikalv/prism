@@ -1,6 +1,6 @@
 // Model download and caching
 
-#[cfg(feature = "embedding-gen")]
+#[cfg(feature = "provider-onnx")]
 mod _inner {
     use anyhow::{Context, Result};
     use std::path::{Path, PathBuf};
@@ -117,5 +117,5 @@ mod _inner {
 
 }
 
-#[cfg(feature = "embedding-gen")]
+#[cfg(feature = "provider-onnx")]
 pub use _inner::{ModelCache, ModelConfig};

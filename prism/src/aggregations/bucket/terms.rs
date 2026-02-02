@@ -111,6 +111,8 @@ impl TermsAgg {
                 buckets.push(Bucket {
                     key: term,
                     doc_count: count,
+                    from: None,
+                    to: None,
                     sub_aggs: None,
                 });
             }

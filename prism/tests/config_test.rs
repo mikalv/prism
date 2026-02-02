@@ -3,6 +3,7 @@
 use prism::config::{Config, expand_tilde};
 use std::path::PathBuf;
 use tempfile::tempdir;
+use std::collections::HashMap;
 
 #[test]
 fn test_default_config() {
@@ -122,4 +123,106 @@ file = "/var/log/engraph.log"
     assert_eq!(config.embedding.model, "other-model");
     assert_eq!(config.logging.level, "trace");
     assert_eq!(config.logging.file, Some(PathBuf::from("/var/log/engraph.log")));
+}
+
+#[test]
+fn test_default_tls_config() {
+    let config = Config::default();
+    assert!(!config.server.tls.enabled);
+    assert_eq!(config.server.tls.bind_addr, "127.0.0.1:3443");
+    assert_eq!(config.server.tls.cert_path, PathBuf::from("./conf/tls/cert.pem"));
+    assert_eq!(config.server.tls.key_path, PathBuf::from("./conf/tls/key.pem"));
+}
+
+#[test]
+fn test_parse_toml_with_tls() {
+    let toml_content = r#"
+[server]
+bind_addr = "0.0.0.0:3080"
+
+[server.tls]
+enabled = true
+bind_addr = "0.0.0.0:3443"
+cert_path = "/etc/prism/cert.pem"
+key_path = "/etc/prism/key.pem"
+
+[storage]
+data_dir = "/tmp/prism"
+"#;
+
+    let config: Config = toml::from_str(toml_content).unwrap();
+    assert!(config.server.tls.enabled);
+    assert_eq!(config.server.tls.bind_addr, "0.0.0.0:3443");
+    assert_eq!(config.server.tls.cert_path, PathBuf::from("/etc/prism/cert.pem"));
+    assert_eq!(config.server.tls.key_path, PathBuf::from("/etc/prism/key.pem"));
+}
+
+#[test]
+fn test_parse_toml_without_tls_section() {
+    let toml_content = r#"
+[server]
+bind_addr = "127.0.0.1:3080"
+
+[storage]
+data_dir = "/tmp/prism"
+"#;
+
+    let config: Config = toml::from_str(toml_content).unwrap();
+    assert!(!config.server.tls.enabled);
+    assert_eq!(config.server.tls.bind_addr, "127.0.0.1:3443");
+}
+
+#[test]
+fn test_default_security_config() {
+    let config = Config::default();
+    assert!(!config.security.enabled);
+    assert!(config.security.api_keys.is_empty());
+    assert!(config.security.roles.is_empty());
+    assert!(!config.security.audit.enabled);
+    assert!(config.security.audit.index_to_collection);
+}
+
+#[test]
+fn test_parse_security_config() {
+    let toml_content = r#"
+[security]
+enabled = true
+
+[[security.api_keys]]
+key = "prism_ak_test123"
+name = "test-service"
+roles = ["analyst"]
+
+[security.roles.analyst]
+collections = { "logs-*" = ["read", "search"] }
+
+[security.roles.admin]
+collections = { "*" = ["*"] }
+
+[security.audit]
+enabled = true
+index_to_collection = false
+"#;
+
+    let config: Config = toml::from_str(toml_content).unwrap();
+    assert!(config.security.enabled);
+    assert_eq!(config.security.api_keys.len(), 1);
+    assert_eq!(config.security.api_keys[0].name, "test-service");
+    assert_eq!(config.security.api_keys[0].roles, vec!["analyst"]);
+    assert_eq!(config.security.roles.len(), 2);
+    assert!(config.security.roles.contains_key("analyst"));
+    assert!(config.security.roles.contains_key("admin"));
+    assert!(config.security.audit.enabled);
+    assert!(!config.security.audit.index_to_collection);
+}
+
+#[test]
+fn test_parse_config_without_security_section() {
+    let toml_content = r#"
+[server]
+bind_addr = "127.0.0.1:3080"
+"#;
+    let config: Config = toml::from_str(toml_content).unwrap();
+    assert!(!config.security.enabled);
+    assert!(config.security.api_keys.is_empty());
 }

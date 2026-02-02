@@ -9,6 +9,7 @@ pub use storage::{CacheStorageConfig, S3StorageConfig, UnifiedStorageConfig};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Main configuration
@@ -26,6 +27,8 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -35,6 +38,8 @@ pub struct ServerConfig {
     pub unix_socket: Option<PathBuf>,
     #[serde(default)]
     pub cors: CorsConfig,
+    #[serde(default)]
+    pub tls: TlsConfig,
 }
 
 fn default_bind_addr() -> String {
@@ -47,6 +52,7 @@ impl Default for ServerConfig {
             bind_addr: default_bind_addr(),
             unix_socket: None,
             cors: CorsConfig::default(),
+            tls: TlsConfig::default(),
         }
     }
 }
@@ -76,6 +82,95 @@ impl Default for CorsConfig {
         Self {
             enabled: true,
             origins: default_cors_origins(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_tls_bind_addr")]
+    pub bind_addr: String,
+    #[serde(default = "default_tls_cert_path")]
+    pub cert_path: PathBuf,
+    #[serde(default = "default_tls_key_path")]
+    pub key_path: PathBuf,
+}
+
+fn default_tls_bind_addr() -> String {
+    "127.0.0.1:3443".to_string()
+}
+
+fn default_tls_cert_path() -> PathBuf {
+    PathBuf::from("./conf/tls/cert.pem")
+}
+
+fn default_tls_key_path() -> PathBuf {
+    PathBuf::from("./conf/tls/key.pem")
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind_addr: default_tls_bind_addr(),
+            cert_path: default_tls_cert_path(),
+            key_path: default_tls_key_path(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub api_keys: Vec<ApiKeyConfig>,
+    #[serde(default)]
+    pub roles: HashMap<String, RoleConfig>,
+    #[serde(default)]
+    pub audit: AuditConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApiKeyConfig {
+    pub key: String,
+    pub name: String,
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RoleConfig {
+    #[serde(default)]
+    pub collections: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AuditConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub index_to_collection: bool,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_keys: Vec::new(),
+            roles: HashMap::new(),
+            audit: AuditConfig::default(),
+        }
+    }
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            index_to_collection: true,
         }
     }
 }
@@ -160,6 +255,7 @@ impl Default for Config {
             unified_storage: None,
             embedding: EmbeddingConfig::default(),
             logging: LoggingConfig::default(),
+            security: SecurityConfig::default(),
         }
     }
 }
@@ -234,6 +330,10 @@ impl Config {
         self.storage.data_dir = expand_tilde(&self.storage.data_dir)?;
         if let Some(ref sock) = self.server.unix_socket {
             self.server.unix_socket = Some(expand_tilde(sock)?);
+        }
+        if self.server.tls.enabled {
+            self.server.tls.cert_path = expand_tilde(&self.server.tls.cert_path)?;
+            self.server.tls.key_path = expand_tilde(&self.server.tls.key_path)?;
         }
         if let Some(ref f) = self.logging.file {
             self.logging.file = Some(expand_tilde(f)?);

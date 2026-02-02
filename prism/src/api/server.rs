@@ -1,5 +1,6 @@
 use crate::collection::CollectionManager;
-use crate::config::CorsConfig;
+use crate::config::{CorsConfig, SecurityConfig, TlsConfig};
+use crate::security::permissions::PermissionChecker;
 use crate::Result;
 use axum::{
     extract::State,
@@ -14,6 +15,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tokio_rustls::TlsAcceptor;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -34,6 +36,7 @@ pub struct ApiServer {
     session_manager: Arc<SessionManager>,
     mcp_handler: Arc<McpHandler>,
     cors_config: CorsConfig,
+    security_config: SecurityConfig,
 }
 
 impl ApiServer {
@@ -42,6 +45,14 @@ impl ApiServer {
     }
 
     pub fn with_cors(manager: Arc<CollectionManager>, cors_config: CorsConfig) -> Self {
+        Self::with_security(manager, cors_config, SecurityConfig::default())
+    }
+
+    pub fn with_security(
+        manager: Arc<CollectionManager>,
+        cors_config: CorsConfig,
+        security_config: SecurityConfig,
+    ) -> Self {
         // Initialize MCP components
         let session_manager = Arc::new(SessionManager::new());
         let mut tool_registry = ToolRegistry::new();
@@ -54,6 +65,7 @@ impl ApiServer {
             session_manager,
             mcp_handler,
             cors_config,
+            security_config,
         }
     }
 
@@ -225,6 +237,16 @@ impl ApiServer {
                 "/collections/:collection/doc/:id/reconstruct",
                 get(crate::api::routes::reconstruct_document),
             )
+            // Suggestions / Autocomplete API (Issue #47)
+            .route(
+                "/collections/:collection/_suggest",
+                post(crate::api::routes::suggest),
+            )
+            // More Like This API (Issue #48)
+            .route(
+                "/collections/:collection/_mlt",
+                post(crate::api::routes::more_like_this),
+            )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",
@@ -236,7 +258,6 @@ impl ApiServer {
                 post(crate::api::mnemos_compat::session_init),
             )
             .route("/api/context", post(crate::api::mnemos_compat::context))
-            .route("/api/search", post(crate::api::mnemos_compat::search))
             .with_state(self.manager.clone());
 
         // MCP SSE routes that use AppState
@@ -249,21 +270,144 @@ impl ApiServer {
         let cors = self.build_cors_layer();
 
         // Merge routers
-        Router::new()
+        let mut app = Router::new()
             .merge(legacy_routes)
             .merge(mcp_routes)
             .layer(cors)
-            .layer(TraceLayer::new_for_http())
+            .layer(TraceLayer::new_for_http());
+
+        // Add audit middleware (independent of security.enabled)
+        if self.security_config.audit.enabled {
+            let mgr = self.manager.clone();
+            let index = self.security_config.audit.index_to_collection;
+            app = app.layer(axum::middleware::from_fn(move |req, next| {
+                crate::security::audit::audit_middleware(mgr.clone(), index, req, next)
+            }));
+        }
+
+        // Add auth middleware (only when security.enabled)
+        // Added last so it runs first (tower layers are LIFO)
+        if self.security_config.enabled {
+            let checker = Arc::new(PermissionChecker::new(&self.security_config));
+            app = app.layer(axum::middleware::from_fn(move |req, next| {
+                crate::security::middleware::auth_middleware(checker.clone(), req, next)
+            }));
+        }
+
+        app
     }
 
-    pub async fn serve(self, addr: &str) -> Result<()> {
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        tracing::info!("Server listening on {}", addr);
+    pub async fn serve(self, addr: &str, tls_config: Option<&TlsConfig>) -> Result<()> {
+        let router = self.router();
 
-        axum::serve(listener, self.router())
-            .await
-            .map_err(|e| crate::Error::Backend(e.to_string()))?;
+        let tls_enabled = tls_config.map_or(false, |t| t.enabled);
+
+        if tls_enabled {
+            let tls = tls_config.unwrap();
+            let rustls_config = load_rustls_config(tls)?;
+            let acceptor = TlsAcceptor::from(Arc::new(rustls_config));
+
+            // Spawn HTTP listener
+            let http_router = router.clone();
+            let http_addr = addr.to_string();
+            let http_handle = tokio::spawn(async move {
+                let listener = tokio::net::TcpListener::bind(&http_addr).await?;
+                tracing::info!("HTTP server listening on {}", http_addr);
+                axum::serve(listener, http_router)
+                    .await
+                    .map_err(|e| crate::Error::Backend(e.to_string()))
+            });
+
+            // Run TLS accept loop
+            let tls_addr = tls.bind_addr.clone();
+            let tls_handle = tokio::spawn(async move {
+                let listener = tokio::net::TcpListener::bind(&tls_addr).await?;
+                tracing::info!("HTTPS server listening on {}", tls_addr);
+
+                loop {
+                    let (tcp_stream, peer_addr) = listener.accept().await?;
+                    let acceptor = acceptor.clone();
+                    let svc = router.clone();
+
+                    tokio::spawn(async move {
+                        let tls_stream = match acceptor.accept(tcp_stream).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                tracing::debug!("TLS handshake failed from {}: {}", peer_addr, e);
+                                return;
+                            }
+                        };
+
+                        let io = hyper_util::rt::TokioIo::new(tls_stream);
+                        let hyper_svc =
+                            hyper_util::service::TowerToHyperService::new(svc);
+                        let builder = hyper_util::server::conn::auto::Builder::new(
+                            hyper_util::rt::TokioExecutor::new(),
+                        );
+
+                        if let Err(e) = builder
+                            .serve_connection(io, hyper_svc)
+                            .await
+                        {
+                            tracing::debug!("HTTPS connection error from {}: {}", peer_addr, e);
+                        }
+                    });
+                }
+
+                #[allow(unreachable_code)]
+                Ok::<(), crate::Error>(())
+            });
+
+            tokio::select! {
+                res = http_handle => {
+                    res.map_err(|e| crate::Error::Backend(format!("HTTP task panicked: {}", e)))??;
+                }
+                res = tls_handle => {
+                    res.map_err(|e| crate::Error::Backend(format!("HTTPS task panicked: {}", e)))??;
+                }
+            }
+        } else {
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            tracing::info!("Server listening on {}", addr);
+            axum::serve(listener, router)
+                .await
+                .map_err(|e| crate::Error::Backend(e.to_string()))?;
+        }
 
         Ok(())
     }
+}
+
+fn load_rustls_config(tls: &TlsConfig) -> crate::Result<rustls::ServerConfig> {
+    let cert_file = std::fs::File::open(&tls.cert_path).map_err(|e| {
+        crate::Error::Config(format!(
+            "Cannot open TLS cert '{}': {}. Run bin/generate-cert.sh to create a self-signed certificate.",
+            tls.cert_path.display(), e
+        ))
+    })?;
+    let key_file = std::fs::File::open(&tls.key_path).map_err(|e| {
+        crate::Error::Config(format!(
+            "Cannot open TLS key '{}': {}. Run bin/generate-cert.sh to create a self-signed certificate.",
+            tls.key_path.display(), e
+        ))
+    })?;
+
+    let certs: Vec<_> = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_file))
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|e| crate::Error::Config(format!("Failed to parse TLS certs: {}", e)))?;
+
+    let key = rustls_pemfile::private_key(&mut std::io::BufReader::new(key_file))
+        .map_err(|e| crate::Error::Config(format!("Failed to parse TLS key: {}", e)))?
+        .ok_or_else(|| crate::Error::Config("No private key found in key file".into()))?;
+
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| crate::Error::Config(format!("Invalid TLS protocol config: {}", e)))?
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| crate::Error::Config(format!("Invalid TLS config: {}", e)))?;
+
+    Ok(config)
 }

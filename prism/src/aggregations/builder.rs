@@ -1,4 +1,5 @@
-use crate::aggregations::types::AggregationType;
+use crate::aggregations::types::{AggregationType, HistogramBounds, RangeEntry};
+use std::collections::HashMap;
 
 impl AggregationType {
     pub fn count() -> AggregationType {
@@ -36,13 +37,48 @@ impl AggregationType {
     }
 
     pub fn histogram(field: String, interval: f64) -> AggregationType {
-        AggregationType::Histogram { field, interval }
+        AggregationType::Histogram {
+            field,
+            interval,
+            min_doc_count: None,
+            extended_bounds: None,
+        }
+    }
+
+    pub fn histogram_with_bounds(field: String, interval: f64, min: f64, max: f64) -> AggregationType {
+        AggregationType::Histogram {
+            field,
+            interval,
+            min_doc_count: None,
+            extended_bounds: Some(HistogramBounds { min, max }),
+        }
     }
 
     pub fn date_histogram(field: String, calendar_interval: String) -> AggregationType {
         AggregationType::DateHistogram {
             field,
             calendar_interval,
+            min_doc_count: None,
         }
+    }
+
+    pub fn percentiles(field: String, percents: Vec<f64>) -> AggregationType {
+        AggregationType::Percentiles { field, percents }
+    }
+
+    pub fn range(field: String, ranges: Vec<RangeEntry>) -> AggregationType {
+        AggregationType::Range { field, ranges }
+    }
+
+    pub fn filter(filter: String) -> AggregationType {
+        AggregationType::Filter { filter }
+    }
+
+    pub fn filters(filters: HashMap<String, String>) -> AggregationType {
+        AggregationType::Filters { filters }
+    }
+
+    pub fn global() -> AggregationType {
+        AggregationType::Global {}
     }
 }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["prism", "prism-server", "prism-cli", "prism-storage"]
+members = ["prism", "prism-server", "prism-cli", "prism-storage", "xtask"]
 
 [workspace.package]
 version = "0.3.0"
@@ -38,6 +38,11 @@ reqwest = { version = "0.12", features = ["json"] }
 axum = "0.7"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["trace", "cors"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+rustls-pemfile = "2"
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2", "service"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

@@ -1,4 +1,4 @@
-use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResults, TextBackend, VectorBackend, HybridSearchCoordinator};
+use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResults, SearchResultsWithAggs, TextBackend, VectorBackend, HybridSearchCoordinator};
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -103,6 +103,30 @@ impl CollectionManager {
 
         if schema.backends.text.is_some() {
             return self.text_backend.search(collection, query).await;
+        }
+
+        Err(Error::Backend(
+            "No backend available for collection".to_string(),
+        ))
+    }
+
+    pub async fn search_with_aggs(
+        &self,
+        collection: &str,
+        query: &Query,
+        aggregations: Vec<crate::aggregations::AggregationRequest>,
+    ) -> Result<SearchResultsWithAggs> {
+        let schema = self
+            .schemas
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        if let Some(backend) = self.per_collection_backends.get(collection) {
+            return backend.search_with_aggs(collection, query, aggregations).await;
+        }
+
+        if schema.backends.text.is_some() {
+            return self.text_backend.search_with_aggs(collection, query, aggregations).await;
         }
 
         Err(Error::Backend(
@@ -233,6 +257,7 @@ impl CollectionManager {
                 merge_strategy: None,
                 text_weight: None,
                 vector_weight: None,
+                highlight: None,
             };
             return self.text_backend.search(collection, query).await;
         }
@@ -248,6 +273,7 @@ impl CollectionManager {
                 merge_strategy: None,
                 text_weight: None,
                 vector_weight: None,
+                highlight: None,
             };
             return self.vector_backend.search(collection, query).await;
         }
@@ -263,6 +289,7 @@ impl CollectionManager {
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         let vec_query_obj = Query {
@@ -273,6 +300,7 @@ impl CollectionManager {
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         // Run searches in parallel
@@ -312,6 +340,37 @@ impl CollectionManager {
         limit: usize,
     ) -> Result<Vec<crate::backends::text::TermInfo>> {
         self.text_backend.get_top_terms(collection, field, limit)
+    }
+
+    /// Find documents similar to a given document or text.
+    pub fn more_like_this(
+        &self,
+        collection: &str,
+        doc_id: Option<&str>,
+        like_text: Option<&str>,
+        fields: &[String],
+        min_term_freq: usize,
+        min_doc_freq: u64,
+        max_query_terms: usize,
+        size: usize,
+    ) -> Result<SearchResults> {
+        self.text_backend.more_like_this(
+            collection, doc_id, like_text, fields,
+            min_term_freq, min_doc_freq, max_query_terms, size,
+        )
+    }
+
+    /// Suggest terms from the index using prefix matching and optional fuzzy correction.
+    pub fn suggest(
+        &self,
+        collection: &str,
+        field: &str,
+        prefix: &str,
+        size: usize,
+        fuzzy: bool,
+        max_distance: usize,
+    ) -> Result<Vec<crate::backends::text::SuggestEntry>> {
+        self.text_backend.suggest_terms(collection, field, prefix, size, fuzzy, max_distance)
     }
 
     /// Get segment information for a collection.
@@ -388,6 +447,7 @@ backends:
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         let results = manager.search("articles", query).await?;

@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.75-slim-bookworm AS builder
+FROM rust:1.93-slim-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -14,25 +14,31 @@ COPY Cargo.toml Cargo.lock ./
 COPY prism/Cargo.toml prism/
 COPY prism-server/Cargo.toml prism-server/
 COPY prism-cli/Cargo.toml prism-cli/
+COPY prism-storage/Cargo.toml prism-storage/
+COPY xtask/Cargo.toml xtask/
 
 # Create dummy src files for dependency caching
-RUN mkdir -p prism/src prism-server/src prism-cli/src && \
+RUN mkdir -p prism/src prism-server/src prism-cli/src prism-storage/src xtask/src && \
     echo "pub fn main() {}" > prism/src/lib.rs && \
     echo "fn main() {}" > prism-server/src/main.rs && \
-    echo "fn main() {}" > prism-cli/src/main.rs
+    echo "fn main() {}" > prism-cli/src/main.rs && \
+    echo "" > prism-storage/src/lib.rs && \
+    echo "fn main() {}" > xtask/src/main.rs
 
 # Build dependencies only
 RUN cargo build --release --workspace && \
-    rm -rf prism/src prism-server/src prism-cli/src
+    rm -rf prism/src prism-server/src prism-cli/src prism-storage/src xtask/src
 
 # Copy actual source
 COPY prism/src prism/src
 COPY prism-server/src prism-server/src
 COPY prism-cli/src prism-cli/src
+COPY prism-storage/src prism-storage/src
+COPY xtask/src xtask/src
 COPY prism/tests prism/tests
 
 # Touch source files to invalidate cache and rebuild
-RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs
+RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs prism-storage/src/lib.rs xtask/src/main.rs
 
 # Build release binaries
 RUN cargo build --release --workspace

@@ -104,6 +104,7 @@ async fn test_search_with_facets() {
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager.search("logs", query).await.expect("Search failed");
@@ -142,6 +143,7 @@ async fn test_search_pagination() {
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results1 = manager.search("logs", query1).await.expect("Search failed");
@@ -156,6 +158,7 @@ async fn test_search_pagination() {
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results2 = manager.search("logs", query2).await.expect("Search failed");
@@ -215,6 +218,7 @@ async fn test_collection_not_found() {
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let result = manager.search("nonexistent", query).await;

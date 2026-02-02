@@ -258,12 +258,14 @@ impl HnswIndex for InstantDistanceAdapter {
     }
 }
 
+// When vector-instant is enabled (including when both are enabled), prefer it.
+// When only vector-usearch is enabled, it will be used once implemented.
 #[cfg(feature = "vector-instant")]
 pub type HnswBackend = InstantDistanceAdapter;
 
-// Compile-time checks
-#[cfg(all(feature = "vector-instant", feature = "vector-usearch"))]
-compile_error!("Cannot enable both vector-instant and vector-usearch features at the same time");
+// TODO: Implement UsearchAdapter and use it when only vector-usearch is enabled
+// #[cfg(all(feature = "vector-usearch", not(feature = "vector-instant")))]
+// pub type HnswBackend = UsearchAdapter;
 
 #[cfg(not(any(feature = "vector-instant", feature = "vector-usearch")))]
 compile_error!("Must enable either vector-instant or vector-usearch feature");

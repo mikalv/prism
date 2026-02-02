@@ -60,7 +60,7 @@ async fn test_hybrid_merge_behaviour() {
     hybrid.index("col", vec![doc1.clone(), doc2.clone()]).await.unwrap();
 
     // For this test, set query_string to the vector JSON and include text field
-    let q = Query { query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0]).unwrap(), fields: vec!["text".to_string()], limit: 10, offset: 0, merge_strategy: None, text_weight: None, vector_weight: None };
+    let q = Query { query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0]).unwrap(), fields: vec!["text".to_string()], limit: 10, offset: 0, merge_strategy: None, text_weight: None, vector_weight: None, highlight: None };
     let res = hybrid.search("col", q).await.unwrap();
 
     // Expect results contain at least one document

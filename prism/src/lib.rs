@@ -11,6 +11,7 @@ pub mod migration;
 pub mod query;
 pub mod ranking;
 pub mod schema;
+pub mod security;
 pub mod storage;
 
 pub use config::Config;

@@ -1,4 +1,4 @@
-use crate::backends::{Document, Query, SearchResults, SearchResult};
+use crate::backends::{Document, Query, SearchResults, SearchResult, HighlightConfig};
 use crate::collection::CollectionManager;
 use axum::{
     extract::{Path, State},
@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -28,6 +29,9 @@ pub struct SearchRequest {
     pub text_weight: Option<f32>,
     #[serde(default)]
     pub vector_weight: Option<f32>,
+    /// Optional highlight configuration
+    #[serde(default)]
+    pub highlight: Option<HighlightConfig>,
 }
 
 fn default_limit() -> usize {
@@ -94,6 +98,7 @@ pub async fn search(
         merge_strategy: request.merge_strategy.clone(),
         text_weight: request.text_weight,
         vector_weight: request.vector_weight,
+        highlight: request.highlight,
     };
 
     manager
@@ -129,6 +134,7 @@ pub async fn simple_search(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
     let results = manager
@@ -362,7 +368,7 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
 // Aggregations API (Issue #23)
 // ============================================================================
 
-use crate::query::aggregations::{AggregationRequest, AggregationType, AggregationResult};
+use crate::aggregations::{AggregationRequest as AggRequest, AggregationResult as AggResult};
 use crate::backends::text::{TermInfo, SegmentsInfo, ReconstructedDocument};
 
 /// Aggregation API request
@@ -372,7 +378,7 @@ pub struct AggregateRequest {
     #[serde(default)]
     pub query: Option<String>,
     /// List of aggregations to run
-    pub aggregations: Vec<AggregationRequest>,
+    pub aggregations: Vec<AggRequest>,
     /// Max documents to scan (default 10000)
     #[serde(default = "default_scan_limit")]
     pub scan_limit: usize,
@@ -385,8 +391,7 @@ fn default_scan_limit() -> usize {
 /// Aggregation API response
 #[derive(Serialize)]
 pub struct AggregateResponse {
-    pub results: Vec<AggregationResult>,
-    pub scanned_docs: usize,
+    pub results: HashMap<String, AggResult>,
     pub took_ms: u64,
 }
 
@@ -403,7 +408,7 @@ pub async fn aggregate(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Build search query to get documents
+    // Build search query
     let query_string = request.query.unwrap_or_else(|| "*".to_string());
     let query = Query {
         query_string,
@@ -413,61 +418,22 @@ pub async fn aggregate(
         merge_strategy: None,
         text_weight: None,
         vector_weight: None,
+        highlight: None,
     };
 
-    // Execute search to get documents
-    let search_results = manager
-        .search(&collection, query)
+    // Use search_with_aggs to run aggregations in the text backend
+    let agg_results = manager
+        .search_with_aggs(&collection, &query, request.aggregations)
         .await
         .map_err(|e| {
-            tracing::error!("Aggregation search error: {:?}", e);
+            tracing::error!("Aggregation error: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-
-    let scanned_docs = search_results.results.len();
-
-    // Run each aggregation
-    let mut results = Vec::new();
-    for agg_req in request.aggregations {
-        let field_values: Vec<String> = search_results
-            .results
-            .iter()
-            .filter_map(|hit| {
-                hit.fields
-                    .get(&agg_req.field)
-                    .and_then(|v: &serde_json::Value| {
-                        if v.is_string() {
-                            Some(v.as_str().unwrap().to_string())
-                        } else {
-                            Some(v.to_string())
-                        }
-                    })
-            })
-            .collect();
-
-        let mut result = match agg_req.agg_type {
-            AggregationType::Terms => {
-                crate::query::aggregations::terms::aggregate_terms(field_values, agg_req.size)
-            }
-            // DateHistogram, Range, Stats require more complex type handling
-            // Not yet implemented for REST API - return empty result
-            AggregationType::DateHistogram | AggregationType::Range | AggregationType::Stats => {
-                AggregationResult {
-                    field: agg_req.field.clone(),
-                    buckets: vec![],
-                }
-            }
-        };
-
-        result.field = agg_req.field;
-        results.push(result);
-    }
 
     let took_ms = start.elapsed().as_millis() as u64;
 
     Ok(Json(AggregateResponse {
-        results,
-        scanned_docs,
+        results: agg_results.aggregations,
         took_ms,
     }))
 }
@@ -553,4 +519,180 @@ pub async fn reconstruct_document(
         })?;
 
     Ok(Json(doc))
+}
+
+// ============================================================================
+// Suggestions / Autocomplete API (Issue #47)
+// ============================================================================
+
+fn default_suggest_size() -> usize {
+    5
+}
+
+fn default_max_distance() -> usize {
+    2
+}
+
+/// Request body for POST /collections/:collection/_suggest
+#[derive(Deserialize)]
+pub struct SuggestRequest {
+    pub prefix: String,
+    pub field: String,
+    #[serde(default = "default_suggest_size")]
+    pub size: usize,
+    #[serde(default)]
+    pub fuzzy: bool,
+    #[serde(default = "default_max_distance")]
+    pub max_distance: usize,
+}
+
+/// A single suggestion entry in the response
+#[derive(Serialize)]
+pub struct SuggestionEntry {
+    pub term: String,
+    pub score: f32,
+    pub doc_freq: u64,
+}
+
+/// Response body for POST /collections/:collection/_suggest
+#[derive(Serialize)]
+pub struct SuggestResponse {
+    pub suggestions: Vec<SuggestionEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub did_you_mean: Option<String>,
+}
+
+/// POST /collections/:collection/_suggest
+pub async fn suggest(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(req): Json<SuggestRequest>,
+) -> Result<Json<SuggestResponse>, StatusCode> {
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let entries = manager
+        .suggest(&collection, &req.field, &req.prefix, req.size, req.fuzzy, req.max_distance)
+        .map_err(|e| {
+            tracing::error!("Failed to suggest for {}/{}: {:?}", collection, req.field, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let suggestions: Vec<SuggestionEntry> = entries
+        .into_iter()
+        .map(|e| SuggestionEntry {
+            term: e.term,
+            score: e.score,
+            doc_freq: e.doc_freq,
+        })
+        .collect();
+
+    // Populate did_you_mean when fuzzy is enabled
+    let did_you_mean = if req.fuzzy {
+        // Gather vocabulary from the top terms for the field
+        let top_terms = manager
+            .get_top_terms(&collection, &req.field, 1000)
+            .unwrap_or_default();
+        let vocabulary: Vec<String> = top_terms.into_iter().map(|t| t.term).collect();
+        let corrections = crate::query::suggestions::suggest_query_corrections(
+            &req.prefix,
+            &vocabulary,
+            req.max_distance,
+        );
+        corrections.into_iter().next()
+    } else {
+        None
+    };
+
+    Ok(Json(SuggestResponse { suggestions, did_you_mean }))
+}
+
+// ============================================================================
+// More Like This API (Issue #48)
+// ============================================================================
+
+fn default_min_term_freq() -> usize {
+    2
+}
+
+fn default_min_doc_freq() -> u64 {
+    5
+}
+
+fn default_max_query_terms() -> usize {
+    25
+}
+
+fn default_mlt_size() -> usize {
+    10
+}
+
+/// Like target — either a document ID or raw text
+#[derive(Deserialize)]
+pub struct MltLike {
+    #[serde(rename = "_id")]
+    pub id: Option<String>,
+}
+
+/// Request body for POST /collections/:collection/_mlt
+#[derive(Deserialize)]
+pub struct MltRequest {
+    /// Find docs like this document
+    #[serde(default)]
+    pub like: Option<MltLike>,
+    /// Or find docs like this text
+    #[serde(default)]
+    pub like_text: Option<String>,
+    /// Fields to extract terms from
+    #[serde(default)]
+    pub fields: Vec<String>,
+    /// Minimum term frequency in source doc
+    #[serde(default = "default_min_term_freq")]
+    pub min_term_freq: usize,
+    /// Minimum document frequency in the index
+    #[serde(default = "default_min_doc_freq")]
+    pub min_doc_freq: u64,
+    /// Maximum number of query terms to use
+    #[serde(default = "default_max_query_terms")]
+    pub max_query_terms: usize,
+    /// Number of results to return
+    #[serde(default = "default_mlt_size")]
+    pub size: usize,
+}
+
+/// POST /collections/:collection/_mlt
+pub async fn more_like_this(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(req): Json<MltRequest>,
+) -> Result<Json<SearchResults>, StatusCode> {
+    if manager.get_schema(&collection).is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let doc_id = req.like.as_ref().and_then(|l| l.id.as_deref());
+    let like_text = req.like_text.as_deref();
+
+    if doc_id.is_none() && like_text.is_none() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let results = manager
+        .more_like_this(
+            &collection,
+            doc_id,
+            like_text,
+            &req.fields,
+            req.min_term_freq,
+            req.min_doc_freq,
+            req.max_query_terms,
+            req.size,
+        )
+        .map_err(|e| {
+            tracing::error!("MLT error for {}: {:?}", collection, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(results))
 }

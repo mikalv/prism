@@ -33,6 +33,11 @@ thiserror = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
 reqwest = { workspace = true }
 
 # Logging
@@ -84,6 +89,7 @@ vector-usearch = ["dep:usearch"]
 provider-ollama = []
 provider-openai = []
 provider-onnx = ["dep:ort", "dep:tokenizers", "dep:ndarray"]
+provider-onnx-real = ["provider-onnx"]
 all-providers = ["provider-ollama", "provider-openai", "provider-onnx"]
 
 # Cache backends

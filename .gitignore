@@ -1,6 +1,5 @@
 CLAUDE.md
 /target
-Cargo.lock
 *.swp
 *.swo
 .DS_Store
@@ -9,3 +8,5 @@ Cargo.lock
 *.db-shm
 *.db-wal
 inspiration
+/dist/
+.worktrees/

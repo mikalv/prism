@@ -35,14 +35,14 @@ impl HybridSearchCoordinator {
 
         for r in text.results {
             let norm = if text_max.is_nan() || text_max == 0.0 { r.score } else { r.score / text_max };
-            combined.insert(r.id.clone(), SearchResult { id: r.id.clone(), score: text_weight * norm, fields: r.fields });
+            combined.insert(r.id.clone(), SearchResult { id: r.id.clone(), score: text_weight * norm, fields: r.fields, highlight: r.highlight });
         }
 
         for r in vector.results {
             let norm = if vec_max.is_nan() || vec_max == 0.0 { r.score } else { r.score / vec_max };
             combined.entry(r.id.clone()).and_modify(|e| {
                 e.score += vector_weight * norm;
-            }).or_insert(SearchResult { id: r.id.clone(), score: vector_weight * norm, fields: r.fields });
+            }).or_insert(SearchResult { id: r.id.clone(), score: vector_weight * norm, fields: r.fields, highlight: r.highlight });
         }
 
         let mut out: Vec<SearchResult> = combined.into_iter().map(|(_, v)| v).collect();
@@ -79,7 +79,7 @@ impl HybridSearchCoordinator {
 
         let mut out: Vec<SearchResult> = scores.into_iter().map(|(id, score)| {
             let fields = fields_map.remove(&id).unwrap_or_default();
-            SearchResult { id, score, fields }
+            SearchResult { id, score, fields, highlight: None }
         }).collect();
 
         out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
@@ -105,14 +105,14 @@ impl SearchBackend for HybridSearchCoordinator {
 
         let (tres, vres) = if let Some(vec) = maybe_vec {
             // If query_string is a vector, run vector search and run a text search with the provided fields but empty string
-            let vec_q = Query { query_string: serde_json::to_string(&vec).unwrap(), fields: vec![], limit: query.limit, offset: query.offset, merge_strategy: None, text_weight: None, vector_weight: None };
-            let text_q = Query { query_string: "".to_string(), fields: query.fields.clone(), limit: query.limit, offset: query.offset, merge_strategy: None, text_weight: None, vector_weight: None };
+            let vec_q = Query { query_string: serde_json::to_string(&vec).unwrap(), fields: vec![], limit: query.limit, offset: query.offset, merge_strategy: None, text_weight: None, vector_weight: None, highlight: None };
+            let text_q = Query { query_string: "".to_string(), fields: query.fields.clone(), limit: query.limit, offset: query.offset, merge_strategy: None, text_weight: None, vector_weight: None, highlight: query.highlight.clone() };
             let t = self.text_backend.search(collection, text_q);
             let v = self.vector_backend.search(collection, vec_q);
             tokio::join!(t, v)
         } else {
             // No vector provided: run only text search
-            let text_q = Query { query_string: query.query_string.clone(), fields: query.fields.clone(), limit: query.limit, offset: query.offset, merge_strategy: query.merge_strategy.clone(), text_weight: query.text_weight, vector_weight: query.vector_weight };
+            let text_q = Query { query_string: query.query_string.clone(), fields: query.fields.clone(), limit: query.limit, offset: query.offset, merge_strategy: query.merge_strategy.clone(), text_weight: query.text_weight, vector_weight: query.vector_weight, highlight: query.highlight.clone() };
             let t = self.text_backend.search(collection, text_q).await?;
             return Ok(t);
         };

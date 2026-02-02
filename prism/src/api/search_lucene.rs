@@ -171,6 +171,7 @@ pub async fn search_lucene(
         merge_strategy: req.merge_strategy.clone(),
         text_weight: req.text_weight,
         vector_weight: req.vector_weight,
+        highlight: None,
     };
 
     let search_results = match manager.search(&req.collection, query).await {

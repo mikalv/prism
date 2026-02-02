@@ -35,6 +35,12 @@ pub enum Error {
     #[error("Config error: {0}")]
     Config(String),
 
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }

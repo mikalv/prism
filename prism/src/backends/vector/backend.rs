@@ -220,6 +220,7 @@ impl VectorBackend {
             merge_strategy: None,
             text_weight: None,
             vector_weight: None,
+            highlight: None,
         };
 
         self.search(collection, query).await
@@ -386,6 +387,7 @@ impl SearchBackend for VectorBackend {
                         id: doc_id.clone(),
                         score,
                         fields: fields.clone(),
+                        highlight: None,
                     });
                 }
             }
