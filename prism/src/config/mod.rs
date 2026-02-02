@@ -29,6 +29,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    #[serde(default)]
+    pub observability: ObservabilityConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -247,6 +249,41 @@ impl Default for LoggingConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ObservabilityConfig {
+    /// Log output format: "pretty" or "json"
+    /// Override with LOG_FORMAT env var
+    #[serde(default = "default_log_format")]
+    pub log_format: String,
+
+    /// Log level filter string
+    /// Override with RUST_LOG env var
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+
+    /// Enable Prometheus metrics at GET /metrics
+    #[serde(default = "default_true")]
+    pub metrics_enabled: bool,
+}
+
+fn default_log_format() -> String {
+    "pretty".to_string()
+}
+
+fn default_log_level() -> String {
+    "info,prism=debug".to_string()
+}
+
+impl Default for ObservabilityConfig {
+    fn default() -> Self {
+        Self {
+            log_format: default_log_format(),
+            log_level: default_log_level(),
+            metrics_enabled: true,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -256,6 +293,7 @@ impl Default for Config {
             embedding: EmbeddingConfig::default(),
             logging: LoggingConfig::default(),
             security: SecurityConfig::default(),
+            observability: ObservabilityConfig::default(),
         }
     }
 }
