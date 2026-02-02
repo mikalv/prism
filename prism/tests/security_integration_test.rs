@@ -7,7 +7,7 @@ use prism::api::ApiServer;
 use prism::backends::text::TextBackend;
 use prism::backends::VectorBackend;
 use prism::collection::CollectionManager;
-use prism::config::{SecurityConfig, ApiKeyConfig, RoleConfig, AuditConfig, CorsConfig};
+use prism::config::{ApiKeyConfig, AuditConfig, CorsConfig, RoleConfig, SecurityConfig};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -20,9 +20,8 @@ async fn setup_server(security: SecurityConfig) -> (TempDir, String) {
 
     let text_backend = Arc::new(TextBackend::new(temp.path()).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(temp.path()).unwrap());
-    let manager = Arc::new(
-        CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap(),
-    );
+    let manager =
+        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap());
 
     let server = ApiServer::with_security(manager, CorsConfig::default(), security);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -39,21 +38,41 @@ async fn setup_server(security: SecurityConfig) -> (TempDir, String) {
 
 fn security_config() -> SecurityConfig {
     let mut roles = HashMap::new();
-    roles.insert("admin".to_string(), RoleConfig {
-        collections: HashMap::from([("*".to_string(), vec!["*".to_string()])]),
-    });
-    roles.insert("reader".to_string(), RoleConfig {
-        collections: HashMap::from([("test-*".to_string(), vec!["read".to_string(), "search".to_string()])]),
-    });
+    roles.insert(
+        "admin".to_string(),
+        RoleConfig {
+            collections: HashMap::from([("*".to_string(), vec!["*".to_string()])]),
+        },
+    );
+    roles.insert(
+        "reader".to_string(),
+        RoleConfig {
+            collections: HashMap::from([(
+                "test-*".to_string(),
+                vec!["read".to_string(), "search".to_string()],
+            )]),
+        },
+    );
 
     SecurityConfig {
         enabled: true,
         api_keys: vec![
-            ApiKeyConfig { key: "test_admin_key".to_string(), name: "admin".to_string(), roles: vec!["admin".to_string()] },
-            ApiKeyConfig { key: "test_reader_key".to_string(), name: "reader".to_string(), roles: vec!["reader".to_string()] },
+            ApiKeyConfig {
+                key: "test_admin_key".to_string(),
+                name: "admin".to_string(),
+                roles: vec!["admin".to_string()],
+            },
+            ApiKeyConfig {
+                key: "test_reader_key".to_string(),
+                name: "reader".to_string(),
+                roles: vec!["reader".to_string()],
+            },
         ],
         roles,
-        audit: AuditConfig { enabled: false, index_to_collection: false },
+        audit: AuditConfig {
+            enabled: false,
+            index_to_collection: false,
+        },
     }
 }
 
@@ -68,7 +87,11 @@ async fn test_health_no_auth_required() {
 async fn test_missing_api_key_returns_401() {
     let (_temp, url) = setup_server(security_config()).await;
     let client = reqwest::Client::new();
-    let resp = client.get(format!("{}/admin/collections", url)).send().await.unwrap();
+    let resp = client
+        .get(format!("{}/admin/collections", url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 401);
 }
 
@@ -117,6 +140,10 @@ async fn test_security_disabled_allows_all() {
     let (_temp, url) = setup_server(disabled).await;
     let client = reqwest::Client::new();
     // No auth header, should work
-    let resp = client.get(format!("{}/admin/collections", url)).send().await.unwrap();
+    let resp = client
+        .get(format!("{}/admin/collections", url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
 }

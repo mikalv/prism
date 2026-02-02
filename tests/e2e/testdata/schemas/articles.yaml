@@ -1,0 +1,20 @@
+collection: articles
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        stored: true
+        indexed: true
+      - name: content
+        type: text
+        stored: true
+        indexed: true
+      - name: category
+        type: string
+        indexed: true
+        stored: true
+      - name: indexed_at
+        type: string
+        stored: true
+        indexed: false

@@ -213,7 +213,11 @@ impl fmt::Display for StoragePath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.shard {
             Some(shard) if !self.segment.is_empty() => {
-                write!(f, "{}/{}/{}/{}", self.collection, self.backend, shard, self.segment)
+                write!(
+                    f,
+                    "{}/{}/{}/{}",
+                    self.collection, self.backend, shard, self.segment
+                )
             }
             Some(shard) => {
                 write!(f, "{}/{}/{}", self.collection, self.backend, shard)
@@ -282,9 +286,18 @@ mod tests {
 
     #[test]
     fn test_backend_from_str() {
-        assert_eq!(StorageBackend::from_str("tantivy"), Some(StorageBackend::Tantivy));
-        assert_eq!(StorageBackend::from_str("text"), Some(StorageBackend::Tantivy));
-        assert_eq!(StorageBackend::from_str("VECTOR"), Some(StorageBackend::Vector));
+        assert_eq!(
+            StorageBackend::from_str("tantivy"),
+            Some(StorageBackend::Tantivy)
+        );
+        assert_eq!(
+            StorageBackend::from_str("text"),
+            Some(StorageBackend::Tantivy)
+        );
+        assert_eq!(
+            StorageBackend::from_str("VECTOR"),
+            Some(StorageBackend::Vector)
+        );
         assert_eq!(StorageBackend::from_str("unknown"), None);
     }
 }

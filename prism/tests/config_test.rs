@@ -1,9 +1,9 @@
 //! Tests for config module
 
-use prism::config::{Config, expand_tilde};
+use prism::config::{expand_tilde, Config};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use std::collections::HashMap;
 
 #[test]
 fn test_default_config() {
@@ -122,7 +122,10 @@ file = "/var/log/engraph.log"
     assert!(!config.embedding.enabled);
     assert_eq!(config.embedding.model, "other-model");
     assert_eq!(config.logging.level, "trace");
-    assert_eq!(config.logging.file, Some(PathBuf::from("/var/log/engraph.log")));
+    assert_eq!(
+        config.logging.file,
+        Some(PathBuf::from("/var/log/engraph.log"))
+    );
 }
 
 #[test]
@@ -130,8 +133,14 @@ fn test_default_tls_config() {
     let config = Config::default();
     assert!(!config.server.tls.enabled);
     assert_eq!(config.server.tls.bind_addr, "127.0.0.1:3443");
-    assert_eq!(config.server.tls.cert_path, PathBuf::from("./conf/tls/cert.pem"));
-    assert_eq!(config.server.tls.key_path, PathBuf::from("./conf/tls/key.pem"));
+    assert_eq!(
+        config.server.tls.cert_path,
+        PathBuf::from("./conf/tls/cert.pem")
+    );
+    assert_eq!(
+        config.server.tls.key_path,
+        PathBuf::from("./conf/tls/key.pem")
+    );
 }
 
 #[test]
@@ -153,8 +162,14 @@ data_dir = "/tmp/prism"
     let config: Config = toml::from_str(toml_content).unwrap();
     assert!(config.server.tls.enabled);
     assert_eq!(config.server.tls.bind_addr, "0.0.0.0:3443");
-    assert_eq!(config.server.tls.cert_path, PathBuf::from("/etc/prism/cert.pem"));
-    assert_eq!(config.server.tls.key_path, PathBuf::from("/etc/prism/key.pem"));
+    assert_eq!(
+        config.server.tls.cert_path,
+        PathBuf::from("/etc/prism/cert.pem")
+    );
+    assert_eq!(
+        config.server.tls.key_path,
+        PathBuf::from("/etc/prism/key.pem")
+    );
 }
 
 #[test]

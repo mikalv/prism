@@ -1,0 +1,8 @@
+name: normalize
+description: Normalize text fields for E2E tests
+processors:
+  - lowercase:
+      field: title
+  - set:
+      field: indexed_at
+      value: "{{_now}}"

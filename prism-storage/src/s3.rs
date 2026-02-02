@@ -64,10 +64,7 @@ impl S3Config {
     }
 
     /// Create configuration for MinIO or other S3-compatible services.
-    pub fn minio(
-        bucket: impl Into<String>,
-        endpoint: impl Into<String>,
-    ) -> Self {
+    pub fn minio(bucket: impl Into<String>, endpoint: impl Into<String>) -> Self {
         Self {
             bucket: bucket.into(),
             region: "us-east-1".to_string(),

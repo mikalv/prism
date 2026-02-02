@@ -138,10 +138,7 @@ impl McpTool for SearchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| crate::Error::Backend("Missing query".to_string()))?;
 
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
         let query = Query {
             query_string: query_string.to_string(),

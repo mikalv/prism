@@ -1,0 +1,9 @@
+{
+  "documents": [
+    {"id": "1", "fields": {"title": "Rust Programming Language", "content": "Learn Rust for systems programming and memory safety", "category": "tech"}},
+    {"id": "2", "fields": {"title": "Python Data Science", "content": "Analyze data with pandas numpy and scikit-learn", "category": "tech"}},
+    {"id": "3", "fields": {"title": "Sourdough Bread Recipe", "content": "Mix flour water salt and sourdough starter then bake", "category": "cooking"}},
+    {"id": "4", "fields": {"title": "Nordic Hiking Trails", "content": "Explore fjords and mountains in Norway and Sweden", "category": "travel"}},
+    {"id": "5", "fields": {"title": "Machine Learning Basics", "content": "Neural networks deep learning and gradient descent introduction", "category": "tech"}}
+  ]
+}

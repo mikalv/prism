@@ -20,13 +20,18 @@ async fn setup_ranking_environment(schema_yaml: &str) -> (TempDir, Arc<Collectio
 
     fs::write(schemas_dir.join("articles.yaml"), schema_yaml).expect("Failed to write schema");
 
-    let text_backend = Arc::new(TextBackend::new(&data_dir).expect("Failed to create text backend"));
-    let vector_backend = Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
+    let text_backend =
+        Arc::new(TextBackend::new(&data_dir).expect("Failed to create text backend"));
+    let vector_backend =
+        Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
     let manager = Arc::new(
         CollectionManager::new(&schemas_dir, text_backend, vector_backend)
             .expect("Failed to create collection manager"),
     );
-    manager.initialize().await.expect("Failed to initialize manager");
+    manager
+        .initialize()
+        .await
+        .expect("Failed to initialize manager");
 
     (temp, manager)
 }
@@ -61,19 +66,28 @@ boosting:
             id: "doc_title".to_string(),
             fields: HashMap::from([
                 ("title".to_string(), json!("Rust programming language")),
-                ("content".to_string(), json!("This is about software development")),
+                (
+                    "content".to_string(),
+                    json!("This is about software development"),
+                ),
             ]),
         },
         Document {
             id: "doc_content".to_string(),
             fields: HashMap::from([
                 ("title".to_string(), json!("Software development guide")),
-                ("content".to_string(), json!("Learn about Rust and other languages")),
+                (
+                    "content".to_string(),
+                    json!("Learn about Rust and other languages"),
+                ),
             ]),
         },
     ];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Search for "rust"
     let query = Query {
@@ -87,11 +101,17 @@ boosting:
         highlight: None,
     };
 
-    let results = manager.search("articles", query).await.expect("Failed to search");
+    let results = manager
+        .search("articles", query)
+        .await
+        .expect("Failed to search");
 
     // Document with "rust" in title should rank higher due to 3x boost
     assert_eq!(results.results.len(), 2);
-    assert_eq!(results.results[0].id, "doc_title", "Document with match in boosted title field should rank first");
+    assert_eq!(
+        results.results[0].id, "doc_title",
+        "Document with match in boosted title field should rank first"
+    );
     assert!(
         results.results[0].score > results.results[1].score,
         "Title match should have higher score than content match"
@@ -144,7 +164,10 @@ boosting:
         },
     ];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Search for "rust"
     let query = Query {
@@ -158,13 +181,25 @@ boosting:
         highlight: None,
     };
 
-    let results = manager.search("articles", query).await.expect("Failed to search");
+    let results = manager
+        .search("articles", query)
+        .await
+        .expect("Failed to search");
 
     // Documents should be ordered by boost value (all have same text match score)
     assert_eq!(results.results.len(), 3);
-    assert_eq!(results.results[0].id, "popular", "Highest boost document should rank first");
-    assert_eq!(results.results[1].id, "normal", "Medium boost document should rank second");
-    assert_eq!(results.results[2].id, "low", "Lowest boost document should rank last");
+    assert_eq!(
+        results.results[0].id, "popular",
+        "Highest boost document should rank first"
+    );
+    assert_eq!(
+        results.results[1].id, "normal",
+        "Medium boost document should rank second"
+    );
+    assert_eq!(
+        results.results[2].id, "low",
+        "Lowest boost document should rank last"
+    );
 }
 
 #[tokio::test]
@@ -198,30 +233,34 @@ boosting:
     // Since _indexed_at is auto-set, we'll index docs and verify ranking works
     // In a real scenario, older docs would have older _indexed_at values
 
-    let docs = vec![
-        Document {
-            id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("First Rust article about programming")),
-            ]),
-        },
-    ];
+    let docs = vec![Document {
+        id: "doc1".to_string(),
+        fields: HashMap::from([(
+            "title".to_string(),
+            json!("First Rust article about programming"),
+        )]),
+    }];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Index another document slightly later
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let docs2 = vec![
-        Document {
-            id: "doc2".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("Second Rust article about programming")),
-            ]),
-        },
-    ];
+    let docs2 = vec![Document {
+        id: "doc2".to_string(),
+        fields: HashMap::from([(
+            "title".to_string(),
+            json!("Second Rust article about programming"),
+        )]),
+    }];
 
-    manager.index("articles", docs2).await.expect("Failed to index second batch");
+    manager
+        .index("articles", docs2)
+        .await
+        .expect("Failed to index second batch");
 
     // Search for "rust programming"
     let query = Query {
@@ -235,7 +274,10 @@ boosting:
         highlight: None,
     };
 
-    let results = manager.search("articles", query).await.expect("Failed to search");
+    let results = manager
+        .search("articles", query)
+        .await
+        .expect("Failed to search");
 
     // Both documents should be found
     assert_eq!(results.results.len(), 2);
@@ -301,7 +343,10 @@ boosting:
         },
     ];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Search for "rust"
     let query = Query {
@@ -315,7 +360,10 @@ boosting:
         highlight: None,
     };
 
-    let results = manager.search("articles", query).await.expect("Failed to search");
+    let results = manager
+        .search("articles", query)
+        .await
+        .expect("Failed to search");
 
     assert_eq!(results.results.len(), 2);
 
@@ -324,7 +372,10 @@ boosting:
     // So the scores should be relatively close
     // This test verifies all ranking features work together without crashing
     for result in &results.results {
-        assert!(result.score > 0.0, "All results should have positive scores");
+        assert!(
+            result.score > 0.0,
+            "All results should have positive scores"
+        );
     }
 }
 
@@ -344,16 +395,15 @@ backends:
 
     let (_temp, manager) = setup_ranking_environment(schema).await;
 
-    let docs = vec![
-        Document {
-            id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("Rust programming")),
-            ]),
-        },
-    ];
+    let docs = vec![Document {
+        id: "doc1".to_string(),
+        fields: HashMap::from([("title".to_string(), json!("Rust programming"))]),
+    }];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     let query = Query {
         query_string: "rust".to_string(),
@@ -366,7 +416,10 @@ backends:
         highlight: None,
     };
 
-    let results = manager.search("articles", query).await.expect("Failed to search");
+    let results = manager
+        .search("articles", query)
+        .await
+        .expect("Failed to search");
 
     assert_eq!(results.results.len(), 1);
     assert_eq!(results.results[0].id, "doc1");

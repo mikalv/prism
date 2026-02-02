@@ -47,13 +47,18 @@ backends:
     )
     .expect("Failed to write schema");
 
-    let text_backend = Arc::new(TextBackend::new(&data_dir).expect("Failed to create text backend"));
-    let vector_backend = Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
+    let text_backend =
+        Arc::new(TextBackend::new(&data_dir).expect("Failed to create text backend"));
+    let vector_backend =
+        Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
     let manager = Arc::new(
         CollectionManager::new(&schemas_dir, text_backend, vector_backend)
             .expect("Failed to create collection manager"),
     );
-    manager.initialize().await.expect("Failed to initialize manager");
+    manager
+        .initialize()
+        .await
+        .expect("Failed to initialize manager");
 
     (temp, manager)
 }
@@ -93,7 +98,10 @@ async fn test_search_with_facets() {
         },
     ];
 
-    manager.index("logs", docs).await.expect("Failed to index documents");
+    manager
+        .index("logs", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Search for errors
     let query = Query {
@@ -112,7 +120,10 @@ async fn test_search_with_facets() {
     // Should find 2 error documents
     assert_eq!(results.total, 2, "Expected 2 error documents");
     assert!(
-        results.results.iter().all(|r| r.id == "log1" || r.id == "log3"),
+        results
+            .results
+            .iter()
+            .all(|r| r.id == "log1" || r.id == "log3"),
         "Should only find log1 and log3"
     );
 }
@@ -132,7 +143,10 @@ async fn test_search_pagination() {
         })
         .collect();
 
-    manager.index("logs", docs).await.expect("Failed to index documents");
+    manager
+        .index("logs", docs)
+        .await
+        .expect("Failed to index documents");
 
     // First page
     let query1 = Query {
@@ -147,7 +161,11 @@ async fn test_search_pagination() {
     };
 
     let results1 = manager.search("logs", query1).await.expect("Search failed");
-    assert_eq!(results1.results.len(), 5, "Expected 5 results on first page");
+    assert_eq!(
+        results1.results.len(),
+        5,
+        "Expected 5 results on first page"
+    );
 
     // Second page
     let query2 = Query {
@@ -162,7 +180,11 @@ async fn test_search_pagination() {
     };
 
     let results2 = manager.search("logs", query2).await.expect("Search failed");
-    assert_eq!(results2.results.len(), 5, "Expected 5 results on second page");
+    assert_eq!(
+        results2.results.len(),
+        5,
+        "Expected 5 results on second page"
+    );
 
     // Results should be different
     let ids1: Vec<_> = results1.results.iter().map(|r| &r.id).collect();
@@ -186,18 +208,16 @@ async fn test_hybrid_search_text_only_fallback() {
         ]),
     }];
 
-    manager.index("logs", docs).await.expect("Failed to index documents");
+    manager
+        .index("logs", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Hybrid search without vector (should fallback to text-only)
     let results = manager
         .hybrid_search(
-            "logs",
-            "error",
-            None, // No vector
-            10,
-            None,
-            None,
-            None,
+            "logs", "error", None, // No vector
+            10, None, None, None,
         )
         .await
         .expect("Hybrid search failed");

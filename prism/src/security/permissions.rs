@@ -1,5 +1,5 @@
-use crate::config::SecurityConfig;
 use super::types::{AuthUser, Permission};
+use crate::config::SecurityConfig;
 use std::collections::HashMap;
 
 pub struct PermissionChecker {
@@ -48,7 +48,12 @@ impl PermissionChecker {
         })
     }
 
-    pub fn check_permission(&self, user: &AuthUser, collection: &str, permission: Permission) -> bool {
+    pub fn check_permission(
+        &self,
+        user: &AuthUser,
+        collection: &str,
+        permission: Permission,
+    ) -> bool {
         for role_name in &user.roles {
             if let Some(patterns) = self.roles.get(role_name) {
                 for (pattern, perms) in patterns {

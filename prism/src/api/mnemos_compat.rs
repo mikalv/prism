@@ -4,11 +4,7 @@
 
 use crate::backends::Query;
 use crate::collection::CollectionManager;
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -102,7 +98,8 @@ pub async fn session_init(
     Json(req): Json<SessionInitRequest>,
 ) -> Json<ApiResponse<SessionInitResponse>> {
     // Extract project name from folder path
-    let project_name = req.folder_path
+    let project_name = req
+        .folder_path
         .split('/')
         .filter(|s| !s.is_empty())
         .last()
@@ -146,7 +143,9 @@ pub async fn context(
     // Search observations
     if let Ok(results) = manager.search("observations", query.clone()).await {
         for r in results.results {
-            let content = r.fields.get("content")
+            let content = r
+                .fields
+                .get("content")
                 .and_then(|v| v.as_str())
                 .or_else(|| r.fields.get("summary").and_then(|v| v.as_str()))
                 .unwrap_or("")
@@ -176,7 +175,9 @@ pub async fn context(
 
     if let Ok(results) = manager.search("memories", query2).await {
         for r in results.results {
-            let content = r.fields.get("content")
+            let content = r
+                .fields
+                .get("content")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -193,7 +194,10 @@ pub async fn context(
 
     // Sort by relevance
     context_items.sort_by(|a, b| {
-        b.relevance.unwrap_or(0.0).partial_cmp(&a.relevance.unwrap_or(0.0)).unwrap()
+        b.relevance
+            .unwrap_or(0.0)
+            .partial_cmp(&a.relevance.unwrap_or(0.0))
+            .unwrap()
     });
 
     // Limit total context
@@ -233,7 +237,9 @@ pub async fn search(
     for collection in ["observations", "memories"] {
         if let Ok(results) = manager.search(collection, query.clone()).await {
             for r in results.results {
-                let content = r.fields.get("content")
+                let content = r
+                    .fields
+                    .get("content")
                     .and_then(|v| v.as_str())
                     .or_else(|| r.fields.get("summary").and_then(|v| v.as_str()))
                     .unwrap_or("")
@@ -251,7 +257,10 @@ pub async fn search(
 
     // Sort by score and limit
     all_results.sort_by(|a, b| {
-        b.score.unwrap_or(0.0).partial_cmp(&a.score.unwrap_or(0.0)).unwrap()
+        b.score
+            .unwrap_or(0.0)
+            .partial_cmp(&a.score.unwrap_or(0.0))
+            .unwrap()
     });
     all_results.truncate(limit);
 

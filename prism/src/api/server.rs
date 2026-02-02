@@ -56,7 +56,12 @@ impl ApiServer {
         cors_config: CorsConfig,
         security_config: SecurityConfig,
     ) -> Self {
-        Self::with_pipelines(manager, cors_config, security_config, PipelineRegistry::empty())
+        Self::with_pipelines(
+            manager,
+            cors_config,
+            security_config,
+            PipelineRegistry::empty(),
+        )
     }
 
     pub fn with_pipelines(
@@ -206,10 +211,7 @@ impl ApiServer {
                 "/collections/:collection/documents",
                 post(crate::api::routes::index_documents),
             )
-            .route(
-                "/admin/pipelines",
-                get(crate::api::routes::list_pipelines),
-            )
+            .route("/admin/pipelines", get(crate::api::routes::list_pipelines))
             .with_state(app_state.clone());
 
         // Routes that use Arc<CollectionManager>
@@ -362,16 +364,12 @@ impl ApiServer {
                         };
 
                         let io = hyper_util::rt::TokioIo::new(tls_stream);
-                        let hyper_svc =
-                            hyper_util::service::TowerToHyperService::new(svc);
+                        let hyper_svc = hyper_util::service::TowerToHyperService::new(svc);
                         let builder = hyper_util::server::conn::auto::Builder::new(
                             hyper_util::rt::TokioExecutor::new(),
                         );
 
-                        if let Err(e) = builder
-                            .serve_connection(io, hyper_svc)
-                            .await
-                        {
+                        if let Err(e) = builder.serve_connection(io, hyper_svc).await {
                             tracing::debug!("HTTPS connection error from {}: {}", peer_addr, e);
                         }
                     });
@@ -424,13 +422,13 @@ fn load_rustls_config(tls: &TlsConfig) -> crate::Result<rustls::ServerConfig> {
         .ok_or_else(|| crate::Error::Config("No private key found in key file".into()))?;
 
     let config = rustls::ServerConfig::builder_with_provider(Arc::new(
-            rustls::crypto::ring::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .map_err(|e| crate::Error::Config(format!("Invalid TLS protocol config: {}", e)))?
-        .with_no_client_auth()
-        .with_single_cert(certs, key)
-        .map_err(|e| crate::Error::Config(format!("Invalid TLS config: {}", e)))?;
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|e| crate::Error::Config(format!("Invalid TLS protocol config: {}", e)))?
+    .with_no_client_auth()
+    .with_single_cert(certs, key)
+    .map_err(|e| crate::Error::Config(format!("Invalid TLS config: {}", e)))?;
 
     Ok(config)
 }

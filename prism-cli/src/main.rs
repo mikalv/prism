@@ -175,7 +175,8 @@ async fn main() -> Result<()> {
                     Some(path) => commands::import::DocumentSource::FromFile(path),
                     None => commands::import::DocumentSource::FromStdin,
                 };
-                commands::run_import(&api_url, &collection, source, batch_size, no_progress).await?;
+                commands::run_import(&api_url, &collection, source, batch_size, no_progress)
+                    .await?;
             }
             DocumentCommands::Export { collection, output } => {
                 tracing::info!("Exporting collection {} to {:?}", collection, output);
@@ -184,7 +185,10 @@ async fn main() -> Result<()> {
         },
 
         Commands::Index(cmd) => match cmd {
-            IndexCommands::Optimize { collection, gc_only } => {
+            IndexCommands::Optimize {
+                collection,
+                gc_only,
+            } => {
                 commands::run_optimize(&cli.data_dir, &collection, gc_only)?;
             }
         },
@@ -204,7 +208,10 @@ async fn main() -> Result<()> {
             tracing::warn!("Cache stats implementation pending");
         }
 
-        Commands::CacheClear { path, older_than_days } => {
+        Commands::CacheClear {
+            path,
+            older_than_days,
+        } => {
             tracing::info!("Clearing cache at {}", path);
             if let Some(days) = older_than_days {
                 tracing::info!("Only entries older than {} days", days);
@@ -220,7 +227,10 @@ fn list_collections(data_dir: &std::path::Path) -> Result<()> {
     let collections_dir = data_dir.join("collections");
 
     if !collections_dir.exists() {
-        println!("No collections found (directory {:?} does not exist)", collections_dir);
+        println!(
+            "No collections found (directory {:?} does not exist)",
+            collections_dir
+        );
         return Ok(());
     }
 

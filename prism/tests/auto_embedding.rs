@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use prism::backends::vector::VectorBackend;
 use prism::backends::Document;
 use prism::backends::SearchBackend;
 use prism::schema::CollectionSchema;
+use std::sync::Arc;
 
 // A minimal test that indexes a document with a precomputed embedding to verify indexing path
 #[tokio::test]
@@ -35,7 +35,10 @@ async fn test_index_with_embedding_field() {
         system_fields: Default::default(),
         hybrid: None,
     };
-    backend.initialize("test_collection", &schema).await.unwrap();
+    backend
+        .initialize("test_collection", &schema)
+        .await
+        .unwrap();
 
     let docs = vec![Document {
         id: "doc1".to_string(),
@@ -43,9 +46,20 @@ async fn test_index_with_embedding_field() {
             let mut m = std::collections::HashMap::new();
             m.insert(
                 "embedding".to_string(),
-                serde_json::Value::Array((0..8).map(|i| serde_json::Value::Number(serde_json::Number::from_f64((i as f64 + 1.0) / 8.0).unwrap())).collect()),
+                serde_json::Value::Array(
+                    (0..8)
+                        .map(|i| {
+                            serde_json::Value::Number(
+                                serde_json::Number::from_f64((i as f64 + 1.0) / 8.0).unwrap(),
+                            )
+                        })
+                        .collect(),
+                ),
             );
-            m.insert("text".to_string(), serde_json::Value::String("hello world".into()));
+            m.insert(
+                "text".to_string(),
+                serde_json::Value::String("hello world".into()),
+            );
             m
         },
     }];

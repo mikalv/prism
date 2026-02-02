@@ -8,8 +8,8 @@ pub use storage::{CacheStorageConfig, S3StorageConfig, UnifiedStorageConfig};
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Main configuration
@@ -383,23 +383,31 @@ impl Config {
     /// Create a SegmentStorage based on unified_storage config.
     /// Falls back to LocalStorage using storage.data_dir if unified_storage is not configured.
     #[cfg(feature = "storage-s3")]
-    pub fn create_segment_storage(&self) -> Result<std::sync::Arc<dyn prism_storage::SegmentStorage>> {
+    pub fn create_segment_storage(
+        &self,
+    ) -> Result<std::sync::Arc<dyn prism_storage::SegmentStorage>> {
         if let Some(ref unified) = self.unified_storage {
             unified.create_storage().map_err(|e| anyhow!("{}", e))
         } else {
-            Ok(std::sync::Arc::new(prism_storage::LocalStorage::new(&self.storage.data_dir)))
+            Ok(std::sync::Arc::new(prism_storage::LocalStorage::new(
+                &self.storage.data_dir,
+            )))
         }
     }
 
     /// Create a SegmentStorage based on unified_storage config (non-S3 version).
     #[cfg(not(feature = "storage-s3"))]
-    pub fn create_segment_storage(&self) -> Result<std::sync::Arc<dyn prism_storage::SegmentStorage>> {
+    pub fn create_segment_storage(
+        &self,
+    ) -> Result<std::sync::Arc<dyn prism_storage::SegmentStorage>> {
         if let Some(ref unified) = self.unified_storage {
             if unified.backend != "local" {
                 return Err(anyhow!("S3/cached storage requires 'storage-s3' feature"));
             }
         }
-        Ok(std::sync::Arc::new(prism_storage::LocalStorage::new(&self.storage.data_dir)))
+        Ok(std::sync::Arc::new(prism_storage::LocalStorage::new(
+            &self.storage.data_dir,
+        )))
     }
 
     /// Check if unified storage is configured (S3, cached, etc.)
@@ -409,6 +417,8 @@ impl Config {
 
     /// Check if remote storage is configured (S3 or cached)
     pub fn is_remote_storage(&self) -> bool {
-        self.unified_storage.as_ref().map_or(false, |u| u.is_remote())
+        self.unified_storage
+            .as_ref()
+            .map_or(false, |u| u.is_remote())
     }
 }

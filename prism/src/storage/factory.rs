@@ -44,13 +44,12 @@ impl StorageFactory {
                     s3_config = s3_config.with_prefix(prefix);
                 }
 
-                if let (Some(key_id), Some(secret)) =
-                    (&s3.access_key_id, &s3.secret_access_key)
-                {
+                if let (Some(key_id), Some(secret)) = (&s3.access_key_id, &s3.secret_access_key) {
                     s3_config = s3_config.with_credentials(key_id, secret);
                 }
 
-                let storage = S3Storage::new(s3_config).map_err(|e| Error::Storage(e.to_string()))?;
+                let storage =
+                    S3Storage::new(s3_config).map_err(|e| Error::Storage(e.to_string()))?;
                 Ok(Arc::new(storage))
             }
             #[cfg(not(feature = "storage-s3"))]
@@ -95,8 +94,8 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let config = StorageConfig::default();
 
-        let storage = StorageFactory::create_segment_storage(&config, &temp.path().to_path_buf())
-            .unwrap();
+        let storage =
+            StorageFactory::create_segment_storage(&config, &temp.path().to_path_buf()).unwrap();
 
         let path = StoragePath::vector("test", "default", "data.bin");
         let data = Bytes::from_static(b"test data");

@@ -35,8 +35,8 @@ pub use factory::StorageFactory;
 
 // Re-export prism-storage types for convenience (the unified storage layer)
 pub use prism_storage::{
-    Bytes, CacheConfig, CacheStats, CachedStorage, LocalStorage, SegmentStorage,
-    StorageBackend, StoragePath, TantivyStorageAdapter,
+    Bytes, CacheConfig, CacheStats, CachedStorage, LocalStorage, SegmentStorage, StorageBackend,
+    StoragePath, TantivyStorageAdapter,
 };
 
 #[cfg(feature = "storage-s3")]

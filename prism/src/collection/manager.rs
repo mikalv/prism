@@ -1,4 +1,7 @@
-use crate::backends::{BackendStats, Document, Query, SearchBackend, SearchResults, SearchResultsWithAggs, TextBackend, VectorBackend, HybridSearchCoordinator};
+use crate::backends::{
+    BackendStats, Document, HybridSearchCoordinator, Query, SearchBackend, SearchResults,
+    SearchResultsWithAggs, TextBackend, VectorBackend,
+};
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -13,7 +16,11 @@ pub struct CollectionManager {
 }
 
 impl CollectionManager {
-    pub fn new(schemas_dir: impl AsRef<Path>, text_backend: Arc<TextBackend>, vector_backend: Arc<VectorBackend>) -> Result<Self> {
+    pub fn new(
+        schemas_dir: impl AsRef<Path>,
+        text_backend: Arc<TextBackend>,
+        vector_backend: Arc<VectorBackend>,
+    ) -> Result<Self> {
         let loader = SchemaLoader::new(schemas_dir);
         let schemas = loader.load_all()?;
 
@@ -27,7 +34,10 @@ impl CollectionManager {
                     msgs.push(format!("{}: {}", col, issue));
                 }
             }
-            return Err(Error::Schema(format!("Schema lint errors:\n{}", msgs.join("\n"))));
+            return Err(Error::Schema(format!(
+                "Schema lint errors:\n{}",
+                msgs.join("\n")
+            )));
         }
 
         let mut per_collection_backends = HashMap::new();
@@ -37,16 +47,30 @@ impl CollectionManager {
             let use_vector = schema.backends.vector.is_some();
 
             if use_text && use_vector {
-                let vw = schema.backends.vector.as_ref().map(|v| v.vector_weight).unwrap_or(0.5);
+                let vw = schema
+                    .backends
+                    .vector
+                    .as_ref()
+                    .map(|v| v.vector_weight)
+                    .unwrap_or(0.5);
                 if !(0.0..=1.0).contains(&vw) {
-                    return Err(Error::Schema(format!("vector_weight must be between 0.0 and 1.0 for collection {}", name)));
+                    return Err(Error::Schema(format!(
+                        "vector_weight must be between 0.0 and 1.0 for collection {}",
+                        name
+                    )));
                 }
-                let hybrid = HybridSearchCoordinator::new(text_backend.clone(), vector_backend.clone(), vw);
-                per_collection_backends.insert(name.clone(), Arc::new(hybrid) as Arc<dyn SearchBackend>);
+                let hybrid =
+                    HybridSearchCoordinator::new(text_backend.clone(), vector_backend.clone(), vw);
+                per_collection_backends
+                    .insert(name.clone(), Arc::new(hybrid) as Arc<dyn SearchBackend>);
             } else if use_text {
-                per_collection_backends.insert(name.clone(), text_backend.clone() as Arc<dyn SearchBackend>);
+                per_collection_backends
+                    .insert(name.clone(), text_backend.clone() as Arc<dyn SearchBackend>);
             } else if use_vector {
-                per_collection_backends.insert(name.clone(), vector_backend.clone() as Arc<dyn SearchBackend>);
+                per_collection_backends.insert(
+                    name.clone(),
+                    vector_backend.clone() as Arc<dyn SearchBackend>,
+                );
             }
         }
 
@@ -122,11 +146,16 @@ impl CollectionManager {
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
         if let Some(backend) = self.per_collection_backends.get(collection) {
-            return backend.search_with_aggs(collection, query, aggregations).await;
+            return backend
+                .search_with_aggs(collection, query, aggregations)
+                .await;
         }
 
         if schema.backends.text.is_some() {
-            return self.text_backend.search_with_aggs(collection, query, aggregations).await;
+            return self
+                .text_backend
+                .search_with_aggs(collection, query, aggregations)
+                .await;
         }
 
         Err(Error::Backend(
@@ -317,7 +346,13 @@ impl CollectionManager {
             Some("weighted") => {
                 let tw = text_weight.unwrap_or(0.5);
                 let vw = vector_weight.unwrap_or(0.5);
-                HybridSearchCoordinator::merge_weighted_public(text_results, vec_results, tw, vw, limit)
+                HybridSearchCoordinator::merge_weighted_public(
+                    text_results,
+                    vec_results,
+                    tw,
+                    vw,
+                    limit,
+                )
             }
             _ => {
                 // Default to RRF
@@ -355,8 +390,14 @@ impl CollectionManager {
         size: usize,
     ) -> Result<SearchResults> {
         self.text_backend.more_like_this(
-            collection, doc_id, like_text, fields,
-            min_term_freq, min_doc_freq, max_query_terms, size,
+            collection,
+            doc_id,
+            like_text,
+            fields,
+            min_term_freq,
+            min_doc_freq,
+            max_query_terms,
+            size,
         )
     }
 
@@ -370,7 +411,8 @@ impl CollectionManager {
         fuzzy: bool,
         max_distance: usize,
     ) -> Result<Vec<crate::backends::text::SuggestEntry>> {
-        self.text_backend.suggest_terms(collection, field, prefix, size, fuzzy, max_distance)
+        self.text_backend
+            .suggest_terms(collection, field, prefix, size, fuzzy, max_distance)
     }
 
     /// Get segment information for a collection.

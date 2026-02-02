@@ -1,4 +1,6 @@
-use crate::backends::r#trait::{Document, Query, SearchBackend, SearchResult, SearchResults, BackendStats};
+use crate::backends::r#trait::{
+    BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults,
+};
 use crate::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -14,52 +16,123 @@ pub struct HybridSearchCoordinator {
 }
 
 impl HybridSearchCoordinator {
-    pub fn new(text_backend: Arc<dyn SearchBackend>, vector_backend: Arc<dyn SearchBackend>, vector_weight: f32) -> Self {
-        Self { text_backend, vector_backend, vector_weight }
+    pub fn new(
+        text_backend: Arc<dyn SearchBackend>,
+        vector_backend: Arc<dyn SearchBackend>,
+        vector_weight: f32,
+    ) -> Self {
+        Self {
+            text_backend,
+            vector_backend,
+            vector_weight,
+        }
     }
 
-    async fn merge_results(&self, text: SearchResults, vector: SearchResults, limit: usize) -> SearchResults {
+    async fn merge_results(
+        &self,
+        text: SearchResults,
+        vector: SearchResults,
+        limit: usize,
+    ) -> SearchResults {
         // Default to weighted merge using the instance's vector_weight
-        Self::merge_weighted_public(text, vector, 1.0 - self.vector_weight, self.vector_weight, limit)
+        Self::merge_weighted_public(
+            text,
+            vector,
+            1.0 - self.vector_weight,
+            self.vector_weight,
+            limit,
+        )
     }
 
     /// Public weighted merge helper for testing and reuse.
-    pub fn merge_weighted_public(text: SearchResults, vector: SearchResults, text_weight: f32, vector_weight: f32, limit: usize) -> SearchResults {
+    pub fn merge_weighted_public(
+        text: SearchResults,
+        vector: SearchResults,
+        text_weight: f32,
+        vector_weight: f32,
+        limit: usize,
+    ) -> SearchResults {
         use std::collections::HashMap;
 
         let mut combined: HashMap<String, SearchResult> = HashMap::new();
 
         // Normalize scores to [0,1] by dividing by max if available
-        let text_max = text.results.iter().map(|r| r.score).fold(f32::NAN, f32::max);
-        let vec_max = vector.results.iter().map(|r| r.score).fold(f32::NAN, f32::max);
+        let text_max = text
+            .results
+            .iter()
+            .map(|r| r.score)
+            .fold(f32::NAN, f32::max);
+        let vec_max = vector
+            .results
+            .iter()
+            .map(|r| r.score)
+            .fold(f32::NAN, f32::max);
 
         for r in text.results {
-            let norm = if text_max.is_nan() || text_max == 0.0 { r.score } else { r.score / text_max };
-            combined.insert(r.id.clone(), SearchResult { id: r.id.clone(), score: text_weight * norm, fields: r.fields, highlight: r.highlight });
+            let norm = if text_max.is_nan() || text_max == 0.0 {
+                r.score
+            } else {
+                r.score / text_max
+            };
+            combined.insert(
+                r.id.clone(),
+                SearchResult {
+                    id: r.id.clone(),
+                    score: text_weight * norm,
+                    fields: r.fields,
+                    highlight: r.highlight,
+                },
+            );
         }
 
         for r in vector.results {
-            let norm = if vec_max.is_nan() || vec_max == 0.0 { r.score } else { r.score / vec_max };
-            combined.entry(r.id.clone()).and_modify(|e| {
-                e.score += vector_weight * norm;
-            }).or_insert(SearchResult { id: r.id.clone(), score: vector_weight * norm, fields: r.fields, highlight: r.highlight });
+            let norm = if vec_max.is_nan() || vec_max == 0.0 {
+                r.score
+            } else {
+                r.score / vec_max
+            };
+            combined
+                .entry(r.id.clone())
+                .and_modify(|e| {
+                    e.score += vector_weight * norm;
+                })
+                .or_insert(SearchResult {
+                    id: r.id.clone(),
+                    score: vector_weight * norm,
+                    fields: r.fields,
+                    highlight: r.highlight,
+                });
         }
 
         let mut out: Vec<SearchResult> = combined.into_iter().map(|(_, v)| v).collect();
-        out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        out.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let total = out.len();
         out.truncate(limit);
 
-        SearchResults { results: out, total, latency_ms: 0 }
+        SearchResults {
+            results: out,
+            total,
+            latency_ms: 0,
+        }
     }
 
     /// Public RRF merge helper for testing and reuse.
     /// k is the RRF constant (typical values 60-100). Higher k reduces rank influence.
-    pub fn merge_rrf_public(text: SearchResults, vector: SearchResults, k: usize, limit: usize) -> SearchResults {
+    pub fn merge_rrf_public(
+        text: SearchResults,
+        vector: SearchResults,
+        k: usize,
+        limit: usize,
+    ) -> SearchResults {
         use std::collections::HashMap;
 
         let mut scores: HashMap<String, f32> = HashMap::new();
-        let mut fields_map: HashMap<String, std::collections::HashMap<String, serde_json::Value>> = HashMap::new();
+        let mut fields_map: HashMap<String, std::collections::HashMap<String, serde_json::Value>> =
+            HashMap::new();
 
         // Process text results
         for (i, r) in text.results.into_iter().enumerate() {
@@ -77,16 +150,32 @@ impl HybridSearchCoordinator {
             fields_map.entry(r.id.clone()).or_insert(r.fields);
         }
 
-        let mut out: Vec<SearchResult> = scores.into_iter().map(|(id, score)| {
-            let fields = fields_map.remove(&id).unwrap_or_default();
-            SearchResult { id, score, fields, highlight: None }
-        }).collect();
+        let mut out: Vec<SearchResult> = scores
+            .into_iter()
+            .map(|(id, score)| {
+                let fields = fields_map.remove(&id).unwrap_or_default();
+                SearchResult {
+                    id,
+                    score,
+                    fields,
+                    highlight: None,
+                }
+            })
+            .collect();
 
-        out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        out.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let total = out.len();
         out.truncate(limit);
 
-        SearchResults { results: out, total, latency_ms: 0 }
+        SearchResults {
+            results: out,
+            total,
+            latency_ms: 0,
+        }
     }
 }
 
@@ -105,14 +194,41 @@ impl SearchBackend for HybridSearchCoordinator {
 
         let (tres, vres) = if let Some(vec) = maybe_vec {
             // If query_string is a vector, run vector search and run a text search with the provided fields but empty string
-            let vec_q = Query { query_string: serde_json::to_string(&vec).unwrap(), fields: vec![], limit: query.limit, offset: query.offset, merge_strategy: None, text_weight: None, vector_weight: None, highlight: None };
-            let text_q = Query { query_string: "".to_string(), fields: query.fields.clone(), limit: query.limit, offset: query.offset, merge_strategy: None, text_weight: None, vector_weight: None, highlight: query.highlight.clone() };
+            let vec_q = Query {
+                query_string: serde_json::to_string(&vec).unwrap(),
+                fields: vec![],
+                limit: query.limit,
+                offset: query.offset,
+                merge_strategy: None,
+                text_weight: None,
+                vector_weight: None,
+                highlight: None,
+            };
+            let text_q = Query {
+                query_string: "".to_string(),
+                fields: query.fields.clone(),
+                limit: query.limit,
+                offset: query.offset,
+                merge_strategy: None,
+                text_weight: None,
+                vector_weight: None,
+                highlight: query.highlight.clone(),
+            };
             let t = self.text_backend.search(collection, text_q);
             let v = self.vector_backend.search(collection, vec_q);
             tokio::join!(t, v)
         } else {
             // No vector provided: run only text search
-            let text_q = Query { query_string: query.query_string.clone(), fields: query.fields.clone(), limit: query.limit, offset: query.offset, merge_strategy: query.merge_strategy.clone(), text_weight: query.text_weight, vector_weight: query.vector_weight, highlight: query.highlight.clone() };
+            let text_q = Query {
+                query_string: query.query_string.clone(),
+                fields: query.fields.clone(),
+                limit: query.limit,
+                offset: query.offset,
+                merge_strategy: query.merge_strategy.clone(),
+                text_weight: query.text_weight,
+                vector_weight: query.vector_weight,
+                highlight: query.highlight.clone(),
+            };
             let t = self.text_backend.search(collection, text_q).await?;
             return Ok(t);
         };
@@ -155,7 +271,10 @@ impl SearchBackend for HybridSearchCoordinator {
         // Combine stats conservatively (max document_count)
         let t = self.text_backend.stats(collection).await?;
         let v = self.vector_backend.stats(collection).await?;
-        Ok(BackendStats { document_count: std::cmp::max(t.document_count, v.document_count), size_bytes: t.size_bytes + v.size_bytes })
+        Ok(BackendStats {
+            document_count: std::cmp::max(t.document_count, v.document_count),
+            size_bytes: t.size_bytes + v.size_bytes,
+        })
     }
 
     async fn search_with_aggs(
@@ -164,6 +283,8 @@ impl SearchBackend for HybridSearchCoordinator {
         _query: &Query,
         _aggregations: Vec<crate::aggregations::AggregationRequest>,
     ) -> Result<crate::backends::SearchResultsWithAggs> {
-        Err(crate::error::Error::NotImplemented("Aggregations not supported for hybrid backend".to_string()))
+        Err(crate::error::Error::NotImplemented(
+            "Aggregations not supported for hybrid backend".to_string(),
+        ))
     }
 }
