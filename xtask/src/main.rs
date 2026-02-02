@@ -158,7 +158,7 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     let base = staging.join(prefix);
 
     // Create directory skeleton
-    for dir in &["bin", "conf/schemas", "conf/tls", "models", "data", "logs"] {
+    for dir in &["bin", "conf/schemas", "conf/tls", "conf/pipelines", "models", "data", "logs"] {
         fs::create_dir_all(base.join(dir))?;
     }
 
@@ -204,6 +204,12 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     fs::write(
         base.join("conf/schemas/example.yaml"),
         generate_example_schema(),
+    )?;
+
+    // Example ingest pipeline
+    fs::write(
+        base.join("conf/pipelines/example.yaml"),
+        generate_example_pipeline(),
     )?;
 
     // -- models/ ------------------------------------------------------------
@@ -390,6 +396,23 @@ embedding_generation:
   enabled: true
   source_field: content
   target_field: embedding
+"#
+}
+
+fn generate_example_pipeline() -> &'static str {
+    r#"# Example ingest pipeline
+# Reference via: POST /collections/{name}/documents?pipeline=normalize
+
+name: normalize
+description: Normalize text fields before indexing
+processors:
+  - lowercase:
+      field: title
+  - lowercase:
+      field: content
+  - set:
+      field: indexed_at
+      value: "{{_now}}"
 "#
 }
 
