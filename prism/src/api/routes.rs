@@ -82,11 +82,18 @@ fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
     }
 }
 
+#[tracing::instrument(
+    name = "search",
+    skip(manager, request),
+    fields(collection = %collection, search_type = "text")
+)]
 pub async fn search(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<SearchResults>, StatusCode> {
+    let start = std::time::Instant::now();
+
     let qstr = if let Some(vec) = request.vector.clone() {
         serde_json::to_string(&vec).unwrap_or_default()
     } else { request.query.clone().unwrap_or_default() };
@@ -102,14 +109,33 @@ pub async fn search(
         highlight: request.highlight,
     };
 
-    manager
-        .search(&collection, query)
-        .await
-        .map(Json)
-        .map_err(|e| {
+    let result = manager.search(&collection, query).await;
+
+    let duration = start.elapsed().as_secs_f64();
+
+    match result {
+        Ok(results) => {
+            metrics::histogram!("prism_search_duration_seconds",
+                "collection" => collection.clone(),
+                "search_type" => "text",
+            ).record(duration);
+            metrics::counter!("prism_search_total",
+                "collection" => collection,
+                "search_type" => "text",
+                "status" => "ok",
+            ).increment(1);
+            Ok(Json(results))
+        }
+        Err(e) => {
+            metrics::counter!("prism_search_total",
+                "collection" => collection,
+                "search_type" => "text",
+                "status" => "error",
+            ).increment(1);
             tracing::error!("Search error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 pub async fn simple_search(

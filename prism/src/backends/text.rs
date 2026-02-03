@@ -371,6 +371,7 @@ impl SearchBackend for TextBackend {
         Ok(())
     }
 
+    #[tracing::instrument(name = "text_search", skip(self, query), fields(collection = %collection))]
     async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
         let start = std::time::Instant::now();
 

@@ -18,6 +18,7 @@ impl HybridSearchCoordinator {
         Self { text_backend, vector_backend, vector_weight }
     }
 
+    #[tracing::instrument(name = "merge_results", skip(self, text, vector))]
     async fn merge_results(&self, text: SearchResults, vector: SearchResults, limit: usize) -> SearchResults {
         // Default to weighted merge using the instance's vector_weight
         Self::merge_weighted_public(text, vector, 1.0 - self.vector_weight, self.vector_weight, limit)
