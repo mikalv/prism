@@ -3,6 +3,7 @@ use crate::config::{CorsConfig, SecurityConfig, TlsConfig};
 use crate::pipeline::registry::PipelineRegistry;
 use crate::security::permissions::PermissionChecker;
 use crate::Result;
+use axum::http::StatusCode;
 use axum::{
     extract::State,
     http::{HeaderValue, Method},
@@ -25,12 +26,42 @@ use crate::mcp::session::{SessionManager, SseEvent};
 use crate::mcp::tools::register_basic_tools;
 use crate::mcp::ToolRegistry;
 
+async fn metrics_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_string();
+    let start = std::time::Instant::now();
+
+    let response = next.run(req).await;
+
+    let duration = start.elapsed().as_secs_f64();
+    let status = response.status().as_u16().to_string();
+
+    metrics::counter!("prism_http_requests_total",
+        "method" => method.clone(),
+        "path" => path.clone(),
+        "status_code" => status,
+    )
+    .increment(1);
+
+    metrics::histogram!("prism_http_request_duration_seconds",
+        "method" => method,
+        "path" => path,
+    )
+    .record(duration);
+
+    response
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub manager: Arc<CollectionManager>,
     pub session_manager: Arc<SessionManager>,
     pub mcp_handler: Arc<McpHandler>,
     pub pipeline_registry: Arc<PipelineRegistry>,
+    pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }
 
 pub struct ApiServer {
@@ -40,6 +71,7 @@ pub struct ApiServer {
     cors_config: CorsConfig,
     security_config: SecurityConfig,
     pipeline_registry: Arc<PipelineRegistry>,
+    metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }
 
 impl ApiServer {
@@ -84,7 +116,16 @@ impl ApiServer {
             cors_config,
             security_config,
             pipeline_registry: Arc::new(pipeline_registry),
+            metrics_handle: None,
         }
+    }
+
+    pub fn with_metrics(
+        mut self,
+        handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+    ) -> Self {
+        self.metrics_handle = handle;
+        self
     }
 
     /// GET /sse - SSE stream for MCP
@@ -197,12 +238,28 @@ impl ApiServer {
             .allow_headers(tower_http::cors::Any)
     }
 
+    async fn metrics_handler(State(state): State<AppState>) -> impl axum::response::IntoResponse {
+        match &state.metrics_handle {
+            Some(handle) => (
+                StatusCode::OK,
+                [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+                handle.render(),
+            ),
+            None => (
+                StatusCode::NOT_FOUND,
+                [("content-type", "text/plain; charset=utf-8")],
+                "Metrics not enabled".to_string(),
+            ),
+        }
+    }
+
     pub fn router(&self) -> Router {
         let app_state = AppState {
             manager: self.manager.clone(),
             session_manager: self.session_manager.clone(),
             mcp_handler: self.mcp_handler.clone(),
             pipeline_registry: self.pipeline_registry.clone(),
+            metrics_handle: self.metrics_handle.clone(),
         };
 
         // Pipeline-aware routes that need AppState
@@ -212,6 +269,7 @@ impl ApiServer {
                 post(crate::api::routes::index_documents),
             )
             .route("/admin/pipelines", get(crate::api::routes::list_pipelines))
+            .route("/metrics", get(Self::metrics_handler))
             .with_state(app_state.clone());
 
         // Routes that use Arc<CollectionManager>
@@ -299,6 +357,7 @@ impl ApiServer {
             .merge(pipeline_routes)
             .merge(mcp_routes)
             .layer(cors)
+            .layer(axum::middleware::from_fn(metrics_middleware))
             .layer(TraceLayer::new_for_http());
 
         // Add audit middleware (independent of security.enabled)

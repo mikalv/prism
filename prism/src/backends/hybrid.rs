@@ -28,6 +28,7 @@ impl HybridSearchCoordinator {
         }
     }
 
+    #[tracing::instrument(name = "merge_results", skip(self, text, vector))]
     async fn merge_results(
         &self,
         text: SearchResults,

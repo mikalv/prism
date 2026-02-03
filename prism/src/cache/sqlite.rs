@@ -107,6 +107,8 @@ impl EmbeddingCache for SqliteCache {
                 )?;
 
                 self.hits.fetch_add(1, Ordering::Relaxed);
+                metrics::counter!("prism_embedding_cache_hits_total", "layer" => "sqlite")
+                    .increment(1);
 
                 // Deserialize f32 vector from bytes
                 let vector = bytes_to_f32_vec(&bytes);
@@ -114,6 +116,8 @@ impl EmbeddingCache for SqliteCache {
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 self.misses.fetch_add(1, Ordering::Relaxed);
+                metrics::counter!("prism_embedding_cache_misses_total", "layer" => "sqlite")
+                    .increment(1);
                 Ok(None)
             }
             Err(e) => Err(e.into()),

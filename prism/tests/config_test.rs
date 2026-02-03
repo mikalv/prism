@@ -241,3 +241,25 @@ bind_addr = "127.0.0.1:3080"
     assert!(!config.security.enabled);
     assert!(config.security.api_keys.is_empty());
 }
+
+#[test]
+fn test_observability_config_defaults() {
+    let config = Config::default();
+    assert_eq!(config.observability.log_format, "pretty");
+    assert_eq!(config.observability.log_level, "info,prism=debug");
+    assert!(config.observability.metrics_enabled);
+}
+
+#[test]
+fn test_observability_config_from_toml() {
+    let toml_str = r#"
+[observability]
+log_format = "json"
+log_level = "debug"
+metrics_enabled = false
+"#;
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.observability.log_format, "json");
+    assert_eq!(config.observability.log_level, "debug");
+    assert!(!config.observability.metrics_enabled);
+}

@@ -181,13 +181,24 @@ impl VectorBackend {
     }
 
     /// Embed a single text using the cached provider
+    #[tracing::instrument(name = "embed_text", skip(self, text))]
     pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
+        let start = std::time::Instant::now();
         let ep = self.embedding_provider.read();
         if let Some(ref provider) = *ep {
-            provider
+            let result = provider
                 .embed(text)
                 .await
-                .map_err(|e| crate::error::Error::Backend(format!("Embedding failed: {}", e)))
+                .map_err(|e| crate::error::Error::Backend(format!("Embedding failed: {}", e)));
+
+            let duration = start.elapsed().as_secs_f64();
+            let status = if result.is_ok() { "ok" } else { "error" };
+            metrics::histogram!("prism_embedding_duration_seconds", "provider" => "ort")
+                .record(duration);
+            metrics::counter!("prism_embedding_requests_total", "provider" => "ort", "status" => status)
+                .increment(1);
+
+            result
         } else {
             Err(crate::error::Error::Backend(
                 "No embedding provider configured. Call set_embedding_provider() first.".into(),
@@ -196,13 +207,23 @@ impl VectorBackend {
     }
 
     /// Embed multiple texts using the cached provider (uses batch API)
+    #[tracing::instrument(name = "embed_texts", skip(self, texts), fields(text_count = texts.len()))]
     pub async fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        let start = std::time::Instant::now();
         let ep = self.embedding_provider.read();
         if let Some(ref provider) = *ep {
-            provider
-                .embed_batch(texts)
-                .await
-                .map_err(|e| crate::error::Error::Backend(format!("Batch embedding failed: {}", e)))
+            let result = provider.embed_batch(texts).await.map_err(|e| {
+                crate::error::Error::Backend(format!("Batch embedding failed: {}", e))
+            });
+
+            let duration = start.elapsed().as_secs_f64();
+            let status = if result.is_ok() { "ok" } else { "error" };
+            metrics::histogram!("prism_embedding_duration_seconds", "provider" => "ort")
+                .record(duration);
+            metrics::counter!("prism_embedding_requests_total", "provider" => "ort", "status" => status)
+                .increment(texts.len() as u64);
+
+            result
         } else {
             Err(crate::error::Error::Backend(
                 "No embedding provider configured. Call set_embedding_provider() first.".into(),
@@ -211,6 +232,7 @@ impl VectorBackend {
     }
 
     /// Search with a text query (auto-embeds the query)
+    #[tracing::instrument(name = "vector_search", skip(self, text), fields(collection = %collection))]
     pub async fn search_text(
         &self,
         collection: &str,

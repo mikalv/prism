@@ -93,6 +93,10 @@ impl CollectionManager {
                 self.vector_backend.initialize(name, schema).await?;
             }
         }
+
+        // Update collections count gauge
+        metrics::gauge!("prism_collections_count").set(self.schemas.len() as f64);
+
         Ok(())
     }
 
