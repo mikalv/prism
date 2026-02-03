@@ -2179,6 +2179,7 @@ dependencies = [
  "hyper-util",
  "instant-distance",
  "metrics",
+ "metrics-exporter-prometheus",
  "ndarray",
  "nom",
  "object_store",

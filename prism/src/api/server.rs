@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio_rustls::TlsAcceptor;
+use axum::http::StatusCode;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -31,6 +32,7 @@ pub struct AppState {
     pub session_manager: Arc<SessionManager>,
     pub mcp_handler: Arc<McpHandler>,
     pub pipeline_registry: Arc<PipelineRegistry>,
+    pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }
 
 pub struct ApiServer {
@@ -40,6 +42,7 @@ pub struct ApiServer {
     cors_config: CorsConfig,
     security_config: SecurityConfig,
     pipeline_registry: Arc<PipelineRegistry>,
+    metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }
 
 impl ApiServer {
@@ -79,7 +82,16 @@ impl ApiServer {
             cors_config,
             security_config,
             pipeline_registry: Arc::new(pipeline_registry),
+            metrics_handle: None,
         }
+    }
+
+    pub fn with_metrics(
+        mut self,
+        handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+    ) -> Self {
+        self.metrics_handle = handle;
+        self
     }
 
     /// GET /sse - SSE stream for MCP
@@ -192,12 +204,30 @@ impl ApiServer {
             .allow_headers(tower_http::cors::Any)
     }
 
+    async fn metrics_handler(
+        State(state): State<AppState>,
+    ) -> impl axum::response::IntoResponse {
+        match &state.metrics_handle {
+            Some(handle) => (
+                StatusCode::OK,
+                [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+                handle.render(),
+            ),
+            None => (
+                StatusCode::NOT_FOUND,
+                [("content-type", "text/plain; charset=utf-8")],
+                "Metrics not enabled".to_string(),
+            ),
+        }
+    }
+
     pub fn router(&self) -> Router {
         let app_state = AppState {
             manager: self.manager.clone(),
             session_manager: self.session_manager.clone(),
             mcp_handler: self.mcp_handler.clone(),
             pipeline_registry: self.pipeline_registry.clone(),
+            metrics_handle: self.metrics_handle.clone(),
         };
 
         // Pipeline-aware routes that need AppState
@@ -210,6 +240,7 @@ impl ApiServer {
                 "/admin/pipelines",
                 get(crate::api::routes::list_pipelines),
             )
+            .route("/metrics", get(Self::metrics_handler))
             .with_state(app_state.clone());
 
         // Routes that use Arc<CollectionManager>
