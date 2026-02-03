@@ -6,9 +6,9 @@ use serde::Deserialize;
 use std::pin::Pin;
 use url::Url;
 
+use super::traits::{ImportSource, SourceDocument};
 use crate::error::{ImportError, Result};
 use crate::schema::{convert_es_mapping, mapping::EsMappingResponse, SourceSchema};
-use super::traits::{ImportSource, SourceDocument};
 
 /// Authentication method for Elasticsearch
 #[derive(Debug, Clone)]

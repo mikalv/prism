@@ -26,6 +26,8 @@ url = "2"
 indicatif = "0.17"
 anyhow = { workspace = true }
 base64 = { workspace = true }
+serde_yaml = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

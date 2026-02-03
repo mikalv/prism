@@ -1,8 +1,8 @@
+use crate::schema::SourceSchema;
+use crate::Result;
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
-use crate::Result;
-use crate::schema::SourceSchema;
 
 /// A document from an external source
 #[derive(Debug, Clone)]

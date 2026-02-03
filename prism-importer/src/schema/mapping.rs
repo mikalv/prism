@@ -1,7 +1,7 @@
+use super::types::{SourceField, SourceFieldType, SourceSchema};
+use crate::error::Result;
 use serde::Deserialize;
 use std::collections::HashMap;
-use crate::error::Result;
-use super::types::{SourceSchema, SourceField, SourceFieldType};
 
 /// Elasticsearch mapping response structure
 #[derive(Debug, Deserialize)]
@@ -59,7 +59,11 @@ fn convert_field(name: &str, prop: &EsFieldMapping) -> Result<SourceField> {
         "dense_vector" => (SourceFieldType::Vector, prop.dims),
         "object" | "nested" | "flattened" => (SourceFieldType::Json, None),
         other => {
-            tracing::warn!("Unknown ES type '{}' for field '{}', mapping to text", other, name);
+            tracing::warn!(
+                "Unknown ES type '{}' for field '{}', mapping to text",
+                other,
+                name
+            );
             (SourceFieldType::Unknown(other.to_string()), None)
         }
     };
@@ -116,7 +120,11 @@ mod tests {
         let mapping: EsMappings = serde_json::from_value(mapping_json).unwrap();
         let schema = convert_es_mapping("docs", &mapping).unwrap();
 
-        let embedding = schema.fields.iter().find(|f| f.name == "embedding").unwrap();
+        let embedding = schema
+            .fields
+            .iter()
+            .find(|f| f.name == "embedding")
+            .unwrap();
         assert_eq!(embedding.field_type, SourceFieldType::Vector);
         assert_eq!(embedding.vector_dims, Some(384));
     }
