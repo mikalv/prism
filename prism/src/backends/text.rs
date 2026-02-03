@@ -248,6 +248,7 @@ impl TextBackend {
 
 #[async_trait]
 impl SearchBackend for TextBackend {
+    #[tracing::instrument(name = "text_index", skip(self, docs), fields(collection = %collection, doc_count = docs.len()))]
     async fn index(&self, collection: &str, docs: Vec<Document>) -> Result<()> {
         let collections = self.collections.read().unwrap();
         let coll = collections

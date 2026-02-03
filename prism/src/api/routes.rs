@@ -204,12 +204,18 @@ pub struct IndexError {
     pub error: String,
 }
 
+#[tracing::instrument(
+    name = "index_documents",
+    skip(state, request, query),
+    fields(collection = %collection)
+)]
 pub async fn index_documents(
     Path(collection): Path<String>,
     axum::extract::Query(query): axum::extract::Query<IndexQuery>,
     State(state): State<AppState>,
     Json(request): Json<IndexRequest>,
 ) -> Result<(StatusCode, Json<IndexResponse>), StatusCode> {
+    let start = std::time::Instant::now();
     let mut documents = request.documents;
     let total = documents.len();
     tracing::info!("Indexing {} documents to collection '{}'", total, collection);
@@ -250,6 +256,23 @@ pub async fn index_documents(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }
+
+    let duration = start.elapsed().as_secs_f64();
+    let pipeline_label = query.pipeline.as_deref().unwrap_or("none").to_string();
+
+    metrics::histogram!("prism_index_duration_seconds",
+        "collection" => collection.clone(),
+        "pipeline" => pipeline_label.clone(),
+    ).record(duration);
+
+    metrics::counter!("prism_index_documents_total",
+        "collection" => collection.clone(),
+        "status" => "ok",
+    ).increment(indexed as u64);
+
+    metrics::histogram!("prism_index_batch_size",
+        "collection" => collection.clone(),
+    ).record(total as f64);
 
     tracing::info!("Indexed {}/{} documents to '{}' ({} failed)", indexed, total, collection, failed);
     Ok((StatusCode::CREATED, Json(IndexResponse { indexed, failed, errors })))
