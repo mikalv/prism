@@ -1,0 +1,18 @@
+[storage]
+data_dir = "/data"
+
+[server]
+bind_addr = "0.0.0.0:3000"
+
+[server.cors]
+enabled = true
+origins = ["*"]
+
+[server.tls]
+enabled = false
+
+[security]
+enabled = false
+
+[security.audit]
+enabled = false

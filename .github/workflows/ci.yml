@@ -89,3 +89,13 @@ jobs:
           tags: prism:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  e2e-smoke:
+    name: E2E Smoke Test
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run E2E smoke test
+        run: ./tests/e2e/smoke.sh

@@ -56,10 +56,6 @@ WORKDIR /data
 # Expose default port
 EXPOSE 3000
 
-# Health check endpoint
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD ["/usr/local/bin/prism-server", "--health-check"] || exit 1
-
 # Default command
 ENTRYPOINT ["/usr/local/bin/prism-server"]
-CMD ["--bind", "0.0.0.0:3000", "--data-dir", "/data"]
+CMD ["--host", "0.0.0.0", "--port", "3000"]
