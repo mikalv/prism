@@ -16,6 +16,7 @@ pub struct Pipeline {
 
 impl Pipeline {
     /// Run all processors on a document in order.
+    #[tracing::instrument(name = "pipeline_process", skip(self, doc), fields(pipeline = %self.name))]
     pub fn process(&self, doc: &mut Document) -> Result<()> {
         for proc in &self.processors {
             proc.process(doc)?;
