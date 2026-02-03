@@ -1,0 +1,30 @@
+[package]
+name = "prism-importer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Import tool for migrating data from Elasticsearch and other sources to Prism"
+
+[[bin]]
+name = "prism-import"
+path = "src/main.rs"
+
+[dependencies]
+prism = { path = "../prism" }
+reqwest = { workspace = true, features = ["json", "stream"] }
+tokio = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+async-stream = { workspace = true }
+futures = { workspace = true }
+url = "2"
+indicatif = "0.17"
+anyhow = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
