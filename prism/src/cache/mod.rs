@@ -6,13 +6,13 @@
 
 mod embedding;
 mod lru;
-mod stats;
 mod sqlite;
+mod stats;
 
 pub use embedding::{CacheKey, EmbeddingCache, EmbeddingCacheStats};
 pub use lru::LruCache;
-pub use stats::ObjectCacheStats;
 pub use sqlite::SqliteCache;
+pub use stats::ObjectCacheStats;
 
 #[cfg(feature = "cache-redis")]
 mod redis;

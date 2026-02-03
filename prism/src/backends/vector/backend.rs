@@ -2,7 +2,10 @@
 //!
 //! All storage (local, S3, cached) goes through the SegmentStorage trait.
 
-use crate::backends::r#trait::{BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults, SearchResultsWithAggs};
+use crate::backends::r#trait::{
+    BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults,
+    SearchResultsWithAggs,
+};
 use crate::cache::EmbeddingCacheStats;
 use crate::error::Result;
 use crate::schema::types::CollectionSchema;
@@ -112,11 +115,10 @@ impl VectorBackend {
     }
 
     pub async fn initialize(&self, collection: &str, schema: &CollectionSchema) -> Result<()> {
-        let vector_config = schema
-            .backends
-            .vector
-            .as_ref()
-            .ok_or_else(|| crate::error::Error::Schema("No vector backend configured".into()))?;
+        let vector_config =
+            schema.backends.vector.as_ref().ok_or_else(|| {
+                crate::error::Error::Schema("No vector backend configured".into())
+            })?;
 
         // Attempt to restore from persistence first
         if let Some(bytes) = self.load_index(collection).await? {
@@ -148,7 +150,10 @@ impl VectorBackend {
         // Get embedding config if available
         let (source_field, target_field) = if let Some(ref emb_cfg) = schema.embedding_generation {
             if emb_cfg.enabled {
-                (Some(emb_cfg.source_field.clone()), emb_cfg.target_field.clone())
+                (
+                    Some(emb_cfg.source_field.clone()),
+                    emb_cfg.target_field.clone(),
+                )
             } else {
                 (None, "embedding".to_string())
             }
@@ -207,10 +212,9 @@ impl VectorBackend {
         let start = std::time::Instant::now();
         let ep = self.embedding_provider.read();
         if let Some(ref provider) = *ep {
-            let result = provider
-                .embed_batch(texts)
-                .await
-                .map_err(|e| crate::error::Error::Backend(format!("Batch embedding failed: {}", e)));
+            let result = provider.embed_batch(texts).await.map_err(|e| {
+                crate::error::Error::Backend(format!("Batch embedding failed: {}", e))
+            });
 
             let duration = start.elapsed().as_secs_f64();
             let status = if result.is_ok() { "ok" } else { "error" };
@@ -229,7 +233,12 @@ impl VectorBackend {
 
     /// Search with a text query (auto-embeds the query)
     #[tracing::instrument(name = "vector_search", skip(self, text), fields(collection = %collection))]
-    pub async fn search_text(&self, collection: &str, text: &str, limit: usize) -> Result<SearchResults> {
+    pub async fn search_text(
+        &self,
+        collection: &str,
+        text: &str,
+        limit: usize,
+    ) -> Result<SearchResults> {
         // Generate embedding for the query
         let query_vector = self.embed_text(text).await?;
 
@@ -315,12 +324,17 @@ impl SearchBackend for VectorBackend {
                 }; // indexes lock released here
 
                 if !texts_to_embed.is_empty() {
-                    tracing::info!("Auto-generating {} embeddings (with cache)", texts_to_embed.len());
+                    tracing::info!(
+                        "Auto-generating {} embeddings (with cache)",
+                        texts_to_embed.len()
+                    );
                     let texts: Vec<&str> = texts_to_embed.iter().map(|(_, s)| s.as_str()).collect();
 
                     match provider.embed_batch(&texts).await {
                         Ok(embeddings) => {
-                            for ((doc_idx, _), embedding) in texts_to_embed.iter().zip(embeddings.into_iter()) {
+                            for ((doc_idx, _), embedding) in
+                                texts_to_embed.iter().zip(embeddings.into_iter())
+                            {
                                 docs[*doc_idx].fields.insert(
                                     target_field.clone(),
                                     serde_json::to_value(&embedding).unwrap(),
@@ -347,10 +361,12 @@ impl SearchBackend for VectorBackend {
                 let vector_value = doc
                     .fields
                     .get(&vector_index.embedding_target_field)
-                    .ok_or_else(|| crate::error::Error::Schema(format!(
-                        "Missing {} field",
-                        vector_index.embedding_target_field
-                    )))?;
+                    .ok_or_else(|| {
+                        crate::error::Error::Schema(format!(
+                            "Missing {} field",
+                            vector_index.embedding_target_field
+                        ))
+                    })?;
 
                 let vector: Vec<f32> = serde_json::from_value(vector_value.clone())
                     .map_err(|_| crate::error::Error::Schema("Invalid embedding format".into()))?;
@@ -397,9 +413,10 @@ impl SearchBackend for VectorBackend {
         }
 
         // Search HNSW index
-        let matches = vector_index
-            .hnsw
-            .search(&query_vector, query.limit, vector_index.ef_search)?;
+        let matches =
+            vector_index
+                .hnsw
+                .search(&query_vector, query.limit, vector_index.ef_search)?;
 
         // Convert keys to IDs and retrieve documents
         let mut results = Vec::new();

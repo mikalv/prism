@@ -58,12 +58,7 @@ impl CachedEmbeddingProvider {
 
     /// Generate embedding with caching
     pub async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
-        let key = CacheKey::new(
-            self.provider.model_name(),
-            None,
-            text,
-            self.key_strategy,
-        );
+        let key = CacheKey::new(self.provider.model_name(), None, text, self.key_strategy);
 
         // Check cache first
         if let Some(cached) = self.cache.get(&key).await? {
@@ -90,12 +85,7 @@ impl CachedEmbeddingProvider {
 
         // Check cache for each text
         for (i, text) in texts.iter().enumerate() {
-            let key = CacheKey::new(
-                self.provider.model_name(),
-                None,
-                text,
-                self.key_strategy,
-            );
+            let key = CacheKey::new(self.provider.model_name(), None, text, self.key_strategy);
 
             if let Some(cached) = self.cache.get(&key).await? {
                 results.push((i, cached));
@@ -110,13 +100,9 @@ impl CachedEmbeddingProvider {
             let generated = self.provider.embed_batch(&miss_texts).await?;
 
             // Store in cache and collect results
-            for ((original_idx, text), embedding) in cache_misses.iter().zip(generated.into_iter()) {
-                let key = CacheKey::new(
-                    self.provider.model_name(),
-                    None,
-                    text,
-                    self.key_strategy,
-                );
+            for ((original_idx, text), embedding) in cache_misses.iter().zip(generated.into_iter())
+            {
+                let key = CacheKey::new(self.provider.model_name(), None, text, self.key_strategy);
                 self.cache
                     .set(&key, embedding.clone(), self.provider.dimensions())
                     .await?;
@@ -167,7 +153,8 @@ mod tests {
     #[async_trait::async_trait]
     impl EmbeddingProvider for MockProvider {
         async fn embed(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
-            self.call_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.call_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             Ok(vec![0.1, 0.2, 0.3, 0.4])
         }
 

@@ -56,9 +56,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use prism_storage::{
-    LocalStorage, SegmentStorage,
-};
+use prism_storage::{LocalStorage, SegmentStorage};
 
 #[cfg(feature = "storage-s3")]
 use prism_storage::{CacheConfig, CachedStorage};
@@ -197,9 +195,7 @@ impl UnifiedStorageConfig {
     /// Create a SegmentStorage from this configuration.
     pub fn create_storage(&self) -> Result<Arc<dyn SegmentStorage>, crate::Error> {
         match self.backend.as_str() {
-            "local" => {
-                Ok(Arc::new(LocalStorage::new(&self.data_dir)))
-            }
+            "local" => Ok(Arc::new(LocalStorage::new(&self.data_dir))),
             #[cfg(feature = "storage-s3")]
             "s3" => {
                 let s3_config = self.s3.as_ref().ok_or_else(|| {
@@ -224,14 +220,16 @@ impl UnifiedStorageConfig {
                     config = config.with_credentials(key_id, secret);
                 }
 
-                let storage = S3Storage::new(config)
-                    .map_err(|e| crate::Error::Storage(e.to_string()))?;
+                let storage =
+                    S3Storage::new(config).map_err(|e| crate::Error::Storage(e.to_string()))?;
                 Ok(Arc::new(storage))
             }
             #[cfg(feature = "storage-s3")]
             "cached" => {
                 let s3_config = self.s3.as_ref().ok_or_else(|| {
-                    crate::Error::Config("Cached backend requires [storage.s3] configuration for L2".into())
+                    crate::Error::Config(
+                        "Cached backend requires [storage.s3] configuration for L2".into(),
+                    )
                 })?;
                 let cache_config = self.cache.clone().unwrap_or_default();
 
@@ -255,7 +253,7 @@ impl UnifiedStorageConfig {
                 }
 
                 let l2: Arc<dyn SegmentStorage> = Arc::new(
-                    S3Storage::new(config).map_err(|e| crate::Error::Storage(e.to_string()))?
+                    S3Storage::new(config).map_err(|e| crate::Error::Storage(e.to_string()))?,
                 );
 
                 // Create cached storage
@@ -269,17 +267,13 @@ impl UnifiedStorageConfig {
                 Ok(Arc::new(cached))
             }
             #[cfg(not(feature = "storage-s3"))]
-            "s3" | "cached" => {
-                Err(crate::Error::Config(
-                    "S3 storage requires 'storage-s3' feature".into(),
-                ))
-            }
-            other => {
-                Err(crate::Error::Config(format!(
-                    "Unknown storage backend: '{}'. Valid options: local, s3, cached",
-                    other
-                )))
-            }
+            "s3" | "cached" => Err(crate::Error::Config(
+                "S3 storage requires 'storage-s3' feature".into(),
+            )),
+            other => Err(crate::Error::Config(format!(
+                "Unknown storage backend: '{}'. Valid options: local, s3, cached",
+                other
+            ))),
         }
     }
 

@@ -76,10 +76,7 @@ impl SqliteCache {
             [],
         )?;
 
-        conn.execute(
-            "CREATE INDEX idx_accessed ON embeddings(accessed_at)",
-            [],
-        )?;
+        conn.execute("CREATE INDEX idx_accessed ON embeddings(accessed_at)", [])?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -110,7 +107,8 @@ impl EmbeddingCache for SqliteCache {
                 )?;
 
                 self.hits.fetch_add(1, Ordering::Relaxed);
-                metrics::counter!("prism_embedding_cache_hits_total", "layer" => "sqlite").increment(1);
+                metrics::counter!("prism_embedding_cache_hits_total", "layer" => "sqlite")
+                    .increment(1);
 
                 // Deserialize f32 vector from bytes
                 let vector = bytes_to_f32_vec(&bytes);
@@ -118,7 +116,8 @@ impl EmbeddingCache for SqliteCache {
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 self.misses.fetch_add(1, Ordering::Relaxed);
-                metrics::counter!("prism_embedding_cache_misses_total", "layer" => "sqlite").increment(1);
+                metrics::counter!("prism_embedding_cache_misses_total", "layer" => "sqlite")
+                    .increment(1);
                 Ok(None)
             }
             Err(e) => Err(e.into()),
@@ -153,11 +152,8 @@ impl EmbeddingCache for SqliteCache {
     async fn stats(&self) -> anyhow::Result<EmbeddingCacheStats> {
         let conn = self.conn.lock().await;
 
-        let total_entries: usize = conn.query_row(
-            "SELECT COUNT(*) FROM embeddings",
-            [],
-            |row| row.get(0),
-        )?;
+        let total_entries: usize =
+            conn.query_row("SELECT COUNT(*) FROM embeddings", [], |row| row.get(0))?;
 
         let total_bytes: usize = conn.query_row(
             "SELECT COALESCE(SUM(LENGTH(vector)), 0) FROM embeddings",
@@ -176,11 +172,8 @@ impl EmbeddingCache for SqliteCache {
     async fn evict_lru(&self, max_entries: usize) -> anyhow::Result<usize> {
         let conn = self.conn.lock().await;
 
-        let current_count: usize = conn.query_row(
-            "SELECT COUNT(*) FROM embeddings",
-            [],
-            |row| row.get(0),
-        )?;
+        let current_count: usize =
+            conn.query_row("SELECT COUNT(*) FROM embeddings", [], |row| row.get(0))?;
 
         if current_count <= max_entries {
             return Ok(0);
@@ -204,11 +197,8 @@ impl EmbeddingCache for SqliteCache {
 
     async fn clear(&self) -> anyhow::Result<usize> {
         let conn = self.conn.lock().await;
-        let count: usize = conn.query_row(
-            "SELECT COUNT(*) FROM embeddings",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: usize =
+            conn.query_row("SELECT COUNT(*) FROM embeddings", [], |row| row.get(0))?;
         conn.execute("DELETE FROM embeddings", [])?;
         Ok(count)
     }
@@ -244,7 +234,12 @@ mod tests {
     async fn test_cache_roundtrip() {
         let cache = SqliteCache::in_memory().unwrap();
 
-        let key = CacheKey::new("test-model", None, "hello world", super::super::KeyStrategy::ModelText);
+        let key = CacheKey::new(
+            "test-model",
+            None,
+            "hello world",
+            super::super::KeyStrategy::ModelText,
+        );
         let vector = vec![0.1, 0.2, 0.3, 0.4];
 
         // Initially empty
@@ -281,7 +276,12 @@ mod tests {
 
         // Add 5 entries
         for i in 0..5 {
-            let key = CacheKey::new("model", None, &format!("text{}", i), super::super::KeyStrategy::ModelText);
+            let key = CacheKey::new(
+                "model",
+                None,
+                &format!("text{}", i),
+                super::super::KeyStrategy::ModelText,
+            );
             cache.set(&key, vec![0.1], 1).await.unwrap();
         }
 

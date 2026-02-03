@@ -2,26 +2,26 @@
 
 #[cfg(feature = "provider-onnx")]
 mod _inner {
-    use anyhow::Result;
     use crate::embedding::ModelConfig;
+    use anyhow::Result;
 
     // Real embedder with ONNX Runtime (ort 2.x API)
     mod real {
-        use anyhow::{Result, anyhow};
         use super::ModelConfig;
         use crate::embedding::ModelCache;
+        use anyhow::{anyhow, Result};
 
         #[cfg(feature = "provider-onnx-real")]
         mod full {
-            use anyhow::{Result, anyhow};
-            use ort::session::Session;
-            use ort::session::builder::GraphOptimizationLevel;
-            use ort::value::Tensor;
-            use ndarray::Array2;
-            use tokenizers::Tokenizer;
-            use std::sync::{Arc, Mutex};
             use super::ModelConfig;
             use crate::embedding::ModelCache;
+            use anyhow::{anyhow, Result};
+            use ndarray::Array2;
+            use ort::session::builder::GraphOptimizationLevel;
+            use ort::session::Session;
+            use ort::value::Tensor;
+            use std::sync::{Arc, Mutex};
+            use tokenizers::Tokenizer;
 
             pub struct RealEmbedderFull {
                 session: Arc<Mutex<Session>>,
@@ -45,15 +45,18 @@ mod _inner {
                     Ok(Self {
                         session: Arc::new(Mutex::new(session)),
                         tokenizer: Arc::new(tokenizer),
-                        dimension: config.dimension
+                        dimension: config.dimension,
                     })
                 }
 
                 pub fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-                    if texts.is_empty() { return Ok(vec![]); }
+                    if texts.is_empty() {
+                        return Ok(vec![]);
+                    }
 
                     // Tokenize with padding
-                    let encodings = self.tokenizer
+                    let encodings = self
+                        .tokenizer
                         .encode_batch(texts.to_vec(), true)
                         .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
 
@@ -82,25 +85,20 @@ mod _inner {
                     }
 
                     // Create ort Tensor values from arrays
-                    let input_ids_array = Array2::from_shape_vec(
-                        (batch_size, seq_len),
-                        input_ids
-                    )?;
-                    let attention_mask_array = Array2::from_shape_vec(
-                        (batch_size, seq_len),
-                        attention_mask
-                    )?;
-                    let token_type_ids_array = Array2::from_shape_vec(
-                        (batch_size, seq_len),
-                        token_type_ids
-                    )?;
+                    let input_ids_array = Array2::from_shape_vec((batch_size, seq_len), input_ids)?;
+                    let attention_mask_array =
+                        Array2::from_shape_vec((batch_size, seq_len), attention_mask)?;
+                    let token_type_ids_array =
+                        Array2::from_shape_vec((batch_size, seq_len), token_type_ids)?;
 
                     let input_ids_tensor = Tensor::from_array(input_ids_array)?;
                     let attention_mask_tensor = Tensor::from_array(attention_mask_array)?;
                     let token_type_ids_tensor = Tensor::from_array(token_type_ids_array)?;
 
                     // Run inference - ort 2.x API
-                    let mut session = self.session.lock()
+                    let mut session = self
+                        .session
+                        .lock()
                         .map_err(|e| anyhow!("Session lock poisoned: {}", e))?;
                     let outputs = session.run(ort::inputs![
                         "input_ids" => input_ids_tensor,
@@ -122,8 +120,11 @@ mod _inner {
                         for b in 0..batch_size {
                             // Mean pooling over sequence dimension
                             let mut embedding = vec![0f32; hidden_size];
-                            let valid_tokens = encodings[b].get_attention_mask()
-                                .iter().filter(|&&m| m == 1).count();
+                            let valid_tokens = encodings[b]
+                                .get_attention_mask()
+                                .iter()
+                                .filter(|&&m| m == 1)
+                                .count();
 
                             if valid_tokens > 0 {
                                 for s in 0..valid_tokens {
@@ -132,12 +133,18 @@ mod _inner {
                                         embedding[d] += data[base + d];
                                     }
                                 }
-                                for v in &mut embedding { *v /= valid_tokens as f32; }
+                                for v in &mut embedding {
+                                    *v /= valid_tokens as f32;
+                                }
                             }
 
                             // L2 normalize
                             let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-                            if norm > 0.0 { for v in &mut embedding { *v /= norm; } }
+                            if norm > 0.0 {
+                                for v in &mut embedding {
+                                    *v /= norm;
+                                }
+                            }
 
                             results.push(embedding);
                         }
@@ -147,11 +154,15 @@ mod _inner {
 
                         for b in 0..batch_size {
                             let base = b * hidden_size;
-                            let mut embedding: Vec<f32> = data[base..base+hidden_size].to_vec();
+                            let mut embedding: Vec<f32> = data[base..base + hidden_size].to_vec();
 
                             // L2 normalize
                             let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-                            if norm > 0.0 { for v in &mut embedding { *v /= norm; } }
+                            if norm > 0.0 {
+                                for v in &mut embedding {
+                                    *v /= norm;
+                                }
+                            }
 
                             results.push(embedding);
                         }
@@ -172,7 +183,9 @@ mod _inner {
         #[cfg(not(feature = "provider-onnx-real"))]
         impl RealEmbedder {
             pub async fn new(_config: &ModelConfig) -> Result<Self> {
-                Err(anyhow!("Real embedder not enabled; compile with --features provider-onnx-real"))
+                Err(anyhow!(
+                    "Real embedder not enabled; compile with --features provider-onnx-real"
+                ))
             }
             pub fn embed_batch(&self, _texts: &[&str]) -> Result<Vec<Vec<f32>>> {
                 Err(anyhow!("Real embedder not enabled"))
@@ -182,7 +195,6 @@ mod _inner {
         #[cfg(feature = "provider-onnx-real")]
         pub use full::RealEmbedderFull as RealEmbedder;
     }
-
 
     // Deterministic fallback
     mod fallback {
@@ -211,7 +223,9 @@ mod _inner {
                             let val = (hash[idx] as f32) / 255.0;
                             accum[i] += val;
                         }
-                        for v in &mut accum { *v *= 1.0 + (ti as f32) * 0.0001; }
+                        for v in &mut accum {
+                            *v *= 1.0 + (ti as f32) * 0.0001;
+                        }
                     }
                     if tokens.is_empty() {
                         let mut hasher = Sha256::new();
@@ -223,7 +237,11 @@ mod _inner {
                         }
                     }
                     let norm: f32 = accum.iter().map(|x| x * x).sum::<f32>().sqrt();
-                    if norm > 0.0 { for v in &mut accum { *v /= norm; } }
+                    if norm > 0.0 {
+                        for v in &mut accum {
+                            *v /= norm;
+                        }
+                    }
                     out.push(accum);
                 }
                 out
@@ -231,8 +249,8 @@ mod _inner {
         }
     }
 
-    use real::RealEmbedder;
     use fallback::DeterministicEmbedder;
+    use real::RealEmbedder;
 
     /// Unified Embedder type that prefers real ONNX but falls back to deterministic
     pub enum Embedder {
@@ -247,14 +265,18 @@ mod _inner {
                 Ok(re) => Ok(Embedder::Real(re)),
                 Err(e) => {
                     tracing::warn!("Real embedder construction failed, falling back: {}", e);
-                    Ok(Embedder::Fallback(DeterministicEmbedder::new(config.dimension)))
+                    Ok(Embedder::Fallback(DeterministicEmbedder::new(
+                        config.dimension,
+                    )))
                 }
             }
         }
 
         pub fn embed(&self, text: &str) -> Result<Vec<f32>> {
             match self {
-                Embedder::Real(r) => r.embed_batch(&[text]).map(|v| v.into_iter().next().unwrap()),
+                Embedder::Real(r) => r
+                    .embed_batch(&[text])
+                    .map(|v| v.into_iter().next().unwrap()),
                 Embedder::Fallback(f) => Ok(f.embed_batch(&[text]).into_iter().next().unwrap()),
             }
         }
@@ -266,7 +288,6 @@ mod _inner {
             }
         }
     }
-
 }
 
 #[cfg(feature = "provider-onnx")]

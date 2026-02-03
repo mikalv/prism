@@ -1,9 +1,4 @@
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use std::sync::Arc;
 
 use super::permissions::PermissionChecker;
@@ -28,7 +23,11 @@ fn required_permission(method: &axum::http::Method, path: &str) -> Permission {
     match *method {
         axum::http::Method::GET => Permission::Read,
         axum::http::Method::POST => {
-            if path.contains("/search") || path.contains("/_suggest") || path.contains("/_mlt") || path.contains("/aggregate") {
+            if path.contains("/search")
+                || path.contains("/_suggest")
+                || path.contains("/_mlt")
+                || path.contains("/aggregate")
+            {
                 Permission::Search
             } else {
                 Permission::Write

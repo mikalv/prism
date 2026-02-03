@@ -1,7 +1,7 @@
+use super::Processor;
 use crate::backends::Document;
 use crate::error::Error;
 use crate::Result;
-use super::Processor;
 
 /// Convert a string field to lowercase.
 pub struct LowercaseProcessor {
@@ -9,15 +9,20 @@ pub struct LowercaseProcessor {
 }
 
 impl Processor for LowercaseProcessor {
-    fn name(&self) -> &str { "lowercase" }
+    fn name(&self) -> &str {
+        "lowercase"
+    }
 
     fn process(&self, doc: &mut Document) -> Result<()> {
-        let val = doc.fields.get(&self.field)
-            .ok_or_else(|| Error::Backend(format!("lowercase: field '{}' not found", self.field)))?;
-        let s = val.as_str()
-            .ok_or_else(|| Error::Backend(format!("lowercase: field '{}' is not a string", self.field)))?;
+        let val = doc.fields.get(&self.field).ok_or_else(|| {
+            Error::Backend(format!("lowercase: field '{}' not found", self.field))
+        })?;
+        let s = val.as_str().ok_or_else(|| {
+            Error::Backend(format!("lowercase: field '{}' is not a string", self.field))
+        })?;
         let lowered = s.to_lowercase();
-        doc.fields.insert(self.field.clone(), serde_json::Value::String(lowered));
+        doc.fields
+            .insert(self.field.clone(), serde_json::Value::String(lowered));
         Ok(())
     }
 }
@@ -28,15 +33,23 @@ pub struct HtmlStripProcessor {
 }
 
 impl Processor for HtmlStripProcessor {
-    fn name(&self) -> &str { "html_strip" }
+    fn name(&self) -> &str {
+        "html_strip"
+    }
 
     fn process(&self, doc: &mut Document) -> Result<()> {
-        let val = doc.fields.get(&self.field)
-            .ok_or_else(|| Error::Backend(format!("html_strip: field '{}' not found", self.field)))?;
-        let s = val.as_str()
-            .ok_or_else(|| Error::Backend(format!("html_strip: field '{}' is not a string", self.field)))?;
+        let val = doc.fields.get(&self.field).ok_or_else(|| {
+            Error::Backend(format!("html_strip: field '{}' not found", self.field))
+        })?;
+        let s = val.as_str().ok_or_else(|| {
+            Error::Backend(format!(
+                "html_strip: field '{}' is not a string",
+                self.field
+            ))
+        })?;
         let stripped = strip_html(s);
-        doc.fields.insert(self.field.clone(), serde_json::Value::String(stripped));
+        doc.fields
+            .insert(self.field.clone(), serde_json::Value::String(stripped));
         Ok(())
     }
 }
@@ -48,7 +61,9 @@ pub struct SetProcessor {
 }
 
 impl Processor for SetProcessor {
-    fn name(&self) -> &str { "set" }
+    fn name(&self) -> &str {
+        "set"
+    }
 
     fn process(&self, doc: &mut Document) -> Result<()> {
         let resolved = if self.value == "{{_now}}" {
@@ -56,7 +71,8 @@ impl Processor for SetProcessor {
         } else {
             self.value.clone()
         };
-        doc.fields.insert(self.field.clone(), serde_json::Value::String(resolved));
+        doc.fields
+            .insert(self.field.clone(), serde_json::Value::String(resolved));
         Ok(())
     }
 }
@@ -67,7 +83,9 @@ pub struct RemoveProcessor {
 }
 
 impl Processor for RemoveProcessor {
-    fn name(&self) -> &str { "remove" }
+    fn name(&self) -> &str {
+        "remove"
+    }
 
     fn process(&self, doc: &mut Document) -> Result<()> {
         doc.fields.remove(&self.field);
@@ -82,10 +100,14 @@ pub struct RenameProcessor {
 }
 
 impl Processor for RenameProcessor {
-    fn name(&self) -> &str { "rename" }
+    fn name(&self) -> &str {
+        "rename"
+    }
 
     fn process(&self, doc: &mut Document) -> Result<()> {
-        let val = doc.fields.remove(&self.from)
+        let val = doc
+            .fields
+            .remove(&self.from)
             .ok_or_else(|| Error::Backend(format!("rename: field '{}' not found", self.from)))?;
         doc.fields.insert(self.to.clone(), val);
         Ok(())

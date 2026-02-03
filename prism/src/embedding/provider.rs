@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ProviderConfig {
     /// Ollama local embedding server
-    Ollama {
-        url: String,
-        model: String,
-    },
+    Ollama { url: String, model: String },
     /// OpenAI-compatible API (works with OpenAI, Azure, Together, etc.)
     OpenAI {
         url: String,
@@ -59,18 +56,27 @@ pub trait EmbeddingProvider: Send + Sync {
 }
 
 /// Create an embedding provider from configuration
-pub async fn create_provider(config: &ProviderConfig) -> anyhow::Result<Box<dyn EmbeddingProvider>> {
+pub async fn create_provider(
+    config: &ProviderConfig,
+) -> anyhow::Result<Box<dyn EmbeddingProvider>> {
     match config {
         ProviderConfig::Ollama { url, model } => {
             let provider = super::ollama::OllamaProvider::new(url, model).await?;
             Ok(Box::new(provider))
         }
-        ProviderConfig::OpenAI { url, api_key, model } => {
+        ProviderConfig::OpenAI {
+            url,
+            api_key,
+            model,
+        } => {
             let provider = super::openai::OpenAIProvider::new(url, api_key, model)?;
             Ok(Box::new(provider))
         }
         #[cfg(feature = "provider-onnx")]
-        ProviderConfig::Onnx { model_path, model_id } => {
+        ProviderConfig::Onnx {
+            model_path,
+            model_id,
+        } => {
             anyhow::bail!("ONNX provider not yet implemented in new architecture")
         }
     }

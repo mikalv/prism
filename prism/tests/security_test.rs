@@ -1,31 +1,63 @@
+use prism::config::{ApiKeyConfig, RoleConfig, SecurityConfig};
 use prism::security::permissions::PermissionChecker;
 use prism::security::types::{AuthUser, Permission};
-use prism::config::{SecurityConfig, RoleConfig, ApiKeyConfig};
 use std::collections::HashMap;
 
 fn test_config() -> SecurityConfig {
     let mut roles = HashMap::new();
-    roles.insert("admin".to_string(), RoleConfig {
-        collections: HashMap::from([("*".to_string(), vec!["*".to_string()])]),
-    });
-    roles.insert("analyst".to_string(), RoleConfig {
-        collections: HashMap::from([
-            ("logs-*".to_string(), vec!["read".to_string(), "search".to_string()]),
-            ("metrics-*".to_string(), vec!["read".to_string(), "search".to_string()]),
-        ]),
-    });
-    roles.insert("writer".to_string(), RoleConfig {
-        collections: HashMap::from([
-            ("products".to_string(), vec!["read".to_string(), "write".to_string(), "delete".to_string()]),
-        ]),
-    });
+    roles.insert(
+        "admin".to_string(),
+        RoleConfig {
+            collections: HashMap::from([("*".to_string(), vec!["*".to_string()])]),
+        },
+    );
+    roles.insert(
+        "analyst".to_string(),
+        RoleConfig {
+            collections: HashMap::from([
+                (
+                    "logs-*".to_string(),
+                    vec!["read".to_string(), "search".to_string()],
+                ),
+                (
+                    "metrics-*".to_string(),
+                    vec!["read".to_string(), "search".to_string()],
+                ),
+            ]),
+        },
+    );
+    roles.insert(
+        "writer".to_string(),
+        RoleConfig {
+            collections: HashMap::from([(
+                "products".to_string(),
+                vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "delete".to_string(),
+                ],
+            )]),
+        },
+    );
 
     SecurityConfig {
         enabled: true,
         api_keys: vec![
-            ApiKeyConfig { key: "prism_ak_admin".to_string(), name: "admin".to_string(), roles: vec!["admin".to_string()] },
-            ApiKeyConfig { key: "prism_ak_analyst".to_string(), name: "analyst".to_string(), roles: vec!["analyst".to_string()] },
-            ApiKeyConfig { key: "prism_ak_writer".to_string(), name: "writer".to_string(), roles: vec!["writer".to_string()] },
+            ApiKeyConfig {
+                key: "prism_ak_admin".to_string(),
+                name: "admin".to_string(),
+                roles: vec!["admin".to_string()],
+            },
+            ApiKeyConfig {
+                key: "prism_ak_analyst".to_string(),
+                name: "analyst".to_string(),
+                roles: vec!["analyst".to_string()],
+            },
+            ApiKeyConfig {
+                key: "prism_ak_writer".to_string(),
+                name: "writer".to_string(),
+                roles: vec!["writer".to_string()],
+            },
         ],
         roles,
         audit: Default::default(),

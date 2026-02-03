@@ -9,7 +9,9 @@ pub use field_extraction::{
 };
 
 /// Extract context fields (project_id, session_id, file_path) from document field map
-fn extract_context_from_fields(fields: &HashMap<String, serde_json::Value>) -> HashMap<String, String> {
+fn extract_context_from_fields(
+    fields: &HashMap<String, serde_json::Value>,
+) -> HashMap<String, String> {
     let mut context = HashMap::new();
     for key in &["project_id", "session_id", "file_path"] {
         if let Some(value) = fields.get(*key) {
@@ -172,11 +174,14 @@ impl QueryExecutor {
         telemetry.mark_stage("facet_compute");
         let result_docs: Vec<_> = results.iter().map(|r| r.fields.clone()).collect();
         let facets = if !options.facet_requests.is_empty() {
-            crate::query::aggregations::facets::compute_facets(options.facet_requests.clone(), &result_docs)
-                .unwrap_or_else(|e| {
-                    tracing::warn!("Facet computation failed: {}", e);
-                    Vec::new()
-                })
+            crate::query::aggregations::facets::compute_facets(
+                options.facet_requests.clone(),
+                &result_docs,
+            )
+            .unwrap_or_else(|e| {
+                tracing::warn!("Facet computation failed: {}", e);
+                Vec::new()
+            })
         } else {
             Vec::new()
         };
@@ -228,7 +233,11 @@ impl QueryExecutor {
             }
 
             // Re-sort by boosted score
-            results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+            results.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
         }
 
         // 6. Build metrics
@@ -437,14 +446,15 @@ mod tests {
 
     #[test]
     fn test_executor_applies_boosting() {
-        use tantivy::schema::DateOptions;
         use chrono::{Duration, Utc};
+        use tantivy::schema::DateOptions;
 
         // Setup index with timestamp field
         let mut schema_builder = Schema::builder();
         let id_field = schema_builder.add_text_field("id", STRING | STORED);
         let title_field = schema_builder.add_text_field("title", TEXT | STORED);
-        let timestamp_field = schema_builder.add_date_field("timestamp", DateOptions::default().set_stored());
+        let timestamp_field =
+            schema_builder.add_date_field("timestamp", DateOptions::default().set_stored());
         let schema = schema_builder.build();
 
         let index = Index::create_in_ram(schema.clone());
@@ -457,14 +467,20 @@ mod tests {
         let mut doc1 = TantivyDocument::new();
         doc1.add_text(id_field, "old_doc");
         doc1.add_text(title_field, "rust programming");
-        doc1.add_date(timestamp_field, tantivy::DateTime::from_timestamp_secs(old.timestamp()));
+        doc1.add_date(
+            timestamp_field,
+            tantivy::DateTime::from_timestamp_secs(old.timestamp()),
+        );
         writer.add_document(doc1).unwrap();
 
         // Recent document
         let mut doc2 = TantivyDocument::new();
         doc2.add_text(id_field, "new_doc");
         doc2.add_text(title_field, "rust programming");
-        doc2.add_date(timestamp_field, tantivy::DateTime::from_timestamp_secs(now.timestamp()));
+        doc2.add_date(
+            timestamp_field,
+            tantivy::DateTime::from_timestamp_secs(now.timestamp()),
+        );
         writer.add_document(doc2).unwrap();
 
         writer.commit().unwrap();
@@ -475,13 +491,7 @@ mod tests {
         field_map.insert("title".to_string(), title_field);
         field_map.insert("timestamp".to_string(), timestamp_field);
 
-        let executor = QueryExecutor::new(
-            index,
-            reader,
-            schema,
-            field_map,
-            vec![title_field],
-        );
+        let executor = QueryExecutor::new(index, reader, schema, field_map, vec![title_field]);
 
         let ast = QueryNode::term("rust");
         let options = QueryOptions {
@@ -500,6 +510,9 @@ mod tests {
 
         assert_eq!(results.results.len(), 2);
         // Recent document should be first after boosting
-        assert_eq!(results.results[0].id, "new_doc", "Recent doc should rank higher");
+        assert_eq!(
+            results.results[0].id, "new_doc",
+            "Recent doc should rank higher"
+        );
     }
 }

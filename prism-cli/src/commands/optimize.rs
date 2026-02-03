@@ -95,7 +95,11 @@ pub fn run_optimize(data_dir: &Path, collection: &str, gc_only: bool) -> Result<
     println!("Optimization complete:");
     println!("  Final segments: {}", final_segments.len());
     println!("  Final size:     {}", format_bytes(final_space));
-    println!("  Space saved:    {} ({:.1}%)", format_bytes_raw(saved_bytes), pct_saved);
+    println!(
+        "  Space saved:    {} ({:.1}%)",
+        format_bytes_raw(saved_bytes),
+        pct_saved
+    );
     println!("  Time elapsed:   {:.2}s", elapsed.as_secs_f64());
 
     Ok(())

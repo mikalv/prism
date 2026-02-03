@@ -10,7 +10,9 @@ pub mod decay;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
-pub use decay::{DecayConfig, DecayFunction, compute_decay, compute_decay_from_micros, parse_duration};
+pub use decay::{
+    compute_decay, compute_decay_from_micros, parse_duration, DecayConfig, DecayFunction,
+};
 
 use crate::schema::BoostingConfig;
 
@@ -40,7 +42,9 @@ impl RankingConfig {
             decay_config
         });
 
-        let signals = config.signals.iter()
+        let signals = config
+            .signals
+            .iter()
             .map(|s| (s.name.clone(), s.weight))
             .collect();
 
@@ -91,7 +95,8 @@ pub fn apply_ranking_adjustments(
         // Apply custom ranking signals: each contributes field_value * weight
         for (field_name, weight) in &config.signals {
             if let Some(val) = result.fields.get(field_name) {
-                let numeric = val.as_f64()
+                let numeric = val
+                    .as_f64()
                     .or_else(|| val.as_i64().map(|i| i as f64))
                     .or_else(|| val.as_u64().map(|u| u as f64));
                 if let Some(v) = numeric {
@@ -126,20 +131,12 @@ pub struct RankableResult {
 
 impl RankableResult {
     /// Create from search result fields
-    pub fn from_fields(
-        id: String,
-        score: f32,
-        fields: HashMap<String, serde_json::Value>,
-    ) -> Self {
+    pub fn from_fields(id: String, score: f32, fields: HashMap<String, serde_json::Value>) -> Self {
         // Extract _indexed_at timestamp (stored as microseconds)
-        let indexed_at_micros = fields
-            .get("_indexed_at")
-            .and_then(|v| v.as_i64());
+        let indexed_at_micros = fields.get("_indexed_at").and_then(|v| v.as_i64());
 
         // Extract _boost value
-        let boost = fields
-            .get("_boost")
-            .and_then(|v| v.as_f64());
+        let boost = fields.get("_boost").and_then(|v| v.as_f64());
 
         Self {
             id,
@@ -156,7 +153,12 @@ impl RankableResult {
 mod tests {
     use super::*;
 
-    fn make_result(id: &str, score: f32, indexed_at_micros: Option<i64>, boost: Option<f64>) -> RankableResult {
+    fn make_result(
+        id: &str,
+        score: f32,
+        indexed_at_micros: Option<i64>,
+        boost: Option<f64>,
+    ) -> RankableResult {
         let mut fields = HashMap::new();
         if let Some(ts) = indexed_at_micros {
             fields.insert("_indexed_at".to_string(), serde_json::json!(ts));
@@ -267,7 +269,12 @@ mod tests {
 
         // Old doc with high boost vs new doc with no boost
         let mut results = vec![
-            make_result("old_popular", 1.0, Some(now_micros - 7 * 86400 * 1_000_000), Some(3.0)),
+            make_result(
+                "old_popular",
+                1.0,
+                Some(now_micros - 7 * 86400 * 1_000_000),
+                Some(3.0),
+            ),
             make_result("new_regular", 1.0, Some(now_micros), Some(1.0)),
         ];
 

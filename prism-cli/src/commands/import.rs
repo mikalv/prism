@@ -19,9 +19,7 @@ impl DocumentSource {
                 let file = File::open(path)?;
                 Ok(Box::new(BufReader::new(file)))
             }
-            DocumentSource::FromStdin => {
-                Ok(Box::new(BufReader::new(io::stdin())))
-            }
+            DocumentSource::FromStdin => Ok(Box::new(BufReader::new(io::stdin()))),
         }
     }
 }
@@ -55,8 +53,10 @@ impl ImportProgress {
         if elapsed > 0.0 {
             let docs_per_sec = docs as f64 / elapsed;
             let mb_per_sec = (bytes as f64 / 1_000_000.0) / elapsed;
-            eprint!("\r  Imported {} docs ({:.1} docs/s, {:.2} MB/s)    ",
-                   docs, docs_per_sec, mb_per_sec);
+            eprint!(
+                "\r  Imported {} docs ({:.1} docs/s, {:.2} MB/s)    ",
+                docs, docs_per_sec, mb_per_sec
+            );
         }
     }
 
@@ -72,9 +72,11 @@ impl ImportProgress {
         println!("  Bytes:     {:.2} MB", bytes as f64 / 1_000_000.0);
         println!("  Time:      {:.2}s", elapsed.as_secs_f64());
         if elapsed.as_secs_f64() > 0.0 {
-            println!("  Throughput: {:.1} docs/s, {:.2} MB/s",
-                     docs as f64 / elapsed.as_secs_f64(),
-                     (bytes as f64 / 1_000_000.0) / elapsed.as_secs_f64());
+            println!(
+                "  Throughput: {:.1} docs/s, {:.2} MB/s",
+                docs as f64 / elapsed.as_secs_f64(),
+                (bytes as f64 / 1_000_000.0) / elapsed.as_secs_f64()
+            );
         }
     }
 }
@@ -92,11 +94,17 @@ pub async fn run_import(
 
     // First, verify the collection exists
     let check_url = format!("{}/collections/{}", api_url, collection);
-    let resp = client.get(&check_url).send().await
+    let resp = client
+        .get(&check_url)
+        .send()
+        .await
         .with_context(|| format!("Failed to connect to API at {}", api_url))?;
 
     if !resp.status().is_success() {
-        anyhow::bail!("Collection '{}' not found. Create it first with the API.", collection);
+        anyhow::bail!(
+            "Collection '{}' not found. Create it first with the API.",
+            collection
+        );
     }
 
     println!("Importing to collection '{}' via {}", collection, api_url);
@@ -148,7 +156,11 @@ pub async fn run_import(
     Ok(())
 }
 
-async fn send_batch(client: &reqwest::Client, url: &str, batch: &[serde_json::Value]) -> Result<()> {
+async fn send_batch(
+    client: &reqwest::Client,
+    url: &str,
+    batch: &[serde_json::Value],
+) -> Result<()> {
     let resp = client
         .post(url)
         .json(&batch)

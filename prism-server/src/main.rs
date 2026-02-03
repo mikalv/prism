@@ -28,12 +28,12 @@ async fn main() -> Result<()> {
     let config = prism::config::Config::load_or_create(std::path::Path::new(&args.config))?;
 
     // Determine log format: env var overrides config
-    let log_format = std::env::var("LOG_FORMAT")
-        .unwrap_or_else(|_| config.observability.log_format.clone());
+    let log_format =
+        std::env::var("LOG_FORMAT").unwrap_or_else(|_| config.observability.log_format.clone());
 
     // Determine log level: RUST_LOG overrides config
-    let log_level = std::env::var("RUST_LOG")
-        .unwrap_or_else(|_| config.observability.log_level.clone());
+    let log_level =
+        std::env::var("RUST_LOG").unwrap_or_else(|_| config.observability.log_level.clone());
 
     // Initialize tracing with configured format
     let env_filter = tracing_subscriber::EnvFilter::new(&log_level);
@@ -44,9 +44,7 @@ async fn main() -> Result<()> {
             .with(tracing_subscriber::fmt::layer().json())
             .init();
     } else {
-        registry
-            .with(tracing_subscriber::fmt::layer())
-            .init();
+        registry.with(tracing_subscriber::fmt::layer()).init();
     }
 
     // Initialize Prometheus metrics recorder
@@ -69,25 +67,25 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", args.host, args.port);
 
     // Create backends
-    let text_backend = std::sync::Arc::new(
-        prism::backends::text::TextBackend::new(&config.storage.data_dir)?,
-    );
-    let vector_backend = std::sync::Arc::new(
-        prism::backends::VectorBackend::new(&config.storage.data_dir)?,
-    );
+    let text_backend = std::sync::Arc::new(prism::backends::text::TextBackend::new(
+        &config.storage.data_dir,
+    )?);
+    let vector_backend = std::sync::Arc::new(prism::backends::VectorBackend::new(
+        &config.storage.data_dir,
+    )?);
 
     // Create collection manager
-    let manager = std::sync::Arc::new(
-        prism::collection::CollectionManager::new(
-            config.schemas_dir(),
-            text_backend,
-            vector_backend,
-        )?,
-    );
+    let manager = std::sync::Arc::new(prism::collection::CollectionManager::new(
+        config.schemas_dir(),
+        text_backend,
+        vector_backend,
+    )?);
     manager.initialize().await?;
 
     // Load ingest pipelines
-    let config_dir = std::path::Path::new(&args.config).parent().unwrap_or(std::path::Path::new("."));
+    let config_dir = std::path::Path::new(&args.config)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
     let pipelines_dir = config_dir.join("conf/pipelines");
     let pipeline_registry = prism::pipeline::registry::PipelineRegistry::load(&pipelines_dir)?;
     tracing::info!("Loaded ingest pipelines from {}", pipelines_dir.display());
@@ -112,10 +110,17 @@ async fn main() -> Result<()> {
         tracing::info!("TLS enabled");
     }
     if config.security.enabled {
-        tracing::info!("Security enabled ({} API keys, {} roles)", config.security.api_keys.len(), config.security.roles.len());
+        tracing::info!(
+            "Security enabled ({} API keys, {} roles)",
+            config.security.api_keys.len(),
+            config.security.roles.len()
+        );
     }
     if config.security.audit.enabled {
-        tracing::info!("Audit logging enabled (index_to_collection: {})", config.security.audit.index_to_collection);
+        tracing::info!(
+            "Audit logging enabled (index_to_collection: {})",
+            config.security.audit.index_to_collection
+        );
     }
 
     server.serve(&addr, tls).await?;

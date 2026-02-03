@@ -132,19 +132,13 @@ pub use bytes::Bytes;
 /// backend based on configuration.
 pub fn create_storage(config: &StorageConfig) -> Result<Box<dyn SegmentStorage>> {
     match config {
-        StorageConfig::Local { path } => {
-            Ok(Box::new(LocalStorage::new(path)))
-        }
+        StorageConfig::Local { path } => Ok(Box::new(LocalStorage::new(path))),
         #[cfg(feature = "s3")]
-        StorageConfig::S3(s3_config) => {
-            Ok(Box::new(S3Storage::new(s3_config.clone())?))
-        }
+        StorageConfig::S3(s3_config) => Ok(Box::new(S3Storage::new(s3_config.clone())?)),
         #[cfg(not(feature = "s3"))]
-        StorageConfig::S3(_) => {
-            Err(StorageError::Config(
-                "S3 storage requires 's3' feature".to_string(),
-            ))
-        }
+        StorageConfig::S3(_) => Err(StorageError::Config(
+            "S3 storage requires 's3' feature".to_string(),
+        )),
         StorageConfig::Cached {
             l1_path,
             l1_max_size_gb,

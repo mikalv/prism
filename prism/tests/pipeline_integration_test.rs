@@ -4,7 +4,7 @@ use prism::api::ApiServer;
 use prism::backends::text::TextBackend;
 use prism::backends::VectorBackend;
 use prism::collection::CollectionManager;
-use prism::config::{SecurityConfig, CorsConfig};
+use prism::config::{CorsConfig, SecurityConfig};
 use prism::pipeline::registry::PipelineRegistry;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -23,9 +23,8 @@ async fn setup_server(pipelines_yaml: &[(&str, &str)]) -> (TempDir, String) {
 
     let text_backend = Arc::new(TextBackend::new(temp.path()).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(temp.path()).unwrap());
-    let manager = Arc::new(
-        CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap(),
-    );
+    let manager =
+        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap());
 
     let registry = PipelineRegistry::load(&pipelines_dir).unwrap();
     let server = ApiServer::with_pipelines(
@@ -51,7 +50,11 @@ async fn setup_server(pipelines_yaml: &[(&str, &str)]) -> (TempDir, String) {
 async fn test_list_pipelines_empty() {
     let (_temp, url) = setup_server(&[]).await;
     let client = reqwest::Client::new();
-    let resp = client.get(format!("{}/admin/pipelines", url)).send().await.unwrap();
+    let resp = client
+        .get(format!("{}/admin/pipelines", url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["pipelines"].as_array().unwrap().len(), 0);
@@ -68,7 +71,11 @@ processors:
 "#;
     let (_temp, url) = setup_server(&[("normalize.yaml", yaml)]).await;
     let client = reqwest::Client::new();
-    let resp = client.get(format!("{}/admin/pipelines", url)).send().await.unwrap();
+    let resp = client
+        .get(format!("{}/admin/pipelines", url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
     let pipelines = body["pipelines"].as_array().unwrap();
@@ -82,7 +89,10 @@ async fn test_unknown_pipeline_returns_400() {
     let (_temp, url) = setup_server(&[]).await;
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/collections/test/documents?pipeline=nonexistent", url))
+        .post(format!(
+            "{}/collections/test/documents?pipeline=nonexistent",
+            url
+        ))
         .json(&serde_json::json!({
             "documents": [{"id": "1", "fields": {"title": "hello"}}]
         }))

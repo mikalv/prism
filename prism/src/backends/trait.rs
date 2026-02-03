@@ -1,5 +1,5 @@
-use crate::Result;
 use crate::aggregations::AggregationResult;
+use crate::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -44,10 +44,18 @@ pub struct HighlightConfig {
     pub number_of_fragments: usize,
 }
 
-fn default_pre_tag() -> String { "<em>".to_string() }
-fn default_post_tag() -> String { "</em>".to_string() }
-fn default_fragment_size() -> usize { 150 }
-fn default_number_of_fragments() -> usize { 3 }
+fn default_pre_tag() -> String {
+    "<em>".to_string()
+}
+fn default_post_tag() -> String {
+    "</em>".to_string()
+}
+fn default_fragment_size() -> usize {
+    150
+}
+fn default_number_of_fragments() -> usize {
+    3
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {

@@ -170,7 +170,10 @@ mod tests {
 
         // Check embedding is normalized (roughly)
         let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!((norm - 1.0).abs() < 0.1, "Embedding should be roughly normalized");
+        assert!(
+            (norm - 1.0).abs() < 0.1,
+            "Embedding should be roughly normalized"
+        );
     }
 
     #[tokio::test]

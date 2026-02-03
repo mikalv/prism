@@ -108,7 +108,12 @@ pub fn run_benchmark(
         anyhow::bail!("No queries found in {:?}", queries_file);
     }
 
-    println!("Benchmark: collection '{}' ({} queries, {} repeats)", collection, queries.len(), repeat);
+    println!(
+        "Benchmark: collection '{}' ({} queries, {} repeats)",
+        collection,
+        queries.len(),
+        repeat
+    );
     println!("Index: {:?}", index_path);
     println!();
 
@@ -140,7 +145,8 @@ pub fn run_benchmark(
 
     for iteration in 0..repeat {
         for (i, query_str) in queries.iter().enumerate() {
-            let query = query_parser.parse_query(query_str)
+            let query = query_parser
+                .parse_query(query_str)
                 .with_context(|| format!("Failed to parse query: {}", query_str))?;
 
             let start = Instant::now();
@@ -156,8 +162,10 @@ pub fn run_benchmark(
 
     // Print results
     println!();
-    println!("{:<40} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
-             "Query", "Hits", "Avg", "Min", "P50", "P99", "Max");
+    println!(
+        "{:<40} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "Query", "Hits", "Avg", "Min", "P50", "P99", "Max"
+    );
     println!("{}", "-".repeat(100));
 
     for stats in &all_stats {
@@ -167,14 +175,16 @@ pub fn run_benchmark(
             stats.query.clone()
         };
 
-        println!("{:<40} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
-                 query_display,
-                 stats.hits,
-                 format_duration(stats.avg()),
-                 format_duration(stats.min()),
-                 format_duration(stats.p50()),
-                 format_duration(stats.p99()),
-                 format_duration(stats.max()));
+        println!(
+            "{:<40} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+            query_display,
+            stats.hits,
+            format_duration(stats.avg()),
+            format_duration(stats.min()),
+            format_duration(stats.p50()),
+            format_duration(stats.p99()),
+            format_duration(stats.max())
+        );
     }
 
     // Summary
@@ -192,11 +202,14 @@ pub fn run_benchmark(
     println!("  Total queries executed: {}", total_queries);
     println!("  Total time:             {}", format_duration(total_time));
     println!("  Average per query:      {}", format_duration(avg_time));
-    println!("  Queries per second:     {:.1}", if total_time.as_secs_f64() > 0.0 {
-        total_queries as f64 / total_time.as_secs_f64()
-    } else {
-        0.0
-    });
+    println!(
+        "  Queries per second:     {:.1}",
+        if total_time.as_secs_f64() > 0.0 {
+            total_queries as f64 / total_time.as_secs_f64()
+        } else {
+            0.0
+        }
+    );
 
     Ok(())
 }

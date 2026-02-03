@@ -77,9 +77,6 @@ mod tests {
     #[test]
     fn test_error_display() {
         let err = StorageError::NotFound("products/vector/index.bin".to_string());
-        assert_eq!(
-            err.to_string(),
-            "Path not found: products/vector/index.bin"
-        );
+        assert_eq!(err.to_string(), "Path not found: products/vector/index.bin");
     }
 }

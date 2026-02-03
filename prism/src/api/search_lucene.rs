@@ -1,10 +1,12 @@
-use axum::{extract::State, http::StatusCode, Json};
-use chrono::{DateTime, Utc};
 use crate::query::{
     aggregations::{facets::compute_facets, AggregationRequest, AggregationType},
-    engine::boosting::{apply_boost, calculate_context_boost, calculate_recency_decay, DecayFunction},
+    engine::boosting::{
+        apply_boost, calculate_context_boost, calculate_recency_decay, DecayFunction,
+    },
     parser::LuceneParser,
 };
+use axum::{extract::State, http::StatusCode, Json};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -240,7 +242,11 @@ pub async fn search_lucene(
         }
 
         // Re-sort by boosted score
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     // 5. Compute facets from results
@@ -336,7 +342,9 @@ fn extract_search_context(ctx: &SearchContext) -> HashMap<String, String> {
 }
 
 /// Extract context fields from document for boosting comparison
-fn extract_context_from_fields(fields: &HashMap<String, serde_json::Value>) -> HashMap<String, String> {
+fn extract_context_from_fields(
+    fields: &HashMap<String, serde_json::Value>,
+) -> HashMap<String, String> {
     let mut context = HashMap::new();
     for key in &["project_id", "session_id", "file_path"] {
         if let Some(value) = fields.get(*key) {
