@@ -26,6 +26,35 @@ use crate::mcp::session::{SessionManager, SseEvent};
 use crate::mcp::tools::register_basic_tools;
 use crate::mcp::ToolRegistry;
 
+async fn metrics_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_string();
+    let start = std::time::Instant::now();
+
+    let response = next.run(req).await;
+
+    let duration = start.elapsed().as_secs_f64();
+    let status = response.status().as_u16().to_string();
+
+    metrics::counter!("prism_http_requests_total",
+        "method" => method.clone(),
+        "path" => path.clone(),
+        "status_code" => status,
+    )
+    .increment(1);
+
+    metrics::histogram!("prism_http_request_duration_seconds",
+        "method" => method,
+        "path" => path,
+    )
+    .record(duration);
+
+    response
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub manager: Arc<CollectionManager>,
@@ -328,6 +357,7 @@ impl ApiServer {
             .merge(pipeline_routes)
             .merge(mcp_routes)
             .layer(cors)
+            .layer(axum::middleware::from_fn(metrics_middleware))
             .layer(TraceLayer::new_for_http());
 
         // Add audit middleware (independent of security.enabled)
