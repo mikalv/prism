@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        run: cargo build --release --workspace
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp target/release/prism dist/
+          cp target/release/prism-server dist/
+          cp target/release/prism-cli dist/ 2>/dev/null || true
+          tar -czvf prism-${{ github.ref_name }}-linux-x86_64.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prism-linux-x86_64
+          path: prism-${{ github.ref_name }}-linux-x86_64.tar.gz
+
+  build-macos:
+    name: Build macOS (arm64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        run: cargo build --release --workspace
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp target/release/prism dist/
+          cp target/release/prism-server dist/
+          cp target/release/prism-cli dist/ 2>/dev/null || true
+          tar -czvf prism-${{ github.ref_name }}-macos-arm64.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prism-macos-arm64
+          path: prism-${{ github.ref_name }}-macos-arm64.tar.gz
+
+  release:
+    name: Create Release
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prism-linux-x86_64
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prism-macos-arm64
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag (or all if first release)
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s" HEAD~20..HEAD)
+          fi
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Prism ${{ github.ref_name }}
+          body: |
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Downloads
+
+            - **Linux x86_64**: `prism-${{ github.ref_name }}-linux-x86_64.tar.gz`
+            - **macOS arm64**: `prism-${{ github.ref_name }}-macos-arm64.tar.gz`
+
+            ## Docker
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+          files: |
+            prism-${{ github.ref_name }}-linux-x86_64.tar.gz
+            prism-${{ github.ref_name }}-macos-arm64.tar.gz
+          draft: false
+          prerelease: false
