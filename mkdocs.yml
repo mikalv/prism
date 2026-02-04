@@ -1,0 +1,92 @@
+site_name: Prism Documentation
+site_description: High-performance hybrid search engine combining vector search with full-text search
+site_url: https://mikalv.github.io/prism/
+repo_url: https://github.com/mikalv/prism
+repo_name: mikalv/prism
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started: guides/getting-started.md
+
+  - Administration:
+    - Configuration: admin/configuration.md
+    - Security: admin/security.md
+    - Storage Backends: admin/storage-backends.md
+    - Monitoring: admin/monitoring.md
+    - Deployment: admin/deployment.md
+
+  - CLI Reference:
+    - prism-server: cli/prism-server.md
+    - prism-cli: cli/prism-cli.md
+    - prism-import: cli/prism-import.md
+
+  - Reference:
+    - Collection Schema: reference/schema.md
+    - Ingest Pipelines: reference/pipelines.md
+    - API Reference: reference/api-reference.md
+
+  - Feature Guides:
+    - Search: guides/search.md
+    - Vector Search: guides/vector-search.md
+    - Hybrid Search: guides/hybrid-search.md
+    - Aggregations: guides/aggregations.md
+    - Highlighting: guides/highlighting.md
+    - Suggestions: guides/suggestions.md
+    - More Like This: guides/more-like-this.md
+    - Ranking: guides/ranking.md
+    - Collections: guides/collections.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mikalv/prism
