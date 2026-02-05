@@ -41,7 +41,7 @@ plugins:
   - mermaid2
   - badges
   - pygments:
-      light: wodjweofijwqefd
+      light: dracula
       dark: github-dark
   - llmstxt:
       sections:
