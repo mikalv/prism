@@ -3,7 +3,7 @@ use clap::Parser;
 use std::path::Path;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "prism-server")]
 #[command(about = "Prism hybrid search server")]
 #[command(version)]
@@ -42,6 +42,7 @@ async fn main() -> Result<()> {
 
     // Load config first (tracing init depends on it)
     let config = prism::config::Config::load_or_create(std::path::Path::new(&args.config))?;
+    let config_path = args.config.clone();
 
     // Determine log format: env var overrides config
     let log_format =
@@ -80,10 +81,6 @@ async fn main() -> Result<()> {
     tracing::info!("Data dir: {}", args.data_dir);
 
     config.ensure_dirs()?;
-    // TODO: Load config and start server
-    // let config = prism::Config::from_file(&args.config)?;
-    // let server = prism::api::Server::new(config)?;
-    // server.run(&args.host, args.port).await?;
     let data_path = Path::new(&args.data_dir);
     std::fs::create_dir_all(data_path)?;
     let addr = format!("{}:{}", args.host, args.port);
@@ -112,7 +109,7 @@ async fn main() -> Result<()> {
     let pipeline_registry = prism::pipeline::registry::PipelineRegistry::load(&pipelines_dir)?;
     tracing::info!("Loaded ingest pipelines from {}", pipelines_dir.display());
 
-    // Create and start server
+    // Create server
     let server = prism::api::ApiServer::with_pipelines(
         manager,
         config.server.cors.clone(),
@@ -120,6 +117,9 @@ async fn main() -> Result<()> {
         pipeline_registry,
     )
     .with_metrics(metrics_handle);
+
+    // Get config reloader for SIGHUP handling
+    let config_reloader = server.config_reloader();
 
     let tls = if config.server.tls.enabled {
         Some(&config.server.tls)
@@ -143,6 +143,33 @@ async fn main() -> Result<()> {
             "Audit logging enabled (index_to_collection: {})",
             config.security.audit.index_to_collection
         );
+    }
+
+    // Spawn SIGHUP handler for config reload
+    #[cfg(unix)]
+    {
+        let reloader = config_reloader.clone();
+        let cfg_path = config_path.clone();
+        tokio::spawn(async move {
+            use tokio::signal::unix::{signal, SignalKind};
+
+            let mut sighup = signal(SignalKind::hangup()).expect("Failed to register SIGHUP handler");
+
+            loop {
+                sighup.recv().await;
+                tracing::info!("Received SIGHUP, reloading configuration...");
+
+                match prism::config::Config::load_or_create(std::path::Path::new(&cfg_path)) {
+                    Ok(new_config) => {
+                        reloader.reload_security(new_config.security).await;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to reload config: {}", e);
+                    }
+                }
+            }
+        });
+        tracing::info!("SIGHUP handler registered - send SIGHUP to reload security config");
     }
 
     server.serve(&addr, tls).await?;

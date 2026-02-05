@@ -16,7 +16,7 @@ use futures::stream::Stream;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch, RwLock};
 use tokio_rustls::TlsAcceptor;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -62,6 +62,41 @@ pub struct AppState {
     pub mcp_handler: Arc<McpHandler>,
     pub pipeline_registry: Arc<PipelineRegistry>,
     pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+    pub security_config: Arc<RwLock<SecurityConfig>>,
+}
+
+/// Handle for reloading server configuration at runtime (via SIGHUP)
+#[derive(Clone)]
+pub struct ConfigReloader {
+    security_tx: watch::Sender<SecurityConfig>,
+    security_config: Arc<RwLock<SecurityConfig>>,
+}
+
+impl ConfigReloader {
+    /// Reload security configuration from a new SecurityConfig
+    pub async fn reload_security(&self, new_config: SecurityConfig) {
+        tracing::info!("Reloading security configuration...");
+        tracing::info!(
+            "  API keys: {} -> {}",
+            self.security_tx.borrow().api_keys.len(),
+            new_config.api_keys.len()
+        );
+        tracing::info!(
+            "  Roles: {} -> {}",
+            self.security_tx.borrow().roles.len(),
+            new_config.roles.len()
+        );
+
+        // Update the shared config
+        {
+            let mut config = self.security_config.write().await;
+            *config = new_config.clone();
+        }
+
+        // Notify watchers
+        let _ = self.security_tx.send(new_config);
+        tracing::info!("Security configuration reloaded successfully");
+    }
 }
 
 pub struct ApiServer {
@@ -69,7 +104,8 @@ pub struct ApiServer {
     session_manager: Arc<SessionManager>,
     mcp_handler: Arc<McpHandler>,
     cors_config: CorsConfig,
-    security_config: SecurityConfig,
+    security_config: Arc<RwLock<SecurityConfig>>,
+    config_reloader: ConfigReloader,
     pipeline_registry: Arc<PipelineRegistry>,
     metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }
@@ -109,15 +145,30 @@ impl ApiServer {
         let tool_registry = Arc::new(tool_registry);
         let mcp_handler = Arc::new(McpHandler::new(tool_registry, manager.clone()));
 
+        // Create watch channel for config reload notifications
+        let (security_tx, _security_watch_rx) = watch::channel(security_config.clone());
+        let security_config = Arc::new(RwLock::new(security_config));
+
+        let config_reloader = ConfigReloader {
+            security_tx,
+            security_config: security_config.clone(),
+        };
+
         Self {
             manager,
             session_manager,
             mcp_handler,
             cors_config,
             security_config,
+            config_reloader,
             pipeline_registry: Arc::new(pipeline_registry),
             metrics_handle: None,
         }
+    }
+
+    /// Get a handle for reloading configuration at runtime
+    pub fn config_reloader(&self) -> ConfigReloader {
+        self.config_reloader.clone()
     }
 
     pub fn with_metrics(
@@ -253,13 +304,16 @@ impl ApiServer {
         }
     }
 
-    pub fn router(&self) -> Router {
+    pub async fn router(&self) -> Router {
+        let security_config = self.security_config.read().await.clone();
+
         let app_state = AppState {
             manager: self.manager.clone(),
             session_manager: self.session_manager.clone(),
             mcp_handler: self.mcp_handler.clone(),
             pipeline_registry: self.pipeline_registry.clone(),
             metrics_handle: self.metrics_handle.clone(),
+            security_config: self.security_config.clone(),
         };
 
         // Pipeline-aware routes that need AppState
@@ -361,9 +415,9 @@ impl ApiServer {
             .layer(TraceLayer::new_for_http());
 
         // Add audit middleware (independent of security.enabled)
-        if self.security_config.audit.enabled {
+        if security_config.audit.enabled {
             let mgr = self.manager.clone();
-            let index = self.security_config.audit.index_to_collection;
+            let index = security_config.audit.index_to_collection;
             app = app.layer(axum::middleware::from_fn(move |req, next| {
                 crate::security::audit::audit_middleware(mgr.clone(), index, req, next)
             }));
@@ -371,10 +425,16 @@ impl ApiServer {
 
         // Add auth middleware (only when security.enabled)
         // Added last so it runs first (tower layers are LIFO)
-        if self.security_config.enabled {
-            let checker = Arc::new(PermissionChecker::new(&self.security_config));
+        // Uses dynamic config from AppState for hot-reload support
+        if security_config.enabled {
+            let security_config_arc = self.security_config.clone();
             app = app.layer(axum::middleware::from_fn(move |req, next| {
-                crate::security::middleware::auth_middleware(checker.clone(), req, next)
+                let config = security_config_arc.clone();
+                async move {
+                    let security_config = config.read().await;
+                    let checker = PermissionChecker::new(&security_config);
+                    crate::security::middleware::auth_middleware_dynamic(checker, req, next).await
+                }
             }));
         }
 
@@ -382,7 +442,7 @@ impl ApiServer {
     }
 
     pub async fn serve(self, addr: &str, tls_config: Option<&TlsConfig>) -> Result<()> {
-        let router = self.router();
+        let router = self.router().await;
 
         let tls_enabled = tls_config.map_or(false, |t| t.enabled);
 
