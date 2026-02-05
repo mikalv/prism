@@ -36,6 +36,15 @@ plugins:
   - search
   - mermaid2
   - badges
+  - llmstxt:
+      sections:
+        Usage documentation:
+          - index.md: Main documentation page
+          - cli/*.md
+          - guides/*.md
+        Admin documentation:
+          - admin/*.md
+          - reference/*.md
 
 markdown_extensions:
   - admonition
