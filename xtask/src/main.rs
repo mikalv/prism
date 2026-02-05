@@ -53,19 +53,19 @@ impl ArchiveFormat {
 }
 
 /// Common target triples for cross-compilation
+/// Note: Some targets may not support all features (e.g., ONNX requires prebuilt binaries)
 const COMMON_TARGETS: &[(&str, &str, ArchiveFormat)] = &[
     // Linux glibc (dynamic)
     ("x86_64-unknown-linux-gnu", "linux-x86_64", ArchiveFormat::TarGz),
     ("aarch64-unknown-linux-gnu", "linux-aarch64", ArchiveFormat::TarGz),
-    // Linux musl (static)
+    // Linux musl (static) - may need --features to exclude ONNX
     ("x86_64-unknown-linux-musl", "linux-x86_64-static", ArchiveFormat::TarGz),
     ("aarch64-unknown-linux-musl", "linux-aarch64-static", ArchiveFormat::TarGz),
     // macOS
     ("x86_64-apple-darwin", "darwin-x86_64", ArchiveFormat::TarGz),
     ("aarch64-apple-darwin", "darwin-aarch64", ArchiveFormat::TarGz),
-    // Windows
+    // Windows (MSVC only - GNU toolchain lacks ONNX prebuilts)
     ("x86_64-pc-windows-msvc", "windows-x86_64", ArchiveFormat::Zip),
-    ("x86_64-pc-windows-gnu", "windows-x86_64-gnu", ArchiveFormat::Zip),
 ];
 
 #[derive(Parser, Clone)]
