@@ -15,11 +15,16 @@ pub enum ProviderConfig {
         api_key: String,
         model: String,
     },
-    /// Local ONNX model
+    /// Local ONNX model with auto-download from HuggingFace
     #[cfg(feature = "provider-onnx")]
     Onnx {
+        /// Explicit path to model.onnx file (overrides model_id)
         model_path: Option<String>,
+        /// HuggingFace model ID (e.g., "all-MiniLM-L6-v2")
+        /// Will be auto-downloaded if not cached
         model_id: Option<String>,
+        /// Custom cache directory for models
+        cache_dir: Option<String>,
     },
 }
 
@@ -76,8 +81,16 @@ pub async fn create_provider(
         ProviderConfig::Onnx {
             model_path,
             model_id,
+            cache_dir,
         } => {
-            anyhow::bail!("ONNX provider not yet implemented in new architecture")
+            let cache_path = cache_dir.as_ref().map(std::path::PathBuf::from);
+            let provider = super::onnx::OnnxProvider::new(
+                model_path.clone(),
+                model_id.clone(),
+                cache_path,
+            )
+            .await?;
+            Ok(Box::new(provider))
         }
     }
 }

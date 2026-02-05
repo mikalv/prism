@@ -13,6 +13,8 @@ mod provider;
 mod inference;
 #[cfg(feature = "provider-onnx")]
 mod model;
+#[cfg(feature = "provider-onnx")]
+mod onnx;
 
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
@@ -22,6 +24,8 @@ pub use provider::{create_provider, EmbeddingProvider, ProviderConfig};
 pub use inference::Embedder;
 #[cfg(feature = "provider-onnx")]
 pub use model::{ModelCache, ModelConfig};
+#[cfg(feature = "provider-onnx")]
+pub use onnx::OnnxProvider;
 
 use crate::cache::{CacheKey, EmbeddingCache, EmbeddingCacheStats, KeyStrategy, SqliteCache};
 use std::sync::Arc;
