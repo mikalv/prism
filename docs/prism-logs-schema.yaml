@@ -1,0 +1,44 @@
+name: logs
+backends:
+  text:
+    fields:
+      - name: timestamp
+        type: date
+        stored: true
+        indexed: true
+      - name: message
+        type: text
+        stored: true
+        indexed: true
+        analyzer: standard
+      - name: container_name
+        type: keyword
+        stored: true
+        indexed: true
+      - name: container_id
+        type: keyword
+        stored: true
+        indexed: true
+      - name: stream
+        type: keyword
+        stored: true
+        indexed: true
+      - name: labels
+        type: object
+        stored: true
+        indexed: false
+      - name: source
+        type: keyword
+        stored: true
+        indexed: true
+  vector:
+    dimension: 768
+    distance: cosine
+    hnsw_m: 16
+    hnsw_ef_construction: 200
+    hnsw_ef_search: 50
+
+embedding_generation:
+  enabled: true
+  source_field: message
+  target_field: embedding
