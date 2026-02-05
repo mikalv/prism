@@ -35,8 +35,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
-# HTTP
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP (using rustls for cross-platform builds without OpenSSL)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 axum = "0.7"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["trace", "cors"] }
