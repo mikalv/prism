@@ -5,7 +5,7 @@ repo_url: https://github.com/mikalv/prism
 repo_name: mikalv/prism
 
 theme:
-  name: material
+  name: bootstrap
   palette:
     - scheme: default
       primary: indigo
@@ -35,6 +35,7 @@ theme:
 plugins:
   - search
   - mermaid2
+  - badges
 
 markdown_extensions:
   - admonition

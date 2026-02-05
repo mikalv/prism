@@ -54,10 +54,16 @@ impl ArchiveFormat {
 
 /// Common target triples for cross-compilation
 const COMMON_TARGETS: &[(&str, &str, ArchiveFormat)] = &[
+    // Linux glibc (dynamic)
     ("x86_64-unknown-linux-gnu", "linux-x86_64", ArchiveFormat::TarGz),
     ("aarch64-unknown-linux-gnu", "linux-aarch64", ArchiveFormat::TarGz),
+    // Linux musl (static)
+    ("x86_64-unknown-linux-musl", "linux-x86_64-static", ArchiveFormat::TarGz),
+    ("aarch64-unknown-linux-musl", "linux-aarch64-static", ArchiveFormat::TarGz),
+    // macOS
     ("x86_64-apple-darwin", "darwin-x86_64", ArchiveFormat::TarGz),
     ("aarch64-apple-darwin", "darwin-aarch64", ArchiveFormat::TarGz),
+    // Windows
     ("x86_64-pc-windows-msvc", "windows-x86_64", ArchiveFormat::Zip),
     ("x86_64-pc-windows-gnu", "windows-x86_64-gnu", ArchiveFormat::Zip),
 ];
@@ -87,6 +93,10 @@ struct DistArgs {
     /// Build for all common targets (linux, darwin, windows)
     #[arg(long)]
     all_targets: bool,
+
+    /// Build static Linux binaries (musl) - no glibc dependency
+    #[arg(long)]
+    linux_static: bool,
 
     /// Skip `cargo build` and use existing release binaries
     #[arg(long)]
@@ -619,16 +629,30 @@ fn run_dist(args: DistArgs) -> Result<()> {
     let root = workspace_root()?;
     let version = workspace_version(&root)?;
 
-    if args.all_targets {
-        // Build for all common targets
-        for (target, label, default_format) in COMMON_TARGETS {
+    // Determine which targets to build
+    let targets: Vec<_> = if args.all_targets {
+        COMMON_TARGETS.to_vec()
+    } else if args.linux_static {
+        // Only static Linux targets (musl)
+        COMMON_TARGETS
+            .iter()
+            .filter(|(t, _, _)| t.contains("musl"))
+            .copied()
+            .collect()
+    } else {
+        vec![]
+    };
+
+    if !targets.is_empty() {
+        // Build for selected targets
+        for (target, label, default_format) in targets {
             eprintln!("\n=> Building for {} ({})", label, target);
 
             let mut target_args = args.clone();
             target_args.target = Some(target.to_string());
             // Use the specified format, or default based on target (zip for Windows)
             let format = if args.format == ArchiveFormat::TarGz {
-                *default_format
+                default_format
             } else {
                 args.format
             };
@@ -638,7 +662,7 @@ fn run_dist(args: DistArgs) -> Result<()> {
                 eprintln!("   (you may need to install the target: rustup target add {})", target);
             }
         }
-        eprintln!("\n=> All targets complete. Check dist/ directory.");
+        eprintln!("\n=> Build complete. Check dist/ directory.");
     } else {
         build_single_dist(&args, &root, &version, args.format, None)?;
     }

@@ -1,0 +1,15 @@
+[project]
+name = "prism-docs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mkdocs>=1.6.1",
+    "mkdocs-badges>=0.5.2",
+    "mkdocs-bootstrap>=1.1.1",
+    "mkdocs-bootstrap4>=0.1.5",
+    "mkdocs-bootswatch>=1.1",
+    "mkdocs-mermaid2-plugin>=1.2.3",
+    "mkdocs-terminal>=4.8.0",
+]
