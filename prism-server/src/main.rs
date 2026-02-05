@@ -86,6 +86,34 @@ async fn main() -> Result<()> {
         &config.storage.data_dir,
     )?);
 
+    // Set up embedding provider if enabled
+    if config.embedding.enabled {
+        tracing::info!("Setting up embedding provider...");
+        match prism::embedding::create_provider(&config.embedding.provider).await {
+            Ok(provider) => {
+                let cache_path = config
+                    .embedding
+                    .cache_dir
+                    .clone()
+                    .unwrap_or_else(|| config.storage.data_dir.join("embedding_cache.db"));
+                let cache = std::sync::Arc::new(
+                    prism::cache::SqliteCache::new(cache_path.to_str().unwrap_or("embedding_cache.db"))
+                        .expect("Failed to create embedding cache"),
+                );
+                let cached_provider = std::sync::Arc::new(prism::embedding::CachedEmbeddingProvider::new(
+                    provider,
+                    cache,
+                    prism::cache::KeyStrategy::ModelText,
+                ));
+                vector_backend.set_embedding_provider(cached_provider);
+                tracing::info!("Embedding provider configured successfully");
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create embedding provider: {}. Vector search with auto-embedding will not work.", e);
+            }
+        }
+    }
+
     // Create collection manager
     // Use CLI arg for schemas_dir if provided, otherwise fall back to config
     let schemas_path = if args.schemas_dir != "schemas" {

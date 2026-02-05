@@ -208,23 +208,24 @@ impl Default for StorageConfig {
 pub struct EmbeddingConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_model")]
-    pub model: String,
+    /// Provider configuration (ollama, openai, etc.)
+    #[serde(default)]
+    pub provider: crate::embedding::ProviderConfig,
+    /// Cache directory for embeddings (optional)
+    #[serde(default)]
+    pub cache_dir: Option<PathBuf>,
 }
 
 fn default_true() -> bool {
     true
 }
 
-fn default_model() -> String {
-    "all-MiniLM-L6-v2".to_string()
-}
-
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
             enabled: default_true(),
-            model: default_model(),
+            provider: crate::embedding::ProviderConfig::default(),
+            cache_dir: None,
         }
     }
 }

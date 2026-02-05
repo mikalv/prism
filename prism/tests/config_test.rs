@@ -7,13 +7,21 @@ use tempfile::tempdir;
 
 #[test]
 fn test_default_config() {
+    use prism::embedding::ProviderConfig;
     let config = Config::default();
 
     assert_eq!(config.server.bind_addr, "127.0.0.1:8080");
     assert!(config.server.unix_socket.is_none());
     assert_eq!(config.storage.max_local_gb, 5.0);
     assert!(config.embedding.enabled);
-    assert_eq!(config.embedding.model, "all-MiniLM-L6-v2");
+    // Check default provider is Ollama with nomic-embed-text
+    match &config.embedding.provider {
+        ProviderConfig::Ollama { url, model } => {
+            assert_eq!(url, "http://localhost:11434");
+            assert_eq!(model, "nomic-embed-text");
+        }
+        _ => panic!("Expected Ollama provider"),
+    }
     assert_eq!(config.logging.level, "info");
 }
 
@@ -49,13 +57,17 @@ fn test_load_from_dir() {
 
 #[test]
 fn test_save_and_load() {
+    use prism::embedding::ProviderConfig;
     let temp = tempdir().unwrap();
     let config_path = temp.path().join("config.toml");
 
     let mut config = Config::default();
     config.server.bind_addr = "0.0.0.0:9999".to_string();
     config.storage.max_local_gb = 10.0;
-    config.embedding.model = "custom-model".to_string();
+    config.embedding.provider = ProviderConfig::Ollama {
+        url: "http://custom:11434".to_string(),
+        model: "custom-model".to_string(),
+    };
     config.logging.level = "debug".to_string();
 
     config.save(&config_path).unwrap();
@@ -63,7 +75,13 @@ fn test_save_and_load() {
     let loaded = Config::load_or_create(&config_path).unwrap();
     assert_eq!(loaded.server.bind_addr, "0.0.0.0:9999");
     assert_eq!(loaded.storage.max_local_gb, 10.0);
-    assert_eq!(loaded.embedding.model, "custom-model");
+    match &loaded.embedding.provider {
+        ProviderConfig::Ollama { url, model } => {
+            assert_eq!(url, "http://custom:11434");
+            assert_eq!(model, "custom-model");
+        }
+        _ => panic!("Expected Ollama provider"),
+    }
     assert_eq!(loaded.logging.level, "debug");
 }
 
@@ -97,6 +115,7 @@ fn test_path_helpers() {
 
 #[test]
 fn test_parse_toml() {
+    use prism::embedding::ProviderConfig;
     let toml_content = r#"
 [server]
 bind_addr = "127.0.0.1:3179"
@@ -107,6 +126,10 @@ max_local_gb = 20.0
 
 [embedding]
 enabled = false
+
+[embedding.provider]
+type = "ollama"
+url = "http://other:11434"
 model = "other-model"
 
 [logging]
@@ -120,7 +143,13 @@ file = "/var/log/engraph.log"
     assert_eq!(config.storage.data_dir, PathBuf::from("/custom/path"));
     assert_eq!(config.storage.max_local_gb, 20.0);
     assert!(!config.embedding.enabled);
-    assert_eq!(config.embedding.model, "other-model");
+    match &config.embedding.provider {
+        ProviderConfig::Ollama { url, model } => {
+            assert_eq!(url, "http://other:11434");
+            assert_eq!(model, "other-model");
+        }
+        _ => panic!("Expected Ollama provider"),
+    }
     assert_eq!(config.logging.level, "trace");
     assert_eq!(
         config.logging.file,
