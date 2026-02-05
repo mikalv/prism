@@ -15,6 +15,49 @@ Prism combines vector search (HNSW) with full-text search (Tantivy) to deliver f
 
 ## Quick Start
 
+### Running Frontend + Backend
+
+Start both services with the dev script:
+
+```bash
+./dev.sh
+```
+
+This starts:
+- **Backend** (prism-server) on `http://localhost:3080`
+- **Frontend** (websearch-ui) on `http://localhost:5173`
+
+Open http://localhost:5173 to search through your Prism collections.
+
+#### Manual Setup
+
+Run services separately:
+
+```bash
+# Backend
+cd prism-server
+cargo run
+
+# Frontend (new terminal)
+cd websearch-ui
+npm install
+npm run dev
+```
+
+#### Environment Variables
+
+websearch-ui uses these environment variables (create in `websearch-ui/.env.development`):
+
+- `VITE_API_URL`: Backend API URL (default: `http://localhost:3080`)
+
+#### Troubleshooting
+
+- **Port conflicts**: Edit `prism-server/src/main.rs` to change default port
+- **CORS errors**: Check `websearch-ui/.env.development` has correct `VITE_API_URL`
+- **No results**: Ensure you have indexed documents in a collection
+
+### Using Prism as a Library
+
 Add Prism to your `Cargo.toml`:
 
 ```toml

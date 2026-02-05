@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use std::path::Path;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
@@ -18,10 +19,25 @@ struct Args {
     /// Port to listen on
     #[arg(short, long, default_value = "3080")]
     port: u16,
+
+    /// Schemas directory path
+    #[arg(long, default_value = "schemas")]
+    schemas_dir: String,
+
+    /// Data directory path
+    #[arg(long, default_value = "data")]
+    data_dir: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,prism=debug".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     let args = Args::parse();
 
     // Load config first (tracing init depends on it)
@@ -60,10 +76,16 @@ async fn main() -> Result<()> {
     };
 
     tracing::info!("Starting Prism server on {}:{}", args.host, args.port);
-    tracing::info!("Config file: {}", args.config);
+    tracing::info!("Schemas dir: {}", args.schemas_dir);
+    tracing::info!("Data dir: {}", args.data_dir);
 
     config.ensure_dirs()?;
-
+    // TODO: Load config and start server
+    // let config = prism::Config::from_file(&args.config)?;
+    // let server = prism::api::Server::new(config)?;
+    // server.run(&args.host, args.port).await?;
+    let data_path = Path::new(&args.data_dir);
+    std::fs::create_dir_all(data_path)?;
     let addr = format!("{}:{}", args.host, args.port);
 
     // Create backends
