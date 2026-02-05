@@ -7,6 +7,12 @@ authors.workspace = true
 repository.workspace = true
 description = "Prism search server binary"
 
+[features]
+default = []
+provider-onnx = ["prism/provider-onnx"]
+provider-onnx-real = ["prism/provider-onnx-real"]
+all-providers = ["prism/all-providers"]
+
 [dependencies]
 prism = { workspace = true }
 tokio = { workspace = true }
