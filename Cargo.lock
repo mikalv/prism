@@ -2157,7 +2157,7 @@ dependencies = [
 
 [[package]]
 name = "prism"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2207,7 +2207,7 @@ dependencies = [
 
 [[package]]
 name = "prism-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2223,7 +2223,7 @@ dependencies = [
 
 [[package]]
 name = "prism-importer"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2247,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "prism-server"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2261,7 +2261,7 @@ dependencies = [
 
 [[package]]
 name = "prism-storage"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-recursion",
  "async-trait",
