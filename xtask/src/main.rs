@@ -1,10 +1,11 @@
 use std::env;
 use std::fs;
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::Deserialize;
@@ -26,7 +27,42 @@ enum Cmd {
     Dist(DistArgs),
 }
 
-#[derive(Parser)]
+#[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq, Eq)]
+enum ArchiveFormat {
+    #[default]
+    TarGz,
+    Zip,
+}
+
+impl std::fmt::Display for ArchiveFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArchiveFormat::TarGz => write!(f, "tar.gz"),
+            ArchiveFormat::Zip => write!(f, "zip"),
+        }
+    }
+}
+
+impl ArchiveFormat {
+    fn extension(&self) -> &'static str {
+        match self {
+            ArchiveFormat::TarGz => "tar.gz",
+            ArchiveFormat::Zip => "zip",
+        }
+    }
+}
+
+/// Common target triples for cross-compilation
+const COMMON_TARGETS: &[(&str, &str, ArchiveFormat)] = &[
+    ("x86_64-unknown-linux-gnu", "linux-x86_64", ArchiveFormat::TarGz),
+    ("aarch64-unknown-linux-gnu", "linux-aarch64", ArchiveFormat::TarGz),
+    ("x86_64-apple-darwin", "darwin-x86_64", ArchiveFormat::TarGz),
+    ("aarch64-apple-darwin", "darwin-aarch64", ArchiveFormat::TarGz),
+    ("x86_64-pc-windows-msvc", "windows-x86_64", ArchiveFormat::Zip),
+    ("x86_64-pc-windows-gnu", "windows-x86_64-gnu", ArchiveFormat::Zip),
+];
+
+#[derive(Parser, Clone)]
 struct DistArgs {
     /// Cargo features passed to `prism` crate (comma-separated)
     #[arg(long, default_value = "full,storage-s3")]
@@ -40,13 +76,17 @@ struct DistArgs {
     #[arg(long, default_value = "all-MiniLM-L6-v2")]
     model: String,
 
-    /// Output format (only tar.gz supported today)
-    #[arg(long, default_value = "tar.gz")]
-    format: String,
+    /// Output format (tar-gz or zip)
+    #[arg(long, value_enum, default_value_t = ArchiveFormat::default())]
+    format: ArchiveFormat,
 
     /// Cargo build target triple (e.g. x86_64-unknown-linux-gnu)
     #[arg(long)]
     target: Option<String>,
+
+    /// Build for all common targets (linux, darwin, windows)
+    #[arg(long)]
+    all_targets: bool,
 
     /// Skip `cargo build` and use existing release binaries
     #[arg(long)]
@@ -148,8 +188,24 @@ fn release_bin(root: &Path, target: &Option<String>, name: &str) -> PathBuf {
         p.push(t);
     }
     p.push("release");
-    p.push(name);
+
+    // Add .exe extension for Windows targets
+    let bin_name = if target.as_ref().map_or(false, |t| t.contains("windows")) {
+        format!("{}.exe", name)
+    } else {
+        name.to_string()
+    };
+    p.push(bin_name);
     p
+}
+
+/// Get the appropriate binary extension for a target
+fn bin_extension(target: &Option<String>) -> &'static str {
+    if target.as_ref().map_or(false, |t| t.contains("windows")) {
+        ".exe"
+    } else {
+        ""
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -173,11 +229,12 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     }
 
     // -- bin/ ---------------------------------------------------------------
+    let ext = bin_extension(&args.target);
     let server_src = release_bin(root, &args.target, "prism-server");
     let cli_src = release_bin(root, &args.target, "prism");
 
-    copy_file(&server_src, &base.join("bin/prism-server"))?;
-    copy_file(&cli_src, &base.join("bin/prism"))?;
+    copy_file(&server_src, &base.join(format!("bin/prism-server{}", ext)))?;
+    copy_file(&cli_src, &base.join(format!("bin/prism{}", ext)))?;
 
     fs::write(base.join("bin/start.sh"), generate_start_sh())?;
     #[cfg(unix)]
@@ -305,6 +362,73 @@ fn create_tarball(staging: &Path, prefix: &str, output: &Path) -> Result<()> {
 
     eprintln!("=> wrote {}", output.display());
     Ok(())
+}
+
+fn create_zipfile(staging: &Path, prefix: &str, output: &Path) -> Result<()> {
+    use zip::write::SimpleFileOptions;
+
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let file =
+        fs::File::create(output).with_context(|| format!("creating {}", output.display()))?;
+    let mut zip = zip::ZipWriter::new(file);
+
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+
+    let src_dir = staging.join(prefix);
+    add_dir_to_zip(&mut zip, &src_dir, prefix, options)?;
+
+    zip.finish()?;
+    eprintln!("=> wrote {}", output.display());
+    Ok(())
+}
+
+fn add_dir_to_zip<W: Write + Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    src: &Path,
+    prefix: &str,
+    options: zip::write::SimpleFileOptions,
+) -> Result<()> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
+
+        if path.is_dir() {
+            zip.add_directory(&name, options)?;
+            add_dir_to_zip(zip, &path, &name, options)?;
+        } else {
+            // Use different permissions for executables vs regular files
+            let file_options = if name.contains("/bin/") {
+                options.unix_permissions(0o755)
+            } else {
+                options.unix_permissions(0o644)
+            };
+
+            zip.start_file(&name, file_options)?;
+            let mut f = fs::File::open(&path)?;
+            let mut buffer = Vec::new();
+            f.read_to_end(&mut buffer)?;
+            zip.write_all(&buffer)?;
+        }
+    }
+    Ok(())
+}
+
+fn create_archive(
+    format: ArchiveFormat,
+    staging: &Path,
+    prefix: &str,
+    output: &Path,
+) -> Result<()> {
+    match format {
+        ArchiveFormat::TarGz => create_tarball(staging, prefix, output),
+        ArchiveFormat::Zip => create_zipfile(staging, prefix, output),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -492,21 +616,62 @@ fn main() -> Result<()> {
 }
 
 fn run_dist(args: DistArgs) -> Result<()> {
-    if args.format != "tar.gz" {
-        bail!(
-            "unsupported format '{}'; only tar.gz is supported",
-            args.format
-        );
-    }
-
     let root = workspace_root()?;
     let version = workspace_version(&root)?;
-    let prefix = format!("prism-{}", version);
+
+    if args.all_targets {
+        // Build for all common targets
+        for (target, label, default_format) in COMMON_TARGETS {
+            eprintln!("\n=> Building for {} ({})", label, target);
+
+            let mut target_args = args.clone();
+            target_args.target = Some(target.to_string());
+            // Use the specified format, or default based on target (zip for Windows)
+            let format = if args.format == ArchiveFormat::TarGz {
+                *default_format
+            } else {
+                args.format
+            };
+
+            if let Err(e) = build_single_dist(&target_args, &root, &version, format, Some(label)) {
+                eprintln!("   warning: failed to build for {}: {}", target, e);
+                eprintln!("   (you may need to install the target: rustup target add {})", target);
+            }
+        }
+        eprintln!("\n=> All targets complete. Check dist/ directory.");
+    } else {
+        build_single_dist(&args, &root, &version, args.format, None)?;
+    }
+
+    Ok(())
+}
+
+fn build_single_dist(
+    args: &DistArgs,
+    root: &Path,
+    version: &str,
+    format: ArchiveFormat,
+    label: Option<&str>,
+) -> Result<()> {
+    // Create prefix with optional target label
+    let prefix = if let Some(lbl) = label {
+        format!("prism-{}-{}", version, lbl)
+    } else if let Some(ref target) = args.target {
+        // Use short label if available, otherwise full target triple
+        let lbl = COMMON_TARGETS
+            .iter()
+            .find(|(t, _, _)| *t == target.as_str())
+            .map(|(_, l, _)| *l)
+            .unwrap_or(target.as_str());
+        format!("prism-{}-{}", version, lbl)
+    } else {
+        format!("prism-{}", version)
+    };
 
     eprintln!("=> building distribution: {}", prefix);
 
     // 1. Build release binaries
-    cargo_build(&args, &root)?;
+    cargo_build(args, root)?;
 
     // 2. Stage into a temporary directory
     let staging = root.join("dist/.staging");
@@ -515,15 +680,15 @@ fn run_dist(args: DistArgs) -> Result<()> {
     }
     fs::create_dir_all(&staging)?;
 
-    stage(&args, &root, &prefix, &staging)?;
+    stage(args, root, &prefix, &staging)?;
 
-    // 3. Create tarball
-    let tarball = root.join(format!("dist/{}.tar.gz", prefix));
-    create_tarball(&staging, &prefix, &tarball)?;
+    // 3. Create archive
+    let archive = root.join(format!("dist/{}.{}", prefix, format.extension()));
+    create_archive(format, &staging, &prefix, &archive)?;
 
     // 4. Clean up staging
     fs::remove_dir_all(&staging)?;
 
-    eprintln!("=> done: {}", tarball.display());
+    eprintln!("=> done: {}", archive.display());
     Ok(())
 }
