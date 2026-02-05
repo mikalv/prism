@@ -31,13 +31,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,prism=debug".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
     let args = Args::parse();
 
     // Load config first (tracing init depends on it)
