@@ -10,22 +10,37 @@
       strategy:
         matrix:
           include:
-            # Linux
+            # Linux (glibc)
             - target: x86_64-unknown-linux-gnu
               os: ubuntu-latest
+              label: linux-x86_64
             - target: aarch64-unknown-linux-gnu
               os: ubuntu-latest
+              label: linux-aarch64
               use-cross: true
 
-            # macOS (native på macOS runner)
+            # Linux (musl/static)
+            - target: x86_64-unknown-linux-musl
+              os: ubuntu-latest
+              label: linux-x86_64-static
+              use-cross: true
+            - target: aarch64-unknown-linux-musl
+              os: ubuntu-latest
+              label: linux-aarch64-static
+              use-cross: true
+
+            # macOS
             - target: x86_64-apple-darwin
               os: macos-latest
+              label: darwin-x86_64
             - target: aarch64-apple-darwin
               os: macos-latest
+              label: darwin-aarch64
 
-            # Windows (native på Windows runner)
+            # Windows
             - target: x86_64-pc-windows-msvc
               os: windows-latest
+              label: windows-x86_64
 
       runs-on: ${{ matrix.os }}
 
