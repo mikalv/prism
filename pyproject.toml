@@ -13,5 +13,6 @@ dependencies = [
     "mkdocs-gitbook>=0.0.1",
     "mkdocs-llmstxt>=0.5.0",
     "mkdocs-mermaid2-plugin>=1.2.3",
+    "mkdocs-semantic>=1.0.0",
     "mkdocs-terminal>=4.8.0",
 ]

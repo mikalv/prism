@@ -594,6 +594,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mkdocs-semantic"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/8d/881c20bb9d267fad59dc0db06b9db94888aa24ebcb9c344578dd5ca3ff86/mkdocs-semantic-1.0.0.tar.gz", hash = "sha256:c2aabd19c92ffa5157116ae702318650694022966117312b7cc722e4cd3d488a", size = 1107321 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/2e/eff0c4f2f4c1e73fb522ed092523d36f5ded7dd6040ab3d7c16e5fec92a7/mkdocs_semantic-1.0.0-py3-none-any.whl", hash = "sha256:410709519bc7648e6101940567045d21dc0f9995b4603e3a873bd189a0804eaa", size = 1111733 },
+]
+
+[[package]]
 name = "mkdocs-terminal"
 version = "4.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -649,6 +658,7 @@ dependencies = [
     { name = "mkdocs-gitbook" },
     { name = "mkdocs-llmstxt" },
     { name = "mkdocs-mermaid2-plugin" },
+    { name = "mkdocs-semantic" },
     { name = "mkdocs-terminal" },
 ]
 
@@ -662,6 +672,7 @@ requires-dist = [
     { name = "mkdocs-gitbook", specifier = ">=0.0.1" },
     { name = "mkdocs-llmstxt", specifier = ">=0.5.0" },
     { name = "mkdocs-mermaid2-plugin", specifier = ">=1.2.3" },
+    { name = "mkdocs-semantic", specifier = ">=1.0.0" },
     { name = "mkdocs-terminal", specifier = ">=4.8.0" },
 ]
 
