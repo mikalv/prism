@@ -594,6 +594,18 @@ wheels = [
 ]
 
 [[package]]
+name = "mkdocs-pygments"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5c/9f/76064671f869d48d5f2c4cd73c6671d5d9800c70fbdad494f8267e423628/mkdocs_pygments-0.1.0.tar.gz", hash = "sha256:168572c1a01eaf8e08f2aee52b7220e3aaceeb7483c8f3968cf526b07141f892", size = 28269 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/24/dc11d3cdacd0b3a35439766dc5972530bb8ebb8f6ec731043bd98f75121c/mkdocs_pygments-0.1.0-py3-none-any.whl", hash = "sha256:38e5884e9ca39c6115a5abeb07fb6394fbd192e72c17a09c3def90720b1d1bea", size = 6783 },
+]
+
+[[package]]
 name = "mkdocs-semantic"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -658,6 +670,7 @@ dependencies = [
     { name = "mkdocs-gitbook" },
     { name = "mkdocs-llmstxt" },
     { name = "mkdocs-mermaid2-plugin" },
+    { name = "mkdocs-pygments" },
     { name = "mkdocs-semantic" },
     { name = "mkdocs-terminal" },
 ]
@@ -672,6 +685,7 @@ requires-dist = [
     { name = "mkdocs-gitbook", specifier = ">=0.0.1" },
     { name = "mkdocs-llmstxt", specifier = ">=0.5.0" },
     { name = "mkdocs-mermaid2-plugin", specifier = ">=1.2.3" },
+    { name = "mkdocs-pygments", specifier = ">=0.1.0" },
     { name = "mkdocs-semantic", specifier = ">=1.0.0" },
     { name = "mkdocs-terminal", specifier = ">=4.8.0" },
 ]

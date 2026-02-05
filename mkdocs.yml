@@ -40,6 +40,9 @@ plugins:
   - search
   - mermaid2
   - badges
+  - pygments:
+      light: wodjweofijwqefd
+      dark: github-dark
   - llmstxt:
       sections:
         Usage documentation:
