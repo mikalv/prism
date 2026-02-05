@@ -87,8 +87,14 @@ async fn main() -> Result<()> {
     )?);
 
     // Create collection manager
+    // Use CLI arg for schemas_dir if provided, otherwise fall back to config
+    let schemas_path = if args.schemas_dir != "schemas" {
+        std::path::PathBuf::from(&args.schemas_dir)
+    } else {
+        config.schemas_dir()
+    };
     let manager = std::sync::Arc::new(prism::collection::CollectionManager::new(
-        config.schemas_dir(),
+        &schemas_path,
         text_backend,
         vector_backend,
     )?);
