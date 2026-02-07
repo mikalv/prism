@@ -78,6 +78,11 @@ object_store = { workspace = true, optional = true }
 bytes = { workspace = true }
 tempfile = { workspace = true }
 
+# Export/archive
+tar = { workspace = true }
+zstd = { workspace = true }
+hex = { workspace = true }
+
 # Unified storage (tantivy-adapter enabled by default for unified storage path)
 prism-storage = { workspace = true, features = ["tantivy-adapter"] }
 

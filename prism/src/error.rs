@@ -55,6 +55,12 @@ pub enum Error {
 
     #[error("ILM policy not found: {0}")]
     PolicyNotFound(String),
+
+    #[error("Export error: {0}")]
+    Export(String),
+
+    #[error("Import error: {0}")]
+    Import(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

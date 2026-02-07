@@ -89,6 +89,48 @@ enum CollectionCommands {
 
     /// List all collections
     List,
+
+    /// Export a collection for backup or migration
+    Export {
+        /// Collection name
+        #[arg(short, long)]
+        name: String,
+
+        /// Output file path (defaults to <collection>.<ext>)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Export format: portable (JSON, cross-version) or snapshot (binary, fast)
+        #[arg(short, long, default_value = "portable")]
+        format: String,
+
+        /// Schemas directory path
+        #[arg(long, default_value = "schemas")]
+        schemas_dir: PathBuf,
+
+        /// Disable progress output
+        #[arg(long)]
+        no_progress: bool,
+    },
+
+    /// Restore a collection from export
+    Restore {
+        /// Input file path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Target collection name (overrides source name)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Export format: portable or snapshot (auto-detected from extension if omitted)
+        #[arg(short, long)]
+        format: Option<String>,
+
+        /// Disable progress output
+        #[arg(long)]
+        no_progress: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -160,6 +202,39 @@ async fn main() -> Result<()> {
             }
             CollectionCommands::List => {
                 list_collections(&cli.data_dir)?;
+            }
+            CollectionCommands::Export {
+                name,
+                output,
+                format,
+                schemas_dir,
+                no_progress,
+            } => {
+                let export_format = format
+                    .parse()
+                    .map_err(|e: String| anyhow::anyhow!(e))?;
+                commands::run_export(
+                    &cli.data_dir,
+                    &schemas_dir,
+                    &name,
+                    output,
+                    export_format,
+                    no_progress,
+                )
+                .await?;
+            }
+            CollectionCommands::Restore {
+                input,
+                target,
+                format,
+                no_progress,
+            } => {
+                let export_format = format
+                    .map(|f| f.parse())
+                    .transpose()
+                    .map_err(|e: String| anyhow::anyhow!(e))?;
+                commands::run_restore(&cli.data_dir, input, target, export_format, no_progress)
+                    .await?;
             }
         },
 
