@@ -1,6 +1,7 @@
 //! Cluster configuration
 
 use crate::discovery::DiscoveryConfig;
+use crate::federation::FederationConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -59,6 +60,10 @@ pub struct ClusterConfig {
     /// Consistency and partition handling configuration
     #[serde(default)]
     pub consistency: ConsistencyConfig,
+
+    /// Federation (distributed query) configuration
+    #[serde(default)]
+    pub federation: FederationConfig,
 }
 
 fn default_node_id() -> String {
@@ -97,6 +102,7 @@ impl Default for ClusterConfig {
             health: HealthConfig::default(),
             discovery: DiscoveryConfig::default(),
             consistency: ConsistencyConfig::default(),
+            federation: FederationConfig::default(),
         }
     }
 }

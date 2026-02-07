@@ -25,6 +25,7 @@
 pub mod config;
 pub mod discovery;
 pub mod error;
+pub mod federation;
 pub mod health;
 pub mod metrics;
 pub mod partition;
@@ -44,6 +45,11 @@ pub use config::{
 };
 pub use discovery::{ClusterEvent, DiscoveredNode, DiscoveryConfig, DnsDiscovery, NodeDiscovery, StaticDiscovery};
 pub use error::ClusterError;
+pub use federation::{
+    AggregatedStats, DeleteStatus, FederatedResults, FederatedSearch, FederationConfig,
+    IndexStatus, MergeStrategy, QueryRouter, ResultMerger, RoutingDecision, RoutingStrategy,
+    ShardFailure, ShardStatus, ShardTarget,
+};
 pub use health::{ClusterHealth, HealthChecker, HealthEvent, HealthState, NodeHealthInfo};
 pub use partition::{PartitionAwareOp, PartitionDetector, PartitionError, PartitionEvent, PartitionState};
 pub use placement::{

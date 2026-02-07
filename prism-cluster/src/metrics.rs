@@ -361,6 +361,197 @@ pub fn record_partition_duration(duration: std::time::Duration) {
     metrics::histogram!("prism_partition_duration_seconds").record(duration.as_secs_f64());
 }
 
+// ========================================
+// Federation Metrics
+// ========================================
+
+/// Record federated query execution
+pub fn record_federated_query(
+    collection: &str,
+    operation: &str,
+    shard_count: usize,
+    duration: Duration,
+) {
+    metrics::histogram!(
+        "prism_federated_query_duration_seconds",
+        "collection" => collection.to_string(),
+        "operation" => operation.to_string(),
+    )
+    .record(duration.as_secs_f64());
+
+    metrics::counter!(
+        "prism_federated_queries_total",
+        "collection" => collection.to_string(),
+        "operation" => operation.to_string(),
+    )
+    .increment(1);
+
+    metrics::histogram!(
+        "prism_federated_query_shards",
+        "collection" => collection.to_string(),
+        "operation" => operation.to_string(),
+    )
+    .record(shard_count as f64);
+}
+
+/// Record federated query with partial results
+pub fn record_federated_partial_results(
+    collection: &str,
+    successful_shards: u32,
+    failed_shards: u32,
+) {
+    metrics::counter!(
+        "prism_federated_partial_results_total",
+        "collection" => collection.to_string(),
+    )
+    .increment(1);
+
+    metrics::gauge!(
+        "prism_federated_shards_successful",
+        "collection" => collection.to_string(),
+    )
+    .set(successful_shards as f64);
+
+    metrics::gauge!(
+        "prism_federated_shards_failed",
+        "collection" => collection.to_string(),
+    )
+    .set(failed_shards as f64);
+}
+
+/// Record per-shard latency in federated query
+pub fn record_shard_query_latency(shard_id: &str, node: &str, duration: Duration) {
+    metrics::histogram!(
+        "prism_shard_query_duration_seconds",
+        "shard" => shard_id.to_string(),
+        "node" => node.to_string(),
+    )
+    .record(duration.as_secs_f64());
+}
+
+/// Record shard query failure
+pub fn record_shard_query_failure(shard_id: &str, node: &str, error_type: &str, is_timeout: bool) {
+    metrics::counter!(
+        "prism_shard_query_failures_total",
+        "shard" => shard_id.to_string(),
+        "node" => node.to_string(),
+        "error_type" => error_type.to_string(),
+        "is_timeout" => is_timeout.to_string(),
+    )
+    .increment(1);
+}
+
+/// Record merge operation
+pub fn record_merge_operation(strategy: &str, result_count: usize, duration: Duration) {
+    metrics::histogram!(
+        "prism_merge_duration_seconds",
+        "strategy" => strategy.to_string(),
+    )
+    .record(duration.as_secs_f64());
+
+    metrics::histogram!(
+        "prism_merge_result_count",
+        "strategy" => strategy.to_string(),
+    )
+    .record(result_count as f64);
+}
+
+/// Record routing decision
+pub fn record_routing_decision(collection: &str, strategy: &str, target_count: usize) {
+    metrics::counter!(
+        "prism_routing_decisions_total",
+        "collection" => collection.to_string(),
+        "strategy" => strategy.to_string(),
+    )
+    .increment(1);
+
+    metrics::histogram!(
+        "prism_routing_target_count",
+        "collection" => collection.to_string(),
+    )
+    .record(target_count as f64);
+}
+
+/// Record scatter-gather timing breakdown
+pub fn record_scatter_gather_timing(
+    collection: &str,
+    scatter_ms: u64,
+    gather_ms: u64,
+    merge_ms: u64,
+) {
+    metrics::histogram!(
+        "prism_scatter_duration_ms",
+        "collection" => collection.to_string(),
+    )
+    .record(scatter_ms as f64);
+
+    metrics::histogram!(
+        "prism_gather_duration_ms",
+        "collection" => collection.to_string(),
+    )
+    .record(gather_ms as f64);
+
+    metrics::histogram!(
+        "prism_merge_duration_ms",
+        "collection" => collection.to_string(),
+    )
+    .record(merge_ms as f64);
+}
+
+/// Update concurrent federated query gauge
+pub fn update_concurrent_queries(count: usize) {
+    metrics::gauge!("prism_federated_queries_in_flight").set(count as f64);
+}
+
+/// Guard for timing federated queries
+pub struct FederatedQueryTimer {
+    collection: String,
+    operation: String,
+    shard_count: usize,
+    start: Instant,
+}
+
+impl FederatedQueryTimer {
+    /// Start timing a federated query
+    pub fn new(collection: &str, operation: &str, shard_count: usize) -> Self {
+        Self {
+            collection: collection.to_string(),
+            operation: operation.to_string(),
+            shard_count,
+            start: Instant::now(),
+        }
+    }
+
+    /// Record successful completion
+    pub fn success(self, is_partial: bool) {
+        let duration = self.start.elapsed();
+        record_federated_query(&self.collection, &self.operation, self.shard_count, duration);
+
+        if is_partial {
+            metrics::counter!(
+                "prism_federated_partial_success_total",
+                "collection" => self.collection,
+                "operation" => self.operation,
+            )
+            .increment(1);
+        }
+    }
+
+    /// Record failure
+    pub fn error(self, error_type: &str) {
+        let duration = self.start.elapsed();
+        record_federated_query(&self.collection, &self.operation, self.shard_count, duration);
+
+        metrics::counter!(
+            "prism_federated_query_errors_total",
+            "collection" => self.collection,
+            "operation" => self.operation,
+            "error_type" => error_type.to_string(),
+        )
+        .increment(1);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
