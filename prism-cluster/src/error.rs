@@ -41,6 +41,9 @@ pub enum ClusterError {
 
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+
+    #[error("Discovery error: {0}")]
+    Discovery(String),
 }
 
 impl ClusterError {
@@ -59,6 +62,7 @@ impl ClusterError {
             ClusterError::Config(_) => "config",
             ClusterError::Internal(_) => "internal",
             ClusterError::NotImplemented(_) => "not_implemented",
+            ClusterError::Discovery(_) => "discovery",
         }
     }
 }

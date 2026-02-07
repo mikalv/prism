@@ -1,5 +1,6 @@
 //! Cluster configuration
 
+use crate::discovery::DiscoveryConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -50,6 +51,10 @@ pub struct ClusterConfig {
     /// Health check configuration
     #[serde(default)]
     pub health: HealthConfig,
+
+    /// Node discovery configuration
+    #[serde(default)]
+    pub discovery: DiscoveryConfig,
 }
 
 fn default_node_id() -> String {
@@ -86,6 +91,7 @@ impl Default for ClusterConfig {
             topology: NodeTopology::default(),
             rebalancing: RebalancingConfig::default(),
             health: HealthConfig::default(),
+            discovery: DiscoveryConfig::default(),
         }
     }
 }
