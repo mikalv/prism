@@ -4,5 +4,6 @@ pub mod types;
 pub use loader::SchemaLoader;
 pub use types::{
     Backends, BoostingConfig, CollectionSchema, FieldType, GraphBackendConfig, IndexingConfig,
-    QuotaConfig, RecencyDecayConfig, TextBackendConfig, TextField, VectorBackendConfig,
+    QuotaConfig, RecencyDecayConfig, TextBackendConfig, TextField, TokenizerType,
+    VectorBackendConfig,
 };

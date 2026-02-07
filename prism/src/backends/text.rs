@@ -11,7 +11,8 @@ use crate::backends::{
     SearchResultsWithAggs,
 };
 use crate::ranking::{apply_ranking_adjustments, RankableResult, RankingConfig};
-use crate::schema::{CollectionSchema, FieldType};
+use crate::schema::{CollectionSchema, FieldType, TokenizerType};
+use crate::tokenizer::{code_tokenizer, CODE_TOKENIZER_NAME};
 use crate::{Error, Result};
 use async_trait::async_trait;
 use prism_storage::{LocalStorage, SegmentStorage, TantivyStorageAdapter};
@@ -127,9 +128,15 @@ impl TextBackend {
                 FieldType::Text => {
                     let mut options = TextOptions::default();
                     if field_def.indexed {
+                        // Select tokenizer based on field configuration
+                        let tokenizer_name = match field_def.tokenizer.as_ref().unwrap_or(&TokenizerType::Default) {
+                            TokenizerType::Default => "default",
+                            TokenizerType::Code => CODE_TOKENIZER_NAME,
+                            TokenizerType::Raw => "raw",
+                        };
                         options = options.set_indexing_options(
                             TextFieldIndexing::default()
-                                .set_tokenizer("default")
+                                .set_tokenizer(tokenizer_name)
                                 .set_index_option(IndexRecordOption::WithFreqsAndPositions),
                         );
                     }
@@ -215,6 +222,9 @@ impl TextBackend {
         } else {
             Index::open(directory)?
         };
+
+        // Register custom tokenizers
+        index.tokenizers().register(CODE_TOKENIZER_NAME, code_tokenizer());
 
         // Use the index's schema (may differ if opening existing index)
         let existing_schema = index.schema();

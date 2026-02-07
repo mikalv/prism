@@ -78,6 +78,23 @@ pub struct TextField {
     pub stored: bool,
     #[serde(default)]
     pub indexed: bool,
+    /// Tokenizer to use for this field (default: "default")
+    /// Options: "default", "code", "raw"
+    #[serde(default)]
+    pub tokenizer: Option<TokenizerType>,
+}
+
+/// Tokenizer type for text fields
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenizerType {
+    /// Standard Tantivy tokenizer (whitespace + punctuation split, lowercase)
+    #[default]
+    Default,
+    /// Code-aware tokenizer (splits camelCase, snake_case, handles identifiers)
+    Code,
+    /// Raw tokenizer (no tokenization, exact match only)
+    Raw,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

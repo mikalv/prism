@@ -25,6 +25,7 @@ async fn test_hybrid_merge_behaviour() {
                     field_type: prism::schema::types::FieldType::Text,
                     stored: true,
                     indexed: true,
+                    tokenizer: None,
                 }],
                 bm25_k1: None,
                 bm25_b: None,
