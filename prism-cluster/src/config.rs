@@ -46,6 +46,10 @@ pub struct ClusterConfig {
     /// Rebalancing configuration
     #[serde(default)]
     pub rebalancing: RebalancingConfig,
+
+    /// Health check configuration
+    #[serde(default)]
+    pub health: HealthConfig,
 }
 
 fn default_node_id() -> String {
@@ -81,6 +85,7 @@ impl Default for ClusterConfig {
             tls: ClusterTlsConfig::default(),
             topology: NodeTopology::default(),
             rebalancing: RebalancingConfig::default(),
+            health: HealthConfig::default(),
         }
     }
 }
@@ -256,6 +261,67 @@ impl Default for RebalancingConfig {
             max_concurrent_moves: default_max_concurrent_moves(),
             max_bytes_per_sec: default_max_bytes_per_sec(),
             cooldown_secs: default_rebalance_cooldown(),
+        }
+    }
+}
+
+/// Action to take when a node fails
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureAction {
+    /// Trigger shard rebalancing
+    Rebalance,
+    /// Only emit alerts/metrics
+    AlertOnly,
+    /// Require manual intervention
+    Manual,
+}
+
+impl Default for FailureAction {
+    fn default() -> Self {
+        FailureAction::Rebalance
+    }
+}
+
+/// Health check configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HealthConfig {
+    /// Heartbeat interval in milliseconds
+    #[serde(default = "default_heartbeat_interval")]
+    pub heartbeat_interval_ms: u64,
+
+    /// Number of missed heartbeats before marking node as suspect
+    #[serde(default = "default_failure_threshold")]
+    pub failure_threshold: u32,
+
+    /// Time in milliseconds a node can stay in suspect state before being marked dead
+    #[serde(default = "default_suspect_timeout")]
+    pub suspect_timeout_ms: u64,
+
+    /// Action to take when a node is confirmed dead
+    #[serde(default)]
+    pub on_failure: FailureAction,
+}
+
+fn default_heartbeat_interval() -> u64 {
+    1000 // 1 second
+}
+
+fn default_failure_threshold() -> u32 {
+    3 // 3 missed heartbeats
+}
+
+fn default_suspect_timeout() -> u64 {
+    5000 // 5 seconds
+}
+
+impl Default for HealthConfig {
+    fn default() -> Self {
+        Self {
+            heartbeat_interval_ms: default_heartbeat_interval(),
+            failure_threshold: default_failure_threshold(),
+            suspect_timeout_ms: default_suspect_timeout(),
+            on_failure: FailureAction::default(),
         }
     }
 }

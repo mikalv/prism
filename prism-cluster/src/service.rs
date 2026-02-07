@@ -64,6 +64,12 @@ pub trait PrismCluster {
     /// Simple ping for health checking
     async fn ping() -> String;
 
+    /// Get cluster health summary
+    async fn cluster_health() -> RpcClusterHealth;
+
+    /// Report heartbeat (for remote health checking)
+    async fn heartbeat() -> RpcHeartbeatResponse;
+
     // ========================================
     // Shard Management
     // ========================================

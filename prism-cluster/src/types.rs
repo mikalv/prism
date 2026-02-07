@@ -376,3 +376,52 @@ pub struct RpcRebalanceStatus {
     /// Last error
     pub last_error: Option<String>,
 }
+
+// ================================
+// Health Check Types
+// ================================
+
+/// Health state of a node for RPC
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcNodeHealth {
+    /// Node ID
+    pub node_id: String,
+    /// Health state: alive, suspect, dead
+    pub state: String,
+    /// Last heartbeat timestamp (Unix epoch seconds)
+    pub last_heartbeat: Option<u64>,
+    /// Consecutive missed heartbeats
+    pub missed_heartbeats: u32,
+    /// Last heartbeat latency in milliseconds
+    pub last_latency_ms: Option<u64>,
+}
+
+/// Cluster health summary for RPC
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcClusterHealth {
+    /// Health state of each node
+    pub nodes: Vec<RpcNodeHealth>,
+    /// Number of alive nodes
+    pub alive_count: usize,
+    /// Number of suspect nodes
+    pub suspect_count: usize,
+    /// Number of dead nodes
+    pub dead_count: usize,
+    /// Total node count
+    pub total_count: usize,
+    /// Is quorum available (majority of nodes alive)
+    pub quorum_available: bool,
+}
+
+/// Response to heartbeat request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcHeartbeatResponse {
+    /// Node ID responding
+    pub node_id: String,
+    /// Node version
+    pub version: String,
+    /// Server uptime in seconds
+    pub uptime_secs: u64,
+    /// Timestamp of response (Unix epoch seconds)
+    pub timestamp: u64,
+}

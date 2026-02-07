@@ -434,6 +434,75 @@ impl PrismCluster for ClusterHandler {
         "pong".to_string()
     }
 
+    async fn cluster_health(self, _ctx: Context) -> RpcClusterHealth {
+        let timer = RpcHandlerTimer::new("cluster_health");
+        let server = self.server.read().await;
+
+        // Get all nodes from cluster state
+        let nodes = server.cluster_state.get_nodes();
+        let heartbeat_timeout = 30; // Default timeout
+
+        let mut alive_count = 0;
+        let mut suspect_count = 0;
+        let mut dead_count = 0;
+
+        let rpc_nodes: Vec<RpcNodeHealth> = nodes
+            .iter()
+            .map(|n| {
+                let healthy = n.is_healthy(heartbeat_timeout);
+                let state = if !n.reachable {
+                    dead_count += 1;
+                    "dead"
+                } else if !healthy {
+                    suspect_count += 1;
+                    "suspect"
+                } else {
+                    alive_count += 1;
+                    "alive"
+                };
+
+                RpcNodeHealth {
+                    node_id: n.info.node_id.clone(),
+                    state: state.to_string(),
+                    last_heartbeat: Some(n.last_heartbeat),
+                    missed_heartbeats: 0, // Would need to track this
+                    last_latency_ms: None,
+                }
+            })
+            .collect();
+
+        let total_count = rpc_nodes.len();
+        let quorum_available = alive_count > total_count / 2;
+
+        timer.success();
+        RpcClusterHealth {
+            nodes: rpc_nodes,
+            alive_count,
+            suspect_count,
+            dead_count,
+            total_count,
+            quorum_available,
+        }
+    }
+
+    async fn heartbeat(self, _ctx: Context) -> RpcHeartbeatResponse {
+        let timer = RpcHandlerTimer::new("heartbeat");
+        let server = self.server.read().await;
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        timer.success();
+        RpcHeartbeatResponse {
+            node_id: server.config.node_id.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            uptime_secs: server.start_time.elapsed().as_secs(),
+            timestamp,
+        }
+    }
+
     // ========================================
     // Shard Management
     // ========================================

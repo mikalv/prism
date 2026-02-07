@@ -22,6 +22,7 @@
 
 pub mod config;
 pub mod error;
+pub mod health;
 pub mod metrics;
 pub mod placement;
 pub mod rebalance;
@@ -33,7 +34,8 @@ mod client;
 mod server;
 
 pub use client::ClusterClient;
-pub use config::{ClusterConfig, ClusterTlsConfig, NodeTopology, RebalancingConfig};
+pub use config::{ClusterConfig, ClusterTlsConfig, FailureAction, HealthConfig, NodeTopology, RebalancingConfig};
+pub use health::{ClusterHealth, HealthChecker, HealthEvent, HealthState, NodeHealthInfo};
 pub use error::ClusterError;
 pub use placement::{
     BalanceFactor, ClusterState, ClusterStateSnapshot, NodeInfo, NodeState, PlacementDecision,
