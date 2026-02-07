@@ -704,6 +704,51 @@ impl PrismCluster for ClusterHandler {
             last_error: status.last_error,
         })
     }
+
+    // ========================================
+    // Schema Management
+    // ========================================
+
+    async fn apply_schema(
+        self,
+        _ctx: Context,
+        request: RpcApplySchemaRequest,
+    ) -> Result<RpcApplySchemaResponse, ClusterError> {
+        let timer = RpcHandlerTimer::new("apply_schema");
+
+        // For now, just acknowledge the schema
+        // A full implementation would:
+        // 1. Validate the schema
+        // 2. Store it in a local schema registry
+        // 3. Possibly trigger collection re-configuration
+
+        info!(
+            "Received schema version {} for collection {} from {}",
+            request.version, request.collection, request.created_by
+        );
+
+        timer.success();
+        Ok(RpcApplySchemaResponse {
+            applied: true,
+            current_version: request.version,
+            error: None,
+        })
+    }
+
+    async fn get_schema_version(
+        self,
+        _ctx: Context,
+        collection: String,
+    ) -> Result<Option<u64>, ClusterError> {
+        let timer = RpcHandlerTimer::new("get_schema_version");
+
+        // For now, return None indicating no version is tracked locally
+        // A full implementation would check the local schema registry
+        debug!("Getting schema version for collection {}", collection);
+
+        timer.success();
+        Ok(None)
+    }
 }
 
 /// Wrapper around QUIC bidirectional streams for tokio I/O

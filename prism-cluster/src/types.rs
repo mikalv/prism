@@ -425,3 +425,52 @@ pub struct RpcHeartbeatResponse {
     /// Timestamp of response (Unix epoch seconds)
     pub timestamp: u64,
 }
+
+// ================================
+// Schema Propagation Types
+// ================================
+
+/// Request to apply a schema from another node
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcApplySchemaRequest {
+    /// Collection name
+    pub collection: String,
+    /// Schema version number
+    pub version: u64,
+    /// Schema content (JSON)
+    pub schema: Value,
+    /// When this version was created (unix timestamp ms)
+    pub created_at: u64,
+    /// Node that created this version
+    pub created_by: String,
+    /// Changes from previous version
+    pub changes: Vec<RpcSchemaChange>,
+    /// Additional metadata
+    pub metadata: HashMap<String, String>,
+}
+
+/// A schema change description for RPC
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcSchemaChange {
+    /// Type of change (field_added, field_removed, etc.)
+    pub change_type: String,
+    /// Path to the changed element
+    pub path: String,
+    /// Previous value
+    pub old_value: Option<Value>,
+    /// New value
+    pub new_value: Option<Value>,
+    /// Human-readable description
+    pub description: String,
+}
+
+/// Response from applying a schema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcApplySchemaResponse {
+    /// Whether the schema was applied
+    pub applied: bool,
+    /// Current schema version after operation
+    pub current_version: u64,
+    /// Error message if failed
+    pub error: Option<String>,
+}

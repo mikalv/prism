@@ -552,6 +552,90 @@ impl FederatedQueryTimer {
     }
 }
 
+// ========================================
+// Schema Propagation Metrics
+// ========================================
+
+/// Record schema propagation operation
+pub fn record_schema_propagation(
+    collection: &str,
+    version: u64,
+    succeeded: usize,
+    failed: usize,
+    duration: Duration,
+) {
+    metrics::histogram!(
+        "prism_schema_propagation_duration_seconds",
+        "collection" => collection.to_string(),
+    )
+    .record(duration.as_secs_f64());
+
+    metrics::counter!(
+        "prism_schema_propagations_total",
+        "collection" => collection.to_string(),
+    )
+    .increment(1);
+
+    metrics::gauge!(
+        "prism_schema_version",
+        "collection" => collection.to_string(),
+    )
+    .set(version as f64);
+
+    metrics::gauge!(
+        "prism_schema_propagation_succeeded",
+        "collection" => collection.to_string(),
+    )
+    .set(succeeded as f64);
+
+    metrics::gauge!(
+        "prism_schema_propagation_failed",
+        "collection" => collection.to_string(),
+    )
+    .set(failed as f64);
+}
+
+/// Record per-node schema propagation
+pub fn record_schema_node_propagation(
+    collection: &str,
+    node: &str,
+    success: bool,
+    duration: Duration,
+) {
+    metrics::histogram!(
+        "prism_schema_node_propagation_duration_seconds",
+        "collection" => collection.to_string(),
+        "node" => node.to_string(),
+    )
+    .record(duration.as_secs_f64());
+
+    let status = if success { "success" } else { "failure" };
+    metrics::counter!(
+        "prism_schema_node_propagations_total",
+        "collection" => collection.to_string(),
+        "node" => node.to_string(),
+        "status" => status.to_string(),
+    )
+    .increment(1);
+}
+
+/// Record schema change events
+pub fn record_schema_change(collection: &str, change_type: &str, is_breaking: bool) {
+    metrics::counter!(
+        "prism_schema_changes_total",
+        "collection" => collection.to_string(),
+        "change_type" => change_type.to_string(),
+        "breaking" => is_breaking.to_string(),
+    )
+    .increment(1);
+}
+
+/// Update schema registry metrics
+pub fn update_schema_registry_metrics(collection_count: usize, total_versions: usize) {
+    metrics::gauge!("prism_schema_registry_collections").set(collection_count as f64);
+    metrics::gauge!("prism_schema_registry_total_versions").set(total_versions as f64);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

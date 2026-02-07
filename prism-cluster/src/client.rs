@@ -348,6 +348,85 @@ impl ClusterClient {
         Ok(result)
     }
 
+    /// Apply a schema to a remote node (for schema propagation)
+    pub async fn apply_schema(
+        &self,
+        addr: &str,
+        versioned: crate::VersionedSchema,
+    ) -> Result<()> {
+        let timer = RpcTimer::new("apply_schema", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+
+        // Convert to RPC type
+        let request = RpcApplySchemaRequest {
+            collection: versioned.collection,
+            version: versioned.version.version(),
+            schema: versioned.schema,
+            created_at: versioned.created_at,
+            created_by: versioned.created_by,
+            changes: versioned
+                .changes
+                .into_iter()
+                .map(|c| RpcSchemaChange {
+                    change_type: format!("{:?}", c.change_type).to_lowercase(),
+                    path: c.path,
+                    old_value: c.old_value,
+                    new_value: c.new_value,
+                    description: c.description,
+                })
+                .collect(),
+            metadata: versioned.metadata,
+        };
+
+        match client
+            .apply_schema(self.context(), request)
+            .await
+            .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(response) => {
+                if response.applied {
+                    timer.success();
+                    Ok(())
+                } else {
+                    timer.error("not_applied");
+                    Err(ClusterError::Internal(
+                        response.error.unwrap_or_else(|| "Schema not applied".into()),
+                    ))
+                }
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
+    }
+
+    /// Get schema version from a remote node
+    pub async fn get_schema_version(
+        &self,
+        addr: &str,
+        collection: &str,
+    ) -> Result<Option<u64>> {
+        let timer = RpcTimer::new("get_schema_version", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
+            .get_schema_version(self.context(), collection.to_string())
+            .await
+            .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(version) => {
+                timer.success();
+                Ok(version)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
+    }
+
     /// Remove a connection from the pool
     pub fn remove_connection(&self, addr: &str) {
         if let Ok(addr) = Self::parse_addr(addr) {

@@ -31,6 +31,7 @@ pub mod metrics;
 pub mod partition;
 pub mod placement;
 pub mod rebalance;
+pub mod schema;
 pub mod service;
 pub mod transport;
 pub mod types;
@@ -59,6 +60,11 @@ pub use placement::{
 pub use rebalance::{
     OperationStatus, RebalanceEngine, RebalanceOperation, RebalanceOperationStatus,
     RebalancePhase, RebalancePlan, RebalanceStatus, RebalanceTrigger,
+};
+pub use schema::{
+    ChangeType, PropagationConfig, PropagationStatus, PropagationStrategy, SchemaChange,
+    SchemaOperationResult, SchemaPropagator, SchemaRegistry, SchemaRegistrySnapshot,
+    SchemaVersion, VersionedSchema,
 };
 pub use server::ClusterServer;
 pub use service::PrismClusterClient;

@@ -3,6 +3,8 @@
 //! Defines the RPC interface for inter-node communication, mirroring
 //! the CollectionManager operations plus cluster-specific functionality.
 
+#![allow(async_fn_in_trait)]
+
 use crate::error::ClusterError;
 use crate::types::*;
 
@@ -109,4 +111,18 @@ pub trait PrismCluster {
 
     /// Get current rebalancing status
     async fn get_rebalance_status() -> Result<RpcRebalanceStatus, ClusterError>;
+
+    // ========================================
+    // Schema Management
+    // ========================================
+
+    /// Apply a schema from another node
+    ///
+    /// Used for schema propagation across the cluster.
+    async fn apply_schema(
+        request: RpcApplySchemaRequest,
+    ) -> Result<RpcApplySchemaResponse, ClusterError>;
+
+    /// Get current schema version for a collection
+    async fn get_schema_version(collection: String) -> Result<Option<u64>, ClusterError>;
 }
