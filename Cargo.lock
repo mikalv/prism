@@ -2390,6 +2390,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism-es-compat"
+version = "0.4.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "prism",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "prism-importer"
 version = "0.4.0"
 dependencies = [
@@ -2418,11 +2436,13 @@ name = "prism-server"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "metrics",
  "metrics-exporter-prometheus",
  "prism",
  "prism-cluster",
+ "prism-es-compat",
  "tokio",
  "tracing",
  "tracing-subscriber",

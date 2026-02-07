@@ -13,10 +13,12 @@ provider-onnx = ["prism/provider-onnx"]
 provider-onnx-real = ["prism/provider-onnx-real"]
 all-providers = ["prism/all-providers"]
 cluster = ["dep:prism-cluster"]
+es-compat = ["dep:prism-es-compat"]
 
 [dependencies]
 prism = { workspace = true }
 prism-cluster = { workspace = true, optional = true }
+prism-es-compat = { workspace = true, optional = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
@@ -24,3 +26,4 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+axum = { workspace = true }

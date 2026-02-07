@@ -280,7 +280,19 @@ async fn main() -> Result<()> {
         });
     }
 
-    server.serve(&addr, tls).await?;
+    // Serve with optional ES-compat routes
+    #[cfg(feature = "es-compat")]
+    {
+        let es_router = axum::Router::new()
+            .nest("/_elastic", prism_es_compat::es_compat_router(server.manager()));
+        tracing::info!("Elasticsearch compatibility enabled at /_elastic/*");
+        server.serve_with_extension(&addr, tls, es_router).await?;
+    }
+
+    #[cfg(not(feature = "es-compat"))]
+    {
+        server.serve(&addr, tls).await?;
+    }
 
     Ok(())
 }

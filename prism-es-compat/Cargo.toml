@@ -1,0 +1,43 @@
+[package]
+name = "prism-es-compat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Elasticsearch API compatibility layer for Prism"
+keywords = ["elasticsearch", "kibana", "search", "compatibility"]
+categories = ["database", "web-programming"]
+
+[features]
+default = []
+
+[dependencies]
+# Core Prism
+prism = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP
+axum = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+regex = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

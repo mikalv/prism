@@ -1,0 +1,70 @@
+//! ES-compatible API router
+
+use crate::endpoints::{
+    bulk_handler, cat_indices_handler, cluster_health_handler, mapping_handler, msearch_handler,
+    root_handler, search_handler,
+};
+use crate::endpoints::search::EsCompatState;
+use axum::routing::{get, post};
+use axum::Router;
+use prism::collection::CollectionManager;
+use std::sync::Arc;
+
+/// Create the ES-compatible router
+///
+/// All endpoints are served under the `/_elastic` prefix.
+///
+/// # Endpoints
+///
+/// - `GET /_elastic/` - Cluster info
+/// - `GET /_elastic/_cluster/health` - Cluster health
+/// - `GET /_elastic/_cat/indices` - List indices
+/// - `POST /_elastic/_search` - Search all indices
+/// - `POST /_elastic/{index}/_search` - Search specific index
+/// - `POST /_elastic/_msearch` - Multi-search
+/// - `POST /_elastic/_bulk` - Bulk operations
+/// - `POST /_elastic/{index}/_bulk` - Bulk with default index
+/// - `GET /_elastic/{index}/_mapping` - Get mappings
+pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
+    let state = EsCompatState { manager };
+
+    Router::new()
+        // Cluster endpoints
+        .route("/", get(root_handler))
+        .route("/_cluster/health", get(cluster_health_handler))
+        .route("/_cat/indices", get(cat_indices_handler))
+        // Search endpoints
+        .route("/_search", post(search_handler_no_index))
+        .route("/{index}/_search", post(search_handler))
+        // Multi-search
+        .route("/_msearch", post(msearch_handler))
+        // Bulk endpoints
+        .route("/_bulk", post(bulk_handler_no_index))
+        .route("/{index}/_bulk", post(bulk_handler))
+        // Mapping endpoints
+        .route("/{index}/_mapping", get(mapping_handler))
+        .with_state(state)
+}
+
+// Wrapper handlers for routes without index parameter
+use axum::extract::State;
+use axum::Json;
+use crate::query::EsSearchRequest;
+use crate::response::EsSearchResponse;
+use crate::error::EsCompatError;
+use axum::body::Bytes;
+use crate::response::EsBulkResponse;
+
+async fn search_handler_no_index(
+    state: State<EsCompatState>,
+    body: Json<EsSearchRequest>,
+) -> Result<Json<EsSearchResponse>, EsCompatError> {
+    search_handler(state, None, body).await
+}
+
+async fn bulk_handler_no_index(
+    state: State<EsCompatState>,
+    body: Bytes,
+) -> Result<Json<EsBulkResponse>, EsCompatError> {
+    bulk_handler(state, None, body).await
+}
