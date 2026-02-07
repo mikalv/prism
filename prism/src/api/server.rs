@@ -388,6 +388,15 @@ impl ApiServer {
                 "/collections/:collection/_mlt",
                 post(crate::api::routes::more_like_this),
             )
+            // Multi-Collection Search API (Issue #74)
+            .route(
+                "/_msearch",
+                post(crate::api::routes::multi_search),
+            )
+            .route(
+                "/:collections/_search",
+                post(crate::api::routes::multi_index_search),
+            )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",

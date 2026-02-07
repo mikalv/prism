@@ -890,3 +890,159 @@ pub async fn more_like_this(
 
     Ok(Json(results))
 }
+
+// ============================================================================
+// Multi-Collection Search API (Issue #74)
+// ============================================================================
+
+use crate::collection::MultiSearchResults;
+
+/// Request body for POST /_msearch
+#[derive(Deserialize)]
+pub struct MultiSearchRequest {
+    /// Collections to search (supports wildcards like "logs-*")
+    pub collections: Vec<String>,
+    /// Free-form text query
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Optional explicit vector query
+    #[serde(default)]
+    pub vector: Option<Vec<f32>>,
+    #[serde(default)]
+    pub fields: Vec<String>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+    /// RRF constant for result merging (default: 60)
+    #[serde(default)]
+    pub rrf_k: Option<usize>,
+    /// Optional highlight configuration
+    #[serde(default)]
+    pub highlight: Option<HighlightConfig>,
+}
+
+/// POST /_msearch - Multi-collection search
+#[tracing::instrument(
+    name = "msearch",
+    skip(manager, request),
+    fields(collections = ?request.collections)
+)]
+pub async fn multi_search(
+    State(manager): State<Arc<CollectionManager>>,
+    Json(request): Json<MultiSearchRequest>,
+) -> Result<Json<MultiSearchResults>, StatusCode> {
+    let start = std::time::Instant::now();
+
+    let qstr = if let Some(vec) = request.vector.clone() {
+        serde_json::to_string(&vec).unwrap_or_default()
+    } else {
+        request.query.clone().unwrap_or_default()
+    };
+
+    let query = Query {
+        query_string: qstr,
+        fields: request.fields,
+        limit: request.limit,
+        offset: request.offset,
+        merge_strategy: None,
+        text_weight: None,
+        vector_weight: None,
+        highlight: request.highlight,
+    };
+
+    let result = manager
+        .multi_search(&request.collections, query, request.rrf_k)
+        .await;
+
+    let duration = start.elapsed().as_secs_f64();
+
+    match result {
+        Ok(results) => {
+            metrics::histogram!("prism_msearch_duration_seconds")
+                .record(duration);
+            metrics::counter!("prism_msearch_total",
+                "status" => "ok",
+            )
+            .increment(1);
+            Ok(Json(results))
+        }
+        Err(e) => {
+            metrics::counter!("prism_msearch_total",
+                "status" => "error",
+            )
+            .increment(1);
+            tracing::error!("Multi-search error: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// POST /:collections/_search - Search with comma-separated collections in path
+/// Supports: /products,articles/_search or /logs-2026-*/_search
+#[tracing::instrument(
+    name = "multi_index_search",
+    skip(manager, request),
+    fields(collections = %collections)
+)]
+pub async fn multi_index_search(
+    Path(collections): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(request): Json<SearchRequest>,
+) -> Result<Json<MultiSearchResults>, StatusCode> {
+    let start = std::time::Instant::now();
+
+    // Parse comma-separated collection names
+    let collection_list: Vec<String> = collections
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if collection_list.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let qstr = if let Some(vec) = request.vector.clone() {
+        serde_json::to_string(&vec).unwrap_or_default()
+    } else {
+        request.query.clone().unwrap_or_default()
+    };
+
+    let query = Query {
+        query_string: qstr,
+        fields: request.fields,
+        limit: request.limit,
+        offset: request.offset,
+        merge_strategy: request.merge_strategy,
+        text_weight: request.text_weight,
+        vector_weight: request.vector_weight,
+        highlight: request.highlight,
+    };
+
+    let result = manager
+        .multi_search(&collection_list, query, None)
+        .await;
+
+    let duration = start.elapsed().as_secs_f64();
+
+    match result {
+        Ok(results) => {
+            metrics::histogram!("prism_msearch_duration_seconds")
+                .record(duration);
+            metrics::counter!("prism_msearch_total",
+                "status" => "ok",
+            )
+            .increment(1);
+            Ok(Json(results))
+        }
+        Err(e) => {
+            metrics::counter!("prism_msearch_total",
+                "status" => "error",
+            )
+            .increment(1);
+            tracing::error!("Multi-index search error: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}

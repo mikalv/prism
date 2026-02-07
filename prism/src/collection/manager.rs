@@ -433,6 +433,220 @@ impl CollectionManager {
         self.text_backend.reconstruct_document(collection, id)
     }
 
+    // ========================================================================
+    // Multi-Collection Search (Issue #74)
+    // ========================================================================
+
+    /// Expand collection patterns to matching collection names.
+    /// Supports wildcards like "logs-2026-*" or "products-*".
+    pub fn expand_collection_patterns(&self, patterns: &[String]) -> Vec<String> {
+        let mut result = Vec::new();
+        let all_collections: Vec<&String> = self.schemas.keys().collect();
+
+        for pattern in patterns {
+            if pattern.contains('*') {
+                // Simple glob matching: * matches any sequence of characters
+                for collection in &all_collections {
+                    if Self::glob_match(pattern, collection) && !result.contains(*collection) {
+                        result.push((*collection).clone());
+                    }
+                }
+            } else if self.schemas.contains_key(pattern) && !result.contains(pattern) {
+                result.push(pattern.clone());
+            }
+        }
+
+        result
+    }
+
+    /// Simple glob pattern matching supporting only '*' wildcard.
+    fn glob_match(pattern: &str, text: &str) -> bool {
+        let pattern_chars: Vec<char> = pattern.chars().collect();
+        let text_chars: Vec<char> = text.chars().collect();
+
+        let mut dp = vec![vec![false; text_chars.len() + 1]; pattern_chars.len() + 1];
+        dp[0][0] = true;
+
+        // Handle leading wildcards
+        for (i, &p) in pattern_chars.iter().enumerate() {
+            if p == '*' {
+                dp[i + 1][0] = dp[i][0];
+            }
+        }
+
+        for (i, &p) in pattern_chars.iter().enumerate() {
+            for (j, &t) in text_chars.iter().enumerate() {
+                if p == '*' {
+                    // * can match zero or more characters
+                    dp[i + 1][j + 1] = dp[i][j + 1] || dp[i + 1][j];
+                } else if p == '?' || p == t {
+                    dp[i + 1][j + 1] = dp[i][j];
+                }
+            }
+        }
+
+        dp[pattern_chars.len()][text_chars.len()]
+    }
+
+    /// Search across multiple collections and merge results using RRF.
+    ///
+    /// # Arguments
+    /// * `collections` - List of collection names or patterns (supports wildcards like "logs-*")
+    /// * `query` - Search query
+    /// * `rrf_k` - RRF constant (default 60, higher reduces rank influence)
+    ///
+    /// Returns merged search results with `_collection` field added to each result.
+    pub async fn multi_search(
+        &self,
+        collections: &[String],
+        query: Query,
+        rrf_k: Option<usize>,
+    ) -> Result<MultiSearchResults> {
+        let start = std::time::Instant::now();
+        let expanded = self.expand_collection_patterns(collections);
+
+        if expanded.is_empty() {
+            return Ok(MultiSearchResults {
+                results: vec![],
+                total: 0,
+                collections_searched: vec![],
+                latency_ms: 0,
+            });
+        }
+
+        // Run searches in parallel across all collections
+        let search_futures: Vec<_> = expanded
+            .iter()
+            .map(|collection| {
+                let q = query.clone();
+                let col = collection.clone();
+                async move {
+                    let result = self.search(&col, q).await;
+                    (col, result)
+                }
+            })
+            .collect();
+
+        let results = futures::future::join_all(search_futures).await;
+
+        // Collect successful results and add collection info
+        let mut all_results: Vec<(String, SearchResults)> = Vec::new();
+        let mut collections_searched = Vec::new();
+        let mut errors = Vec::new();
+
+        for (collection, result) in results {
+            match result {
+                Ok(search_results) => {
+                    collections_searched.push(collection.clone());
+                    all_results.push((collection, search_results));
+                }
+                Err(e) => {
+                    errors.push((collection, e));
+                }
+            }
+        }
+
+        // Log any errors (but don't fail the entire request)
+        for (collection, error) in errors {
+            tracing::warn!("Multi-search: error in collection '{}': {:?}", collection, error);
+        }
+
+        // Merge results using RRF
+        let k = rrf_k.unwrap_or(60);
+        let merged = Self::merge_multi_collection_rrf(all_results, k, query.limit);
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+
+        Ok(MultiSearchResults {
+            results: merged.results,
+            total: merged.total,
+            collections_searched,
+            latency_ms,
+        })
+    }
+
+    /// Merge results from multiple collections using Reciprocal Rank Fusion.
+    /// Each result gets a `_collection` field indicating its source.
+    fn merge_multi_collection_rrf(
+        collection_results: Vec<(String, SearchResults)>,
+        k: usize,
+        limit: usize,
+    ) -> MultiSearchMergedResults {
+        use std::collections::HashMap;
+
+        let mut scores: HashMap<String, f32> = HashMap::new();
+        let mut result_data: HashMap<String, MultiSearchResult> = HashMap::new();
+
+        for (collection, search_results) in collection_results {
+            for (rank, result) in search_results.results.into_iter().enumerate() {
+                let rank_score = 1.0_f32 / ((k as f32) + ((rank + 1) as f32));
+
+                // Create unique key combining collection and doc ID
+                let unique_key = format!("{}:{}", collection, result.id);
+
+                *scores.entry(unique_key.clone()).or_insert(0.0) += rank_score;
+
+                result_data.entry(unique_key).or_insert_with(|| MultiSearchResult {
+                    id: result.id,
+                    collection: collection.clone(),
+                    score: 0.0,
+                    fields: result.fields,
+                    highlight: result.highlight,
+                });
+            }
+        }
+
+        // Apply final scores
+        let mut merged: Vec<MultiSearchResult> = result_data
+            .into_iter()
+            .map(|(key, mut result)| {
+                result.score = scores.get(&key).copied().unwrap_or(0.0);
+                result
+            })
+            .collect();
+
+        // Sort by score descending
+        merged.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let total = merged.len();
+        merged.truncate(limit);
+
+        MultiSearchMergedResults {
+            results: merged,
+            total,
+        }
+    }
+}
+
+/// Result from multi-collection search with collection source info
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MultiSearchResult {
+    pub id: String,
+    #[serde(rename = "_collection")]
+    pub collection: String,
+    pub score: f32,
+    pub fields: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub highlight: Option<std::collections::HashMap<String, Vec<String>>>,
+}
+
+/// Response for multi-collection search
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MultiSearchResults {
+    pub results: Vec<MultiSearchResult>,
+    pub total: usize,
+    pub collections_searched: Vec<String>,
+    pub latency_ms: u64,
+}
+
+/// Internal struct for RRF merging
+struct MultiSearchMergedResults {
+    results: Vec<MultiSearchResult>,
+    total: usize,
 }
 
 #[cfg(test)]
@@ -499,6 +713,169 @@ backends:
 
         let results = manager.search("articles", query).await?;
         assert!(results.total > 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_glob_match() {
+        // Test exact match
+        assert!(CollectionManager::glob_match("articles", "articles"));
+        assert!(!CollectionManager::glob_match("articles", "products"));
+
+        // Test wildcard at end
+        assert!(CollectionManager::glob_match("logs-*", "logs-2026"));
+        assert!(CollectionManager::glob_match("logs-*", "logs-2026-01"));
+        assert!(!CollectionManager::glob_match("logs-*", "articles"));
+
+        // Test wildcard at beginning
+        assert!(CollectionManager::glob_match("*-products", "us-products"));
+        assert!(CollectionManager::glob_match("*-products", "eu-products"));
+        assert!(!CollectionManager::glob_match("*-products", "products-us"));
+
+        // Test wildcard in middle
+        assert!(CollectionManager::glob_match("logs-*-backup", "logs-2026-backup"));
+        assert!(!CollectionManager::glob_match("logs-*-backup", "logs-2026"));
+
+        // Test multiple wildcards
+        assert!(CollectionManager::glob_match("*-logs-*", "us-logs-2026"));
+        assert!(CollectionManager::glob_match("*-*", "a-b"));
+
+        // Test empty patterns
+        assert!(CollectionManager::glob_match("*", "anything"));
+        assert!(CollectionManager::glob_match("*", ""));
+    }
+
+    #[tokio::test]
+    async fn test_multi_search() -> Result<()> {
+        let temp = TempDir::new()?;
+        let schemas_dir = temp.path().join("schemas");
+        let data_dir = temp.path().join("data");
+
+        std::fs::create_dir_all(&schemas_dir)?;
+
+        // Create two collections
+        fs::write(
+            schemas_dir.join("products.yaml"),
+            r#"
+collection: products
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+        stored: true
+"#,
+        )?;
+
+        fs::write(
+            schemas_dir.join("articles.yaml"),
+            r#"
+collection: articles
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+        stored: true
+"#,
+        )?;
+
+        let text_backend = Arc::new(TextBackend::new(&data_dir)?);
+        let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend)?;
+        manager.initialize().await?;
+
+        // Index documents in both collections
+        manager
+            .index(
+                "products",
+                vec![Document {
+                    id: "p1".to_string(),
+                    fields: HashMap::from([("title".to_string(), json!("Rust Book"))]),
+                }],
+            )
+            .await?;
+
+        manager
+            .index(
+                "articles",
+                vec![Document {
+                    id: "a1".to_string(),
+                    fields: HashMap::from([("title".to_string(), json!("Learning Rust"))]),
+                }],
+            )
+            .await?;
+
+        // Multi-search across both collections
+        let query = Query {
+            query_string: "rust".to_string(),
+            fields: vec!["title".to_string()],
+            limit: 10,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+        };
+
+        let results = manager
+            .multi_search(&["products".to_string(), "articles".to_string()], query, None)
+            .await?;
+
+        assert_eq!(results.total, 2);
+        assert_eq!(results.collections_searched.len(), 2);
+
+        // Verify results include collection info
+        let collections: Vec<&String> = results.results.iter().map(|r| &r.collection).collect();
+        assert!(collections.contains(&&"products".to_string()));
+        assert!(collections.contains(&&"articles".to_string()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multi_search_with_wildcard() -> Result<()> {
+        let temp = TempDir::new()?;
+        let schemas_dir = temp.path().join("schemas");
+        let data_dir = temp.path().join("data");
+
+        std::fs::create_dir_all(&schemas_dir)?;
+
+        // Create collections with pattern naming
+        for month in ["01", "02", "03"] {
+            fs::write(
+                schemas_dir.join(format!("logs-2026-{}.yaml", month)),
+                format!(
+                    r#"
+collection: logs-2026-{}
+backends:
+  text:
+    fields:
+      - name: message
+        type: text
+        indexed: true
+        stored: true
+"#,
+                    month
+                ),
+            )?;
+        }
+
+        let text_backend = Arc::new(TextBackend::new(&data_dir)?);
+        let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend)?;
+        manager.initialize().await?;
+
+        // Test pattern expansion
+        let expanded = manager.expand_collection_patterns(&["logs-2026-*".to_string()]);
+        assert_eq!(expanded.len(), 3);
+
+        // Test non-matching pattern
+        let empty = manager.expand_collection_patterns(&["nonexistent-*".to_string()]);
+        assert!(empty.is_empty());
 
         Ok(())
     }
