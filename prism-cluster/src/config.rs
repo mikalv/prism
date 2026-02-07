@@ -1,6 +1,7 @@
 //! Cluster configuration
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Main cluster configuration
@@ -37,6 +38,14 @@ pub struct ClusterConfig {
     /// TLS configuration for cluster communication
     #[serde(default)]
     pub tls: ClusterTlsConfig,
+
+    /// Node topology for zone-aware placement
+    #[serde(default)]
+    pub topology: NodeTopology,
+
+    /// Rebalancing configuration
+    #[serde(default)]
+    pub rebalancing: RebalancingConfig,
 }
 
 fn default_node_id() -> String {
@@ -70,6 +79,8 @@ impl Default for ClusterConfig {
             request_timeout_ms: default_request_timeout(),
             max_connections: default_max_connections(),
             tls: ClusterTlsConfig::default(),
+            topology: NodeTopology::default(),
+            rebalancing: RebalancingConfig::default(),
         }
     }
 }
@@ -135,5 +146,116 @@ impl ClusterConfig {
     /// Get request timeout as Duration
     pub fn request_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.request_timeout_ms)
+    }
+}
+
+/// Node topology for zone-aware shard placement
+///
+/// Topology information enables the placement algorithm to spread replicas
+/// across failure domains (zones, racks, regions) for high availability.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NodeTopology {
+    /// Availability zone (e.g., "us-east-1a", "eu-west-1b")
+    #[serde(default)]
+    pub zone: String,
+
+    /// Rack within the zone (optional, for finer-grained placement)
+    #[serde(default)]
+    pub rack: Option<String>,
+
+    /// Region containing multiple zones (e.g., "us-east-1", "eu-west-1")
+    #[serde(default)]
+    pub region: Option<String>,
+
+    /// Custom attributes for placement decisions
+    /// Examples: disk_type=ssd, storage_gb=500, memory_gb=64
+    #[serde(default)]
+    pub attributes: HashMap<String, String>,
+}
+
+impl Default for NodeTopology {
+    fn default() -> Self {
+        Self {
+            zone: "default".to_string(),
+            rack: None,
+            region: None,
+            attributes: HashMap::new(),
+        }
+    }
+}
+
+impl NodeTopology {
+    /// Check if this node matches the required attributes
+    pub fn matches_attributes(&self, required: &HashMap<String, String>) -> bool {
+        required.iter().all(|(k, v)| {
+            self.attributes.get(k).map(|av| av == v).unwrap_or(false)
+        })
+    }
+
+    /// Get storage capacity in GB from attributes (if set)
+    pub fn storage_gb(&self) -> Option<u64> {
+        self.attributes.get("storage_gb").and_then(|v| v.parse().ok())
+    }
+
+    /// Get disk type from attributes (if set)
+    pub fn disk_type(&self) -> Option<&str> {
+        self.attributes.get("disk_type").map(|s| s.as_str())
+    }
+}
+
+/// Configuration for automatic shard rebalancing
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RebalancingConfig {
+    /// Enable automatic rebalancing
+    #[serde(default = "default_rebalancing_enabled")]
+    pub enabled: bool,
+
+    /// Imbalance threshold as percentage before triggering rebalance
+    /// For example, 15 means rebalance when any node has 15% more shards than average
+    #[serde(default = "default_imbalance_threshold")]
+    pub imbalance_threshold_percent: u8,
+
+    /// Maximum number of concurrent shard moves
+    #[serde(default = "default_max_concurrent_moves")]
+    pub max_concurrent_moves: usize,
+
+    /// Maximum bytes per second for shard transfers (bandwidth throttling)
+    #[serde(default = "default_max_bytes_per_sec")]
+    pub max_bytes_per_sec: u64,
+
+    /// Minimum time between rebalance operations (in seconds)
+    #[serde(default = "default_rebalance_cooldown")]
+    pub cooldown_secs: u64,
+}
+
+fn default_rebalancing_enabled() -> bool {
+    false
+}
+
+fn default_imbalance_threshold() -> u8 {
+    15
+}
+
+fn default_max_concurrent_moves() -> usize {
+    2
+}
+
+fn default_max_bytes_per_sec() -> u64 {
+    104_857_600 // 100 MB/s
+}
+
+fn default_rebalance_cooldown() -> u64 {
+    300 // 5 minutes
+}
+
+impl Default for RebalancingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_rebalancing_enabled(),
+            imbalance_threshold_percent: default_imbalance_threshold(),
+            max_concurrent_moves: default_max_concurrent_moves(),
+            max_bytes_per_sec: default_max_bytes_per_sec(),
+            cooldown_secs: default_rebalance_cooldown(),
+        }
     }
 }

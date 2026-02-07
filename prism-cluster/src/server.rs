@@ -4,6 +4,8 @@
 
 use crate::config::ClusterConfig;
 use crate::error::ClusterError;
+use crate::placement::{ClusterState, PlacementStrategy, ShardAssignment, ShardState};
+use crate::rebalance::{RebalanceEngine, RebalanceTrigger};
 use crate::service::PrismCluster;
 use crate::transport::make_server_endpoint;
 use crate::types::*;
@@ -21,16 +23,60 @@ pub struct ClusterServer {
     config: ClusterConfig,
     manager: Arc<CollectionManager>,
     start_time: Instant,
+    cluster_state: Arc<ClusterState>,
+    rebalance_engine: Arc<RebalanceEngine>,
 }
 
 impl ClusterServer {
     /// Create a new cluster server
     pub fn new(config: ClusterConfig, manager: Arc<CollectionManager>) -> Self {
+        let cluster_state = Arc::new(ClusterState::new());
+        let strategy = PlacementStrategy::default();
+        let rebalance_engine = Arc::new(RebalanceEngine::new(
+            config.rebalancing.clone(),
+            Arc::clone(&cluster_state),
+            strategy,
+        ));
+
         Self {
             config,
             manager,
             start_time: Instant::now(),
+            cluster_state,
+            rebalance_engine,
         }
+    }
+
+    /// Create a new cluster server with existing state
+    pub fn with_state(
+        config: ClusterConfig,
+        manager: Arc<CollectionManager>,
+        cluster_state: Arc<ClusterState>,
+    ) -> Self {
+        let strategy = PlacementStrategy::default();
+        let rebalance_engine = Arc::new(RebalanceEngine::new(
+            config.rebalancing.clone(),
+            Arc::clone(&cluster_state),
+            strategy,
+        ));
+
+        Self {
+            config,
+            manager,
+            start_time: Instant::now(),
+            cluster_state,
+            rebalance_engine,
+        }
+    }
+
+    /// Get a reference to the cluster state
+    pub fn cluster_state(&self) -> Arc<ClusterState> {
+        Arc::clone(&self.cluster_state)
+    }
+
+    /// Get a reference to the rebalance engine
+    pub fn rebalance_engine(&self) -> Arc<RebalanceEngine> {
+        Arc::clone(&self.rebalance_engine)
     }
 
     /// Start the cluster RPC server
@@ -328,6 +374,173 @@ impl PrismCluster for ClusterHandler {
 
     async fn ping(self, _ctx: Context) -> String {
         "pong".to_string()
+    }
+
+    // ========================================
+    // Shard Management
+    // ========================================
+
+    async fn assign_shard(
+        self,
+        _ctx: Context,
+        request: ShardAssignmentRequest,
+    ) -> Result<ShardAssignmentResponse, ClusterError> {
+        let server = self.server.read().await;
+
+        // Clone values for logging before moving
+        let shard_id = request.shard_id.clone();
+        let primary_node = request.primary_node.clone();
+        let replica_nodes_str = format!("{:?}", request.replica_nodes);
+
+        // Create assignment
+        let mut assignment = ShardAssignment::new(
+            &request.collection,
+            request.shard_number,
+            &request.primary_node,
+        );
+        assignment.shard_id = request.shard_id;
+        assignment.replica_nodes = request.replica_nodes;
+        assignment.state = ShardState::Initializing;
+
+        // Store in cluster state
+        server.cluster_state.assign_shard(assignment);
+        let epoch = server.cluster_state.next_epoch();
+
+        info!(
+            "Shard {} assigned to primary={}, replicas={}",
+            shard_id, primary_node, replica_nodes_str
+        );
+
+        Ok(ShardAssignmentResponse {
+            success: true,
+            epoch,
+            error: None,
+        })
+    }
+
+    async fn get_shard_assignments(
+        self,
+        _ctx: Context,
+        request: GetShardAssignmentsRequest,
+    ) -> Result<Vec<RpcShardInfo>, ClusterError> {
+        let server = self.server.read().await;
+
+        let assignments = if let Some(ref collection) = request.collection {
+            server.cluster_state.get_collection_shards(collection)
+        } else {
+            server.cluster_state.get_all_shards()
+        };
+
+        let result = assignments
+            .into_iter()
+            .map(|a| RpcShardInfo {
+                shard_id: a.shard_id,
+                collection: a.collection,
+                primary_node: a.primary_node,
+                replica_nodes: a.replica_nodes,
+                state: format!("{:?}", a.state),
+                shard_number: a.shard_number,
+                size_bytes: a.size_bytes,
+                document_count: a.document_count,
+            })
+            .collect();
+
+        Ok(result)
+    }
+
+    async fn transfer_shard(
+        self,
+        _ctx: Context,
+        request: ShardTransferRequest,
+    ) -> Result<ShardTransferResponse, ClusterError> {
+        let server = self.server.read().await;
+
+        // Find the shard
+        let shard = server
+            .cluster_state
+            .get_shard(&request.shard_id)
+            .ok_or_else(|| ClusterError::CollectionNotFound(request.shard_id.clone()))?;
+
+        // Verify source node has the shard
+        if !shard.is_on_node(&request.from_node) {
+            return Err(ClusterError::InvalidQuery(format!(
+                "Shard {} not found on node {}",
+                request.shard_id, request.from_node
+            )));
+        }
+
+        // Mark shard as relocating
+        server
+            .cluster_state
+            .update_shard_state(&request.shard_id, ShardState::Relocating);
+
+        let transfer_id = uuid::Uuid::new_v4().to_string();
+
+        info!(
+            "Initiated shard transfer {} from {} to {}, transfer_id={}",
+            request.shard_id, request.from_node, request.to_node, transfer_id
+        );
+
+        // The actual transfer would be handled by a background task
+        // For now, we just return the transfer ID
+        Ok(ShardTransferResponse {
+            success: true,
+            transfer_id: Some(transfer_id),
+            error: None,
+        })
+    }
+
+    // ========================================
+    // Rebalancing
+    // ========================================
+
+    async fn trigger_rebalance(
+        self,
+        _ctx: Context,
+        request: TriggerRebalanceRequest,
+    ) -> Result<RpcRebalanceStatus, ClusterError> {
+        let server = self.server.read().await;
+
+        let trigger = match request.trigger.as_str() {
+            "manual" => RebalanceTrigger::Manual,
+            "node_joined" => RebalanceTrigger::NodeJoined,
+            "node_left" => RebalanceTrigger::NodeLeft,
+            "imbalance" => RebalanceTrigger::ImbalanceThreshold,
+            "scheduled" => RebalanceTrigger::Scheduled,
+            _ => RebalanceTrigger::Manual,
+        };
+
+        let status = server
+            .rebalance_engine
+            .trigger(trigger)
+            .map_err(|e| ClusterError::Internal(e))?;
+
+        Ok(RpcRebalanceStatus {
+            in_progress: status.in_progress,
+            phase: format!("{:?}", status.phase),
+            shards_in_transit: status.shards_in_transit,
+            total_shards_to_move: status.total_shards_to_move,
+            completed_moves: status.completed_moves,
+            failed_moves: status.failed_moves,
+            started_at: status.started_at,
+            last_error: status.last_error,
+        })
+    }
+
+    async fn get_rebalance_status(self, _ctx: Context) -> Result<RpcRebalanceStatus, ClusterError> {
+        let server = self.server.read().await;
+        let status = server.rebalance_engine.status();
+
+        Ok(RpcRebalanceStatus {
+            in_progress: status.in_progress,
+            phase: format!("{:?}", status.phase),
+            shards_in_transit: status.shards_in_transit,
+            total_shards_to_move: status.total_shards_to_move,
+            completed_moves: status.completed_moves,
+            failed_moves: status.failed_moves,
+            started_at: status.started_at,
+            last_error: status.last_error,
+        })
     }
 }
 

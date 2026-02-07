@@ -34,6 +34,10 @@ pub struct CollectionSchema {
     /// Hybrid search configuration
     #[serde(default)]
     pub hybrid: Option<HybridConfig>,
+
+    /// Replication configuration for distributed deployments
+    #[serde(default)]
+    pub replication: Option<ReplicationConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -381,6 +385,80 @@ pub struct EdgeTypeConfig {
     pub to_field: String,
 }
 
+/// Replication configuration for distributed deployments
+///
+/// Controls how many replicas of each shard are maintained and
+/// how they are placed across the cluster.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicationConfig {
+    /// Number of copies of each shard (including primary)
+    /// Default: 1 (no replication)
+    #[serde(default = "default_replication_factor")]
+    pub factor: usize,
+
+    /// Minimum number of replicas that must acknowledge a write
+    /// Default: 1 (synchronous write to at least one replica)
+    #[serde(default = "default_min_replicas")]
+    pub min_replicas_for_write: usize,
+
+    /// Placement strategy for replicas
+    /// - "zone-aware": Spread replicas across zones (default)
+    /// - "rack-aware": Spread replicas across racks within a zone
+    /// - "none": No placement constraints
+    #[serde(default = "default_placement_strategy")]
+    pub placement_strategy: String,
+}
+
+fn default_replication_factor() -> usize {
+    1
+}
+
+fn default_min_replicas() -> usize {
+    1
+}
+
+fn default_placement_strategy() -> String {
+    "zone-aware".to_string()
+}
+
+impl Default for ReplicationConfig {
+    fn default() -> Self {
+        Self {
+            factor: default_replication_factor(),
+            min_replicas_for_write: default_min_replicas(),
+            placement_strategy: default_placement_strategy(),
+        }
+    }
+}
+
+impl ReplicationConfig {
+    /// Validate replication configuration
+    pub fn validate(&self) -> Result<(), String> {
+        if self.factor == 0 {
+            return Err("Replication factor must be at least 1".to_string());
+        }
+        if self.min_replicas_for_write > self.factor {
+            return Err(format!(
+                "min_replicas_for_write ({}) cannot exceed replication factor ({})",
+                self.min_replicas_for_write, self.factor
+            ));
+        }
+        let valid_strategies = ["zone-aware", "rack-aware", "none"];
+        if !valid_strategies.contains(&self.placement_strategy.as_str()) {
+            return Err(format!(
+                "Invalid placement strategy '{}'. Valid values: {:?}",
+                self.placement_strategy, valid_strategies
+            ));
+        }
+        Ok(())
+    }
+
+    /// Check if replication is enabled (factor > 1)
+    pub fn is_replicated(&self) -> bool {
+        self.factor > 1
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,5 +668,75 @@ backends:
 
         assert_eq!(text.bm25_k1, Some(1.5));
         assert_eq!(text.bm25_b, Some(0.8));
+    }
+
+    #[test]
+    fn test_replication_config() {
+        let yaml = r#"
+collection: products
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+  vector:
+    embedding_field: embedding
+    dimension: 384
+replication:
+  factor: 3
+  min_replicas_for_write: 2
+  placement_strategy: zone-aware
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let replication = schema.replication.unwrap();
+
+        assert_eq!(replication.factor, 3);
+        assert_eq!(replication.min_replicas_for_write, 2);
+        assert_eq!(replication.placement_strategy, "zone-aware");
+        assert!(replication.is_replicated());
+        assert!(replication.validate().is_ok());
+    }
+
+    #[test]
+    fn test_replication_config_default() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        assert!(schema.replication.is_none());
+
+        let default = ReplicationConfig::default();
+        assert_eq!(default.factor, 1);
+        assert!(!default.is_replicated());
+    }
+
+    #[test]
+    fn test_replication_config_validation() {
+        let mut config = ReplicationConfig::default();
+
+        // Factor 0 is invalid
+        config.factor = 0;
+        assert!(config.validate().is_err());
+
+        // min_replicas > factor is invalid
+        config.factor = 2;
+        config.min_replicas_for_write = 3;
+        assert!(config.validate().is_err());
+
+        // Invalid placement strategy
+        config.min_replicas_for_write = 1;
+        config.placement_strategy = "invalid".to_string();
+        assert!(config.validate().is_err());
+
+        // Valid config
+        config.placement_strategy = "zone-aware".to_string();
+        assert!(config.validate().is_ok());
     }
 }

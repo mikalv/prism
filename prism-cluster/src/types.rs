@@ -250,7 +250,7 @@ pub struct ImportByQueryResponse {
     pub errors: Vec<String>,
 }
 
-/// Information about a cluster node
+/// Information about a cluster node (for RPC responses)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeInfo {
     /// Unique node identifier
@@ -263,4 +263,116 @@ pub struct NodeInfo {
     pub uptime_secs: u64,
     /// Whether the node is healthy
     pub healthy: bool,
+}
+
+// ========================================
+// Shard Management Types
+// ========================================
+
+/// Request to assign a shard to nodes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardAssignmentRequest {
+    /// Shard ID
+    pub shard_id: String,
+    /// Collection name
+    pub collection: String,
+    /// Primary node ID
+    pub primary_node: String,
+    /// Replica node IDs
+    pub replica_nodes: Vec<String>,
+    /// Shard number
+    pub shard_number: u32,
+}
+
+/// Response from shard assignment
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardAssignmentResponse {
+    /// Whether assignment was successful
+    pub success: bool,
+    /// Current epoch after assignment
+    pub epoch: u64,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
+/// Request to get shard assignments
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetShardAssignmentsRequest {
+    /// Collection name (None = all collections)
+    pub collection: Option<String>,
+}
+
+/// Shard info for RPC transfer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcShardInfo {
+    /// Shard ID
+    pub shard_id: String,
+    /// Collection name
+    pub collection: String,
+    /// Primary node ID
+    pub primary_node: String,
+    /// Replica node IDs
+    pub replica_nodes: Vec<String>,
+    /// Shard state
+    pub state: String,
+    /// Shard number
+    pub shard_number: u32,
+    /// Size in bytes
+    pub size_bytes: u64,
+    /// Document count
+    pub document_count: u64,
+}
+
+/// Request to transfer a shard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardTransferRequest {
+    /// Shard ID to transfer
+    pub shard_id: String,
+    /// Source node
+    pub from_node: String,
+    /// Target node
+    pub to_node: String,
+    /// Whether this is a rebalance (vs recovery)
+    pub is_rebalance: bool,
+}
+
+/// Response from shard transfer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardTransferResponse {
+    /// Whether transfer was initiated
+    pub success: bool,
+    /// Transfer ID for tracking
+    pub transfer_id: Option<String>,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
+/// Request to trigger rebalancing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerRebalanceRequest {
+    /// Collection to rebalance (None = all)
+    pub collection: Option<String>,
+    /// Trigger reason
+    pub trigger: String,
+}
+
+/// Status of rebalancing for RPC
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcRebalanceStatus {
+    /// Whether rebalancing is in progress
+    pub in_progress: bool,
+    /// Current phase
+    pub phase: String,
+    /// Shards currently being moved
+    pub shards_in_transit: usize,
+    /// Total shards to move
+    pub total_shards_to_move: usize,
+    /// Completed moves
+    pub completed_moves: usize,
+    /// Failed moves
+    pub failed_moves: usize,
+    /// Start time (Unix epoch)
+    pub started_at: Option<u64>,
+    /// Last error
+    pub last_error: Option<String>,
 }

@@ -98,6 +98,7 @@ impl SchemaDiscoverer {
             storage: Default::default(),
             system_fields: Default::default(),
             hybrid: None,
+            replication: None,
         })
     }
 

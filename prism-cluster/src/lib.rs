@@ -9,15 +9,21 @@
 //! - **Transport**: Quinn QUIC with TLS for secure, multiplexed connections
 //! - **Server**: Wraps CollectionManager to serve cluster RPC requests
 //! - **Client**: Connection-pooled client for calling remote nodes
+//! - **Placement**: Zone-aware shard placement with configurable strategies
+//! - **Rebalancing**: Automatic and manual shard rebalancing
 //!
 //! # Key Operations
 //!
 //! - Core CRUD: index, search, get, delete, stats
 //! - delete_by_query: Bulk deletion using search criteria
 //! - import_by_query: Cross-cluster data migration
+//! - Shard management: assign, transfer, get assignments
+//! - Rebalancing: trigger rebalance, get status
 
 pub mod config;
 pub mod error;
+pub mod placement;
+pub mod rebalance;
 pub mod service;
 pub mod transport;
 pub mod types;
@@ -26,8 +32,16 @@ mod client;
 mod server;
 
 pub use client::ClusterClient;
-pub use config::{ClusterConfig, ClusterTlsConfig};
+pub use config::{ClusterConfig, ClusterTlsConfig, NodeTopology, RebalancingConfig};
 pub use error::ClusterError;
+pub use placement::{
+    BalanceFactor, ClusterState, ClusterStateSnapshot, NodeInfo, NodeState, PlacementDecision,
+    PlacementError, PlacementStrategy, ReplicaRole, ShardAssignment, ShardState, SpreadLevel,
+};
+pub use rebalance::{
+    OperationStatus, RebalanceEngine, RebalanceOperation, RebalanceOperationStatus,
+    RebalancePhase, RebalancePlan, RebalanceStatus, RebalanceTrigger,
+};
 pub use server::ClusterServer;
 pub use service::PrismClusterClient;
 pub use types::*;

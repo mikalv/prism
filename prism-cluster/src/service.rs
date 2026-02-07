@@ -63,4 +63,44 @@ pub trait PrismCluster {
 
     /// Simple ping for health checking
     async fn ping() -> String;
+
+    // ========================================
+    // Shard Management
+    // ========================================
+
+    /// Assign a shard to nodes
+    ///
+    /// Creates or updates a shard assignment, specifying primary and replica nodes.
+    async fn assign_shard(
+        request: ShardAssignmentRequest,
+    ) -> Result<ShardAssignmentResponse, ClusterError>;
+
+    /// Get shard assignments for a collection
+    ///
+    /// Returns all shard assignments, optionally filtered by collection.
+    async fn get_shard_assignments(
+        request: GetShardAssignmentsRequest,
+    ) -> Result<Vec<RpcShardInfo>, ClusterError>;
+
+    /// Transfer a shard between nodes
+    ///
+    /// Initiates a shard transfer from source to target node.
+    /// The transfer happens asynchronously; use get_rebalance_status to track.
+    async fn transfer_shard(
+        request: ShardTransferRequest,
+    ) -> Result<ShardTransferResponse, ClusterError>;
+
+    // ========================================
+    // Rebalancing
+    // ========================================
+
+    /// Trigger cluster rebalancing
+    ///
+    /// Initiates rebalancing to redistribute shards evenly across nodes.
+    async fn trigger_rebalance(
+        request: TriggerRebalanceRequest,
+    ) -> Result<RpcRebalanceStatus, ClusterError>;
+
+    /// Get current rebalancing status
+    async fn get_rebalance_status() -> Result<RpcRebalanceStatus, ClusterError>;
 }
