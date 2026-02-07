@@ -106,5 +106,11 @@ cache-redis = ["dep:redis"]
 # Storage backends (S3 adds object_store and S3Storage support)
 storage-s3 = ["dep:object_store", "prism-storage/s3"]
 
+# Storage encryption (AES-256-GCM encryption at rest)
+storage-encryption = ["prism-storage/encryption"]
+
+# Compression support
+storage-compression = ["prism-storage/compression"]
+
 # Full feature set
-full = ["vector-instant", "all-providers", "cache-redis"]
+full = ["vector-instant", "all-providers", "cache-redis", "storage-encryption", "storage-compression"]

@@ -109,6 +109,9 @@ mod traits;
 #[cfg(feature = "s3")]
 mod s3;
 
+#[cfg(feature = "encryption")]
+mod encrypted;
+
 #[cfg(feature = "tantivy-adapter")]
 mod tantivy_adapter;
 
@@ -123,6 +126,9 @@ pub use traits::{ListOptions, ObjectMeta, SegmentStorage, SegmentStorageSync};
 
 #[cfg(feature = "s3")]
 pub use s3::{S3Config, S3Storage};
+
+#[cfg(feature = "encryption")]
+pub use encrypted::{EncryptedStorage, EncryptionConfig};
 
 #[cfg(feature = "tantivy-adapter")]
 pub use tantivy_adapter::TantivyStorageAdapter;
@@ -188,6 +194,27 @@ pub fn create_storage(config: &StorageConfig) -> Result<Box<dyn SegmentStorage>>
                 compression_config,
             )))
         }
+        #[cfg(feature = "encryption")]
+        StorageConfig::Encrypted { key_source, inner } => {
+            let inner_storage = create_storage(inner)?;
+            let config = match key_source {
+                EncryptionKeySource::Hex { key, key_id } => {
+                    EncryptionConfig::from_hex(key, key_id.clone())?
+                }
+                EncryptionKeySource::Env { var_name } => EncryptionConfig::from_env(var_name)?,
+                EncryptionKeySource::Base64 { key, key_id } => {
+                    EncryptionConfig::from_base64(key, key_id.clone())?
+                }
+            };
+            Ok(Box::new(EncryptedStorage::new(
+                std::sync::Arc::from(inner_storage),
+                config,
+            )?))
+        }
+        #[cfg(not(feature = "encryption"))]
+        StorageConfig::Encrypted { .. } => Err(StorageError::Config(
+            "Encrypted storage requires 'encryption' feature".to_string(),
+        )),
     }
 }
 
@@ -222,6 +249,37 @@ pub enum StorageConfig {
         min_size: usize,
         /// Inner storage configuration
         inner: Box<StorageConfig>,
+    },
+    /// Encrypted storage wrapper
+    Encrypted {
+        /// Key source configuration
+        key_source: EncryptionKeySource,
+        /// Inner storage configuration
+        inner: Box<StorageConfig>,
+    },
+}
+
+/// Source for encryption keys.
+#[derive(Debug, Clone)]
+pub enum EncryptionKeySource {
+    /// Hex-encoded key (64 characters for AES-256)
+    Hex {
+        /// Hex-encoded 256-bit key
+        key: String,
+        /// Key identifier for logging (not the key itself)
+        key_id: String,
+    },
+    /// Key from environment variable
+    Env {
+        /// Name of environment variable containing hex-encoded key
+        var_name: String,
+    },
+    /// Base64-encoded key
+    Base64 {
+        /// Base64-encoded 256-bit key
+        key: String,
+        /// Key identifier for logging
+        key_id: String,
     },
 }
 

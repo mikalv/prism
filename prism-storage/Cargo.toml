@@ -41,6 +41,11 @@ tantivy = { workspace = true, optional = true }
 lz4_flex = { version = "0.11", optional = true }
 zstd = { version = "0.13", optional = true }
 
+# Encryption (optional)
+aes-gcm = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
@@ -52,4 +57,5 @@ tantivy-adapter = ["tantivy"]
 compression-lz4 = ["lz4_flex"]
 compression-zstd = ["zstd"]
 compression = ["compression-lz4", "compression-zstd"]
-full = ["s3", "tantivy-adapter", "compression"]
+encryption = ["aes-gcm", "hex", "base64"]
+full = ["s3", "tantivy-adapter", "compression", "encryption"]

@@ -46,6 +46,10 @@ pub enum StorageError {
     /// Compression/decompression error
     #[error("Compression error: {0}")]
     Compression(String),
+
+    /// Encryption/decryption error
+    #[error("Encryption error: {0}")]
+    Encryption(String),
 }
 
 /// Result type for storage operations.
