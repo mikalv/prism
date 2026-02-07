@@ -1406,3 +1406,202 @@ pub async fn simulate_template(
         })),
     }
 }
+
+// ============================================================================
+// Encrypted Export API (Issue #75) - Emergency data offloading
+// ============================================================================
+
+use crate::export::{export_encrypted, import_encrypted, EncryptedExportConfig};
+
+/// App state for export routes
+#[derive(Clone)]
+pub struct ExportAppState {
+    pub manager: Arc<CollectionManager>,
+    pub data_dir: std::path::PathBuf,
+}
+
+/// Request for encrypted export
+#[derive(Deserialize)]
+pub struct EncryptedExportRequest {
+    /// Collection to export
+    pub collection: String,
+    /// Encryption key (hex-encoded, 64 characters for AES-256)
+    pub key: String,
+    /// Output file path
+    pub output_path: String,
+}
+
+/// Response for encrypted export
+#[derive(Serialize)]
+pub struct EncryptedExportResponse {
+    pub success: bool,
+    pub collection: String,
+    pub output_path: String,
+    pub size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// POST /_admin/export/encrypted - Export collection with encryption
+///
+/// Use this for emergency data offloading to untrusted cloud storage.
+/// The key is only held in memory during the export operation.
+///
+/// # Security
+/// - Requires admin privileges
+/// - Key is never logged or persisted
+/// - Use HTTPS in production
+pub async fn encrypted_export(
+    State(state): State<ExportAppState>,
+    Json(request): Json<EncryptedExportRequest>,
+) -> Result<Json<EncryptedExportResponse>, (StatusCode, Json<EncryptedExportResponse>)> {
+    // Parse encryption config from hex key
+    let config = match EncryptedExportConfig::from_hex(&request.key) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(EncryptedExportResponse {
+                    success: false,
+                    collection: request.collection,
+                    output_path: request.output_path,
+                    size_bytes: 0,
+                    error: Some(format!("Invalid key: {}", e)),
+                }),
+            ));
+        }
+    };
+
+    let output_path = std::path::PathBuf::from(&request.output_path);
+
+    // Perform encrypted export
+    match export_encrypted(
+        &state.data_dir,
+        &request.collection,
+        &output_path,
+        config,
+        None,
+    ) {
+        Ok(metadata) => Ok(Json(EncryptedExportResponse {
+            success: true,
+            collection: request.collection,
+            output_path: request.output_path,
+            size_bytes: metadata.size_bytes,
+            error: None,
+        })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(EncryptedExportResponse {
+                success: false,
+                collection: request.collection,
+                output_path: request.output_path,
+                size_bytes: 0,
+                error: Some(e.to_string()),
+            }),
+        )),
+    }
+}
+
+/// Request for encrypted import
+#[derive(Deserialize)]
+pub struct EncryptedImportRequest {
+    /// Input encrypted file path
+    pub input_path: String,
+    /// Decryption key (hex-encoded, 64 characters for AES-256)
+    pub key: String,
+    /// Optional: rename collection during import
+    #[serde(default)]
+    pub target_collection: Option<String>,
+}
+
+/// Response for encrypted import
+#[derive(Serialize)]
+pub struct EncryptedImportResponse {
+    pub success: bool,
+    pub collection: String,
+    pub files_extracted: u64,
+    pub bytes_extracted: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// POST /_admin/import/encrypted - Import collection from encrypted backup
+///
+/// Restores a collection from an encrypted export.
+///
+/// # Security
+/// - Requires admin privileges
+/// - Key is never logged or persisted
+pub async fn encrypted_import(
+    State(state): State<ExportAppState>,
+    Json(request): Json<EncryptedImportRequest>,
+) -> Result<Json<EncryptedImportResponse>, (StatusCode, Json<EncryptedImportResponse>)> {
+    // Parse encryption config from hex key
+    let config = match EncryptedExportConfig::from_hex(&request.key) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(EncryptedImportResponse {
+                    success: false,
+                    collection: String::new(),
+                    files_extracted: 0,
+                    bytes_extracted: 0,
+                    error: Some(format!("Invalid key: {}", e)),
+                }),
+            ));
+        }
+    };
+
+    let input_path = std::path::PathBuf::from(&request.input_path);
+
+    // Perform encrypted import
+    match import_encrypted(
+        &state.data_dir,
+        &input_path,
+        config,
+        request.target_collection.as_deref(),
+        None,
+    ) {
+        Ok(result) => Ok(Json(EncryptedImportResponse {
+            success: true,
+            collection: result.collection,
+            files_extracted: result.files_extracted,
+            bytes_extracted: result.bytes_extracted,
+            error: None,
+        })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(EncryptedImportResponse {
+                success: false,
+                collection: String::new(),
+                files_extracted: 0,
+                bytes_extracted: 0,
+                error: Some(e.to_string()),
+            }),
+        )),
+    }
+}
+
+/// POST /_admin/encryption/generate-key - Generate a new encryption key
+///
+/// Generates a cryptographically secure AES-256 key.
+/// Save this key securely (e.g., in a secrets manager).
+#[derive(Serialize)]
+pub struct GenerateKeyResponse {
+    /// Hex-encoded 256-bit key (64 characters)
+    pub key: String,
+    /// Key length in bytes
+    pub key_bytes: usize,
+    /// Algorithm info
+    pub algorithm: String,
+}
+
+pub async fn generate_encryption_key() -> Json<GenerateKeyResponse> {
+    let config = EncryptedExportConfig::generate();
+    Json(GenerateKeyResponse {
+        key: config.to_hex(),
+        key_bytes: 32,
+        algorithm: "AES-256-GCM".to_string(),
+    })
+}

@@ -111,6 +111,7 @@ pub struct ApiServer {
     metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
     ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
     template_manager: Option<Arc<crate::templates::TemplateManager>>,
+    data_dir: Option<std::path::PathBuf>,
 }
 
 impl ApiServer {
@@ -168,6 +169,7 @@ impl ApiServer {
             metrics_handle: None,
             ilm_manager: None,
             template_manager: None,
+            data_dir: None,
         }
     }
 
@@ -180,6 +182,12 @@ impl ApiServer {
     /// Set the template manager for index templates
     pub fn with_templates(mut self, template_manager: Arc<crate::templates::TemplateManager>) -> Self {
         self.template_manager = Some(template_manager);
+        self
+    }
+
+    /// Set the data directory for export/import operations
+    pub fn with_data_dir(mut self, data_dir: impl Into<std::path::PathBuf>) -> Self {
+        self.data_dir = Some(data_dir.into());
         self
     }
 
@@ -589,6 +597,30 @@ impl ApiServer {
             )
             .with_state(template_state);
 
+        // Export routes (Issue #75 - encrypted export API)
+        let export_routes = if let Some(ref data_dir) = self.data_dir {
+            let export_state = crate::api::routes::ExportAppState {
+                manager: self.manager.clone(),
+                data_dir: data_dir.clone(),
+            };
+            Router::new()
+                .route(
+                    "/_admin/export/encrypted",
+                    post(crate::api::routes::encrypted_export),
+                )
+                .route(
+                    "/_admin/import/encrypted",
+                    post(crate::api::routes::encrypted_import),
+                )
+                .route(
+                    "/_admin/encryption/generate-key",
+                    post(crate::api::routes::generate_encryption_key),
+                )
+                .with_state(export_state)
+        } else {
+            Router::new()
+        };
+
         // CORS configuration from config file
         // Dashboard runs on different port (e.g., localhost:5173)
         let cors = self.build_cors_layer();
@@ -600,6 +632,7 @@ impl ApiServer {
             .merge(mcp_routes)
             .merge(ilm_routes)
             .merge(template_routes)
+            .merge(export_routes)
             .layer(cors)
             .layer(axum::middleware::from_fn(metrics_middleware))
             .layer(TraceLayer::new_for_http());

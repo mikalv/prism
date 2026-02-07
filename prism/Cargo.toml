@@ -82,6 +82,7 @@ tempfile = { workspace = true }
 tar = { workspace = true }
 zstd = { workspace = true }
 hex = { workspace = true }
+aes-gcm = { workspace = true }
 
 # Unified storage (tantivy-adapter enabled by default for unified storage path)
 prism-storage = { workspace = true, features = ["tantivy-adapter"] }

@@ -2398,6 +2398,7 @@ dependencies = [
 name = "prism"
 version = "0.4.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "async-stream",
  "async-trait",
