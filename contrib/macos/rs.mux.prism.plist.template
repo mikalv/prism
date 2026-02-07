@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>rs.mux.prism</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{BINARY_PATH}}</string>
+        <string>--config</string>
+        <string>{{CONFIG_PATH}}</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>3080</string>
+        <string>--schemas-dir</string>
+        <string>{{SCHEMAS_DIR}}</string>
+        <string>--data-dir</string>
+        <string>{{DATA_DIR}}</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PRISM_HOME}}</string>
+
+    <key>StandardOutPath</key>
+    <string>{{PRISM_HOME}}/logs/prism.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PRISM_HOME}}/logs/prism.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RUST_LOG</key>
+        <string>info,prism=debug</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

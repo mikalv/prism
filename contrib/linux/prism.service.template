@@ -1,0 +1,30 @@
+[Unit]
+Description=Prism Hybrid Search Server
+Documentation=https://github.com/mikalv/prism
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={{BINARY_PATH}} \
+    --config {{CONFIG_PATH}} \
+    --host 127.0.0.1 \
+    --port 3080 \
+    --schemas-dir {{SCHEMAS_DIR}} \
+    --data-dir {{DATA_DIR}}
+
+WorkingDirectory={{PRISM_HOME}}
+Environment=RUST_LOG=info,prism=debug
+
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{PRISM_HOME}}
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
