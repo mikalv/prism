@@ -42,6 +42,10 @@ pub enum StorageError {
     /// Operation not supported
     #[error("Operation not supported: {0}")]
     NotSupported(String),
+
+    /// Compression/decompression error
+    #[error("Compression error: {0}")]
+    Compression(String),
 }
 
 /// Result type for storage operations.

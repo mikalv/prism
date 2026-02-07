@@ -51,6 +51,18 @@
 //! bucket = "my-prism-bucket"
 //! region = "us-east-1"
 //! ```
+//!
+//! ## Compressed Storage
+//!
+//! ```toml
+//! [storage]
+//! backend = "local"
+//! data_dir = "~/.prism/data"
+//!
+//! [storage.compression]
+//! algorithm = "lz4"  # lz4, zstd, zstd:LEVEL, or none
+//! min_size = 512     # Don't compress files smaller than this
+//! ```
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -83,6 +95,10 @@ pub struct UnifiedStorageConfig {
     /// Buffer directory for Tantivy writes (temporary local storage)
     #[serde(default = "default_buffer_dir")]
     pub buffer_dir: PathBuf,
+
+    /// Compression configuration (optional)
+    #[serde(default)]
+    pub compression: Option<CompressionStorageConfig>,
 }
 
 fn default_backend() -> String {
@@ -169,6 +185,35 @@ fn default_true() -> bool {
     true
 }
 
+/// Compression configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CompressionStorageConfig {
+    /// Compression algorithm: "lz4", "zstd", "zstd:LEVEL", or "none"
+    #[serde(default = "default_compression_algorithm")]
+    pub algorithm: String,
+
+    /// Minimum file size (bytes) to compress. Smaller files are stored uncompressed.
+    #[serde(default = "default_compression_min_size")]
+    pub min_size: usize,
+}
+
+fn default_compression_algorithm() -> String {
+    "lz4".to_string()
+}
+
+fn default_compression_min_size() -> usize {
+    512
+}
+
+impl Default for CompressionStorageConfig {
+    fn default() -> Self {
+        Self {
+            algorithm: default_compression_algorithm(),
+            min_size: default_compression_min_size(),
+        }
+    }
+}
+
 impl Default for UnifiedStorageConfig {
     fn default() -> Self {
         Self {
@@ -177,6 +222,7 @@ impl Default for UnifiedStorageConfig {
             s3: None,
             cache: None,
             buffer_dir: default_buffer_dir(),
+            compression: None,
         }
     }
 }
@@ -194,8 +240,9 @@ impl Default for CacheStorageConfig {
 impl UnifiedStorageConfig {
     /// Create a SegmentStorage from this configuration.
     pub fn create_storage(&self) -> Result<Arc<dyn SegmentStorage>, crate::Error> {
-        match self.backend.as_str() {
-            "local" => Ok(Arc::new(LocalStorage::new(&self.data_dir))),
+        // Create base storage backend
+        let base_storage: Arc<dyn SegmentStorage> = match self.backend.as_str() {
+            "local" => Arc::new(LocalStorage::new(&self.data_dir)),
             #[cfg(feature = "storage-s3")]
             "s3" => {
                 let s3_config = self.s3.as_ref().ok_or_else(|| {
@@ -222,7 +269,7 @@ impl UnifiedStorageConfig {
 
                 let storage =
                     S3Storage::new(config).map_err(|e| crate::Error::Storage(e.to_string()))?;
-                Ok(Arc::new(storage))
+                Arc::new(storage)
             }
             #[cfg(feature = "storage-s3")]
             "cached" => {
@@ -263,18 +310,51 @@ impl UnifiedStorageConfig {
                     populate_on_read: true,
                 };
 
-                let cached = CachedStorage::new(&cache_config.l1_path, l2, prism_cache_config);
-                Ok(Arc::new(cached))
+                Arc::new(CachedStorage::new(&cache_config.l1_path, l2, prism_cache_config))
             }
             #[cfg(not(feature = "storage-s3"))]
-            "s3" | "cached" => Err(crate::Error::Config(
-                "S3 storage requires 'storage-s3' feature".into(),
-            )),
-            other => Err(crate::Error::Config(format!(
-                "Unknown storage backend: '{}'. Valid options: local, s3, cached",
-                other
-            ))),
+            "s3" | "cached" => {
+                return Err(crate::Error::Config(
+                    "S3 storage requires 'storage-s3' feature".into(),
+                ));
+            }
+            other => {
+                return Err(crate::Error::Config(format!(
+                    "Unknown storage backend: '{}'. Valid options: local, s3, cached",
+                    other
+                )));
+            }
+        };
+
+        // Wrap with compression if configured
+        if let Some(ref compression_config) = self.compression {
+            use prism_storage::{CompressedStorage, CompressionConfig};
+
+            let prism_compression_config = match compression_config.algorithm.as_str() {
+                "lz4" => CompressionConfig::lz4(),
+                "zstd" => CompressionConfig::zstd(),
+                "none" => CompressionConfig::none(),
+                other => {
+                    // Check for zstd with level (e.g., "zstd:9")
+                    if let Some(level_str) = other.strip_prefix("zstd:") {
+                        let level: i32 = level_str.parse().map_err(|_| {
+                            crate::Error::Config(format!("Invalid zstd level: {}", level_str))
+                        })?;
+                        CompressionConfig::zstd_level(level)
+                    } else {
+                        return Err(crate::Error::Config(format!(
+                            "Unknown compression algorithm: '{}'. Use 'lz4', 'zstd', 'zstd:LEVEL', or 'none'",
+                            other
+                        )));
+                    }
+                }
+            }
+            .with_min_size(compression_config.min_size);
+
+            return Ok(Arc::new(CompressedStorage::new(base_storage, prism_compression_config)));
         }
+
+        Ok(base_storage)
     }
 
     /// Get the buffer directory for Tantivy writes.
@@ -384,5 +464,44 @@ mod tests {
         config.backend = "s3".to_string();
         assert!(config.is_remote());
         assert!(!config.is_local());
+    }
+
+    #[test]
+    fn test_config_parsing_compression() {
+        let toml = r#"
+            backend = "local"
+            data_dir = "/tmp/prism-test"
+
+            [compression]
+            algorithm = "zstd"
+            min_size = 1024
+        "#;
+        let config: UnifiedStorageConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.backend, "local");
+        let compression = config.compression.unwrap();
+        assert_eq!(compression.algorithm, "zstd");
+        assert_eq!(compression.min_size, 1024);
+    }
+
+    #[test]
+    fn test_compression_default() {
+        let compression = CompressionStorageConfig::default();
+        assert_eq!(compression.algorithm, "lz4");
+        assert_eq!(compression.min_size, 512);
+    }
+
+    #[test]
+    fn test_config_with_compression_creates_compressed_storage() {
+        let toml = r#"
+            backend = "local"
+            data_dir = "/tmp/prism-compressed-test"
+
+            [compression]
+            algorithm = "lz4"
+            min_size = 256
+        "#;
+        let config: UnifiedStorageConfig = toml::from_str(toml).unwrap();
+        let storage = config.create_storage().unwrap();
+        assert_eq!(storage.backend_name(), "compressed");
     }
 }

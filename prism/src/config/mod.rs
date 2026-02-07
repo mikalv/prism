@@ -4,7 +4,7 @@
 
 mod storage;
 
-pub use storage::{CacheStorageConfig, S3StorageConfig, UnifiedStorageConfig};
+pub use storage::{CacheStorageConfig, CompressionStorageConfig, S3StorageConfig, UnifiedStorageConfig};
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};

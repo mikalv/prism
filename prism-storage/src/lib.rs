@@ -100,6 +100,7 @@
 //! - `full` - Enable all features
 
 mod cached;
+mod compressed;
 mod error;
 mod local;
 mod path;
@@ -112,6 +113,9 @@ mod s3;
 mod tantivy_adapter;
 
 pub use cached::{CacheConfig, CacheStats, CachedStorage};
+pub use compressed::{
+    CompressedStorage, CompressionAlgorithm, CompressionConfig, CompressionStats,
+};
 pub use error::{Result, StorageError};
 pub use local::LocalStorage;
 pub use path::{StorageBackend, StoragePath};
@@ -152,6 +156,38 @@ pub fn create_storage(config: &StorageConfig) -> Result<Box<dyn SegmentStorage>>
                 config,
             )))
         }
+        StorageConfig::Compressed {
+            algorithm,
+            inner,
+            min_size,
+        } => {
+            let inner_storage = create_storage(inner)?;
+            let compression_config = match algorithm.as_str() {
+                "lz4" => CompressionConfig::lz4(),
+                "zstd" => CompressionConfig::zstd(),
+                "none" => CompressionConfig::none(),
+                other => {
+                    // Check for zstd with level (e.g., "zstd:9")
+                    if let Some(level_str) = other.strip_prefix("zstd:") {
+                        let level: i32 = level_str.parse().map_err(|_| {
+                            StorageError::Config(format!("Invalid zstd level: {}", level_str))
+                        })?;
+                        CompressionConfig::zstd_level(level)
+                    } else {
+                        return Err(StorageError::Config(format!(
+                            "Unknown compression algorithm: {}. Use 'lz4', 'zstd', 'zstd:LEVEL', or 'none'",
+                            other
+                        )));
+                    }
+                }
+            }
+            .with_min_size(*min_size);
+
+            Ok(Box::new(CompressedStorage::new(
+                std::sync::Arc::from(inner_storage),
+                compression_config,
+            )))
+        }
     }
 }
 
@@ -177,6 +213,15 @@ pub enum StorageConfig {
         l1_max_size_gb: u64,
         /// L2 backend configuration
         l2: Box<StorageConfig>,
+    },
+    /// Compressed storage wrapper
+    Compressed {
+        /// Compression algorithm: "lz4", "zstd", "zstd:LEVEL", or "none"
+        algorithm: String,
+        /// Minimum file size to compress (bytes)
+        min_size: usize,
+        /// Inner storage configuration
+        inner: Box<StorageConfig>,
     },
 }
 

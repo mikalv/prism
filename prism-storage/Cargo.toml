@@ -37,6 +37,10 @@ parking_lot.workspace = true
 # Tantivy integration (optional)
 tantivy = { workspace = true, optional = true }
 
+# Compression (optional)
+lz4_flex = { version = "0.11", optional = true }
+zstd = { version = "0.13", optional = true }
+
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
@@ -45,4 +49,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 default = []
 s3 = ["object_store"]
 tantivy-adapter = ["tantivy"]
-full = ["s3", "tantivy-adapter"]
+compression-lz4 = ["lz4_flex"]
+compression-zstd = ["zstd"]
+compression = ["compression-lz4", "compression-zstd"]
+full = ["s3", "tantivy-adapter", "compression"]
