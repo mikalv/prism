@@ -171,6 +171,11 @@ impl ApiServer {
         self.config_reloader.clone()
     }
 
+    /// Get a reference to the collection manager for cluster integration
+    pub fn manager(&self) -> Arc<CollectionManager> {
+        self.manager.clone()
+    }
+
     pub fn with_metrics(
         mut self,
         handle: Option<metrics_exporter_prometheus::PrometheusHandle>,

@@ -12,9 +12,11 @@ default = []
 provider-onnx = ["prism/provider-onnx"]
 provider-onnx-real = ["prism/provider-onnx-real"]
 all-providers = ["prism/all-providers"]
+cluster = ["dep:prism-cluster"]
 
 [dependencies]
 prism = { workspace = true }
+prism-cluster = { workspace = true, optional = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }

@@ -31,6 +31,9 @@ pub struct Config {
     pub security: SecurityConfig,
     #[serde(default)]
     pub observability: ObservabilityConfig,
+    /// Cluster configuration for inter-node communication
+    #[serde(default)]
+    pub cluster: ClusterConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -285,6 +288,115 @@ impl Default for ObservabilityConfig {
     }
 }
 
+/// Cluster configuration for inter-node RPC communication
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ClusterConfig {
+    /// Enable cluster mode
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Unique identifier for this node
+    #[serde(default = "default_node_id")]
+    pub node_id: String,
+
+    /// Address to bind the cluster RPC server
+    #[serde(default = "default_cluster_bind_addr")]
+    pub bind_addr: String,
+
+    /// Seed nodes for cluster discovery
+    #[serde(default)]
+    pub seed_nodes: Vec<String>,
+
+    /// Connection timeout in milliseconds
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout_ms: u64,
+
+    /// Request timeout in milliseconds
+    #[serde(default = "default_request_timeout")]
+    pub request_timeout_ms: u64,
+
+    /// TLS configuration for cluster communication
+    #[serde(default)]
+    pub tls: ClusterTlsConfig,
+}
+
+fn default_node_id() -> String {
+    format!("node-{}", &uuid::Uuid::new_v4().to_string()[..8])
+}
+
+fn default_cluster_bind_addr() -> String {
+    "0.0.0.0:9080".to_string()
+}
+
+fn default_connect_timeout() -> u64 {
+    5000
+}
+
+fn default_request_timeout() -> u64 {
+    30000
+}
+
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            node_id: default_node_id(),
+            bind_addr: default_cluster_bind_addr(),
+            seed_nodes: Vec::new(),
+            connect_timeout_ms: default_connect_timeout(),
+            request_timeout_ms: default_request_timeout(),
+            tls: ClusterTlsConfig::default(),
+        }
+    }
+}
+
+/// TLS configuration for cluster transport
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ClusterTlsConfig {
+    /// Enable TLS for cluster communication
+    #[serde(default = "default_cluster_tls_enabled")]
+    pub enabled: bool,
+
+    /// Path to the certificate file (PEM format)
+    #[serde(default = "default_cluster_cert_path")]
+    pub cert_path: PathBuf,
+
+    /// Path to the private key file (PEM format)
+    #[serde(default = "default_cluster_key_path")]
+    pub key_path: PathBuf,
+
+    /// Path to CA certificate for verifying peer certificates
+    pub ca_cert_path: Option<PathBuf>,
+
+    /// Skip peer certificate verification (INSECURE - development only)
+    #[serde(default)]
+    pub skip_verify: bool,
+}
+
+fn default_cluster_tls_enabled() -> bool {
+    true
+}
+
+fn default_cluster_cert_path() -> PathBuf {
+    PathBuf::from("./conf/tls/cluster-cert.pem")
+}
+
+fn default_cluster_key_path() -> PathBuf {
+    PathBuf::from("./conf/tls/cluster-key.pem")
+}
+
+impl Default for ClusterTlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_cluster_tls_enabled(),
+            cert_path: default_cluster_cert_path(),
+            key_path: default_cluster_key_path(),
+            ca_cert_path: None,
+            skip_verify: false,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -295,6 +407,7 @@ impl Default for Config {
             logging: LoggingConfig::default(),
             security: SecurityConfig::default(),
             observability: ObservabilityConfig::default(),
+            cluster: ClusterConfig::default(),
         }
     }
 }
@@ -379,6 +492,14 @@ impl Config {
         }
         if let Some(ref mut unified) = self.unified_storage {
             unified.expand_paths().map_err(|e| anyhow!("{}", e))?;
+        }
+        // Expand cluster TLS paths
+        if self.cluster.tls.enabled {
+            self.cluster.tls.cert_path = expand_tilde(&self.cluster.tls.cert_path)?;
+            self.cluster.tls.key_path = expand_tilde(&self.cluster.tls.key_path)?;
+            if let Some(ref ca) = self.cluster.tls.ca_cert_path {
+                self.cluster.tls.ca_cert_path = Some(expand_tilde(ca)?);
+            }
         }
         Ok(())
     }

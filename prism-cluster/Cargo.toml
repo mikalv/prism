@@ -1,0 +1,49 @@
+[package]
+name = "prism-cluster"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Inter-node communication for Prism cluster mode"
+
+[features]
+default = []
+
+[dependencies]
+# Internal
+prism = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# RPC framework
+tarpc = { workspace = true }
+
+# QUIC transport
+quinn = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+
+# TLS
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+rustls-native-certs = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+parking_lot = { workspace = true }
+uuid = { workspace = true }
+tokio-util = { workspace = true }
+tokio-serde = { workspace = true }

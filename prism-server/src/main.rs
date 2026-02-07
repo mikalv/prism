@@ -199,6 +199,41 @@ async fn main() -> Result<()> {
         tracing::info!("SIGHUP handler registered - send SIGHUP to reload security config");
     }
 
+    // Start cluster RPC server if enabled
+    #[cfg(feature = "cluster")]
+    if config.cluster.enabled {
+        let cluster_config = prism_cluster::ClusterConfig {
+            enabled: config.cluster.enabled,
+            node_id: config.cluster.node_id.clone(),
+            bind_addr: config.cluster.bind_addr.clone(),
+            seed_nodes: config.cluster.seed_nodes.clone(),
+            connect_timeout_ms: config.cluster.connect_timeout_ms,
+            request_timeout_ms: config.cluster.request_timeout_ms,
+            max_connections: 10,
+            tls: prism_cluster::ClusterTlsConfig {
+                enabled: config.cluster.tls.enabled,
+                cert_path: config.cluster.tls.cert_path.clone(),
+                key_path: config.cluster.tls.key_path.clone(),
+                ca_cert_path: config.cluster.tls.ca_cert_path.clone(),
+                skip_verify: config.cluster.tls.skip_verify,
+            },
+        };
+
+        let cluster_manager = server.manager();
+        tracing::info!(
+            "Starting cluster RPC server on {} (node_id: {})",
+            cluster_config.bind_addr,
+            cluster_config.node_id
+        );
+
+        tokio::spawn(async move {
+            let cluster_server = prism_cluster::ClusterServer::new(cluster_config, cluster_manager);
+            if let Err(e) = cluster_server.serve().await {
+                tracing::error!("Cluster server error: {}", e);
+            }
+        });
+    }
+
     server.serve(&addr, tls).await?;
 
     Ok(())
