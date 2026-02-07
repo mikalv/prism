@@ -9,6 +9,8 @@ Prism supports multiple storage backends for flexibility in deployment scenarios
 | `local` | Single-node, local disk storage (default) |
 | `s3` | Cloud storage, shared access, durability |
 | `cached` | Hybrid: local cache (L1) + S3 backend (L2) |
+| `compressed` | Reduce storage with LZ4/Zstd compression |
+| `encrypted` | AES-256-GCM encryption at rest |
 
 ## Local Storage
 
@@ -235,7 +237,129 @@ aws s3 sync ~/.prism/data/ s3://my-bucket/prism/
 # Update config and restart
 ```
 
+## Compressed Storage
+
+Reduce storage requirements with transparent compression.
+
+```toml
+[storage]
+backend = "compressed"
+
+[storage.compressed]
+algorithm = "zstd"  # or "lz4", "none"
+min_size = 1024     # Only compress files > 1KB
+
+[storage.compressed.inner]
+backend = "local"
+data_dir = "~/.prism/data"
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `algorithm` | `zstd` | Compression: `lz4` (fast), `zstd` (balanced), `zstd:9` (high), `none` |
+| `min_size` | `1024` | Skip compression for files smaller than this (bytes) |
+
+### Algorithm Comparison
+
+| Algorithm | Speed | Ratio | Use Case |
+|-----------|-------|-------|----------|
+| `lz4` | Fastest | ~2x | Real-time, high throughput |
+| `zstd` | Fast | ~3x | Balanced (default) |
+| `zstd:9` | Slower | ~4x | Archival, cold storage |
+
+## Encrypted Storage
+
+AES-256-GCM encryption at rest for sensitive data.
+
+```toml
+[storage]
+backend = "encrypted"
+
+[storage.encrypted]
+key_source = "env"
+key_env_var = "PRISM_ENCRYPTION_KEY"
+
+[storage.encrypted.inner]
+backend = "local"
+data_dir = "~/.prism/data"
+```
+
+| Option | Description |
+|--------|-------------|
+| `key_source` | `env` (environment variable), `hex` (inline), or `base64` |
+| `key_env_var` | Environment variable name (when `key_source = "env"`) |
+| `key` | Hex or base64 encoded key (when inline) |
+| `key_id` | Identifier for logging (not the key itself) |
+
+### Key Sources
+
+**Environment Variable (Recommended):**
+
+```toml
+[storage.encrypted]
+key_source = "env"
+key_env_var = "PRISM_ENCRYPTION_KEY"
+```
+
+```bash
+export PRISM_ENCRYPTION_KEY="a1b2c3...64 hex chars"
+```
+
+**Hex Key (Development):**
+
+```toml
+[storage.encrypted]
+key_source = "hex"
+key = "a1b2c3d4e5f6..."
+key_id = "dev-key"
+```
+
+**Base64 Key:**
+
+```toml
+[storage.encrypted]
+key_source = "base64"
+key = "oWLDnNT1..."
+key_id = "prod-key"
+```
+
+### Generate a Key
+
+```bash
+# Via API (requires running server)
+curl -X POST http://localhost:3080/_admin/encryption/generate-key
+
+# Via OpenSSL
+openssl rand -hex 32
+```
+
+### Layered Encryption + Compression
+
+```toml
+[storage]
+backend = "encrypted"
+
+[storage.encrypted]
+key_source = "env"
+key_env_var = "PRISM_ENCRYPTION_KEY"
+
+[storage.encrypted.inner]
+backend = "compressed"
+algorithm = "zstd"
+
+[storage.encrypted.inner.inner]
+backend = "s3"
+
+[storage.encrypted.inner.inner.s3]
+bucket = "secure-bucket"
+region = "us-east-1"
+```
+
+Data flow: `Data → Encrypt → Compress → S3`
+
 ## See Also
 
+- [Encryption Guide](../guides/encryption.md) — Detailed encryption documentation
+- [Export & Import](../guides/export-import.md) — Backup and migration
 - [Configuration](configuration.md) — Full config reference
 - [Deployment](deployment.md) — Production setup
