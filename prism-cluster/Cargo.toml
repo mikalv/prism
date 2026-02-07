@@ -42,6 +42,9 @@ anyhow = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
+# Metrics
+metrics = { workspace = true }
+
 # Utilities
 parking_lot = { workspace = true }
 uuid = { workspace = true }

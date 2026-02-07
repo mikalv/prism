@@ -4,6 +4,10 @@
 
 use crate::config::ClusterConfig;
 use crate::error::ClusterError;
+use crate::metrics::{
+    record_rebalance_operation, update_cluster_state_metrics, update_rebalance_status_metrics,
+    RpcHandlerTimer,
+};
 use crate::placement::{ClusterState, PlacementStrategy, ShardAssignment, ShardState};
 use crate::rebalance::{RebalanceEngine, RebalanceTrigger};
 use crate::service::PrismCluster;
@@ -175,13 +179,20 @@ impl PrismCluster for ClusterHandler {
         collection: String,
         docs: Vec<RpcDocument>,
     ) -> Result<(), ClusterError> {
+        let timer = RpcHandlerTimer::new("index");
         let server = self.server.read().await;
         let docs: Vec<prism::backends::Document> = docs.into_iter().map(Into::into).collect();
-        server
-            .manager
-            .index(&collection, docs)
-            .await
-            .map_err(ClusterError::from)
+        match server.manager.index(&collection, docs).await {
+            Ok(()) => {
+                timer.success();
+                Ok(())
+            }
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                Err(err)
+            }
+        }
     }
 
     async fn search(
@@ -190,14 +201,20 @@ impl PrismCluster for ClusterHandler {
         collection: String,
         query: RpcQuery,
     ) -> Result<RpcSearchResults, ClusterError> {
+        let timer = RpcHandlerTimer::new("search");
         let server = self.server.read().await;
         let query: prism::backends::Query = query.into();
-        let results = server
-            .manager
-            .search(&collection, query)
-            .await
-            .map_err(ClusterError::from)?;
-        Ok(RpcSearchResults::from(results))
+        match server.manager.search(&collection, query).await {
+            Ok(results) => {
+                timer.success();
+                Ok(RpcSearchResults::from(results))
+            }
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                Err(err)
+            }
+        }
     }
 
     async fn get(
@@ -206,13 +223,19 @@ impl PrismCluster for ClusterHandler {
         collection: String,
         id: String,
     ) -> Result<Option<RpcDocument>, ClusterError> {
+        let timer = RpcHandlerTimer::new("get");
         let server = self.server.read().await;
-        let doc = server
-            .manager
-            .get(&collection, &id)
-            .await
-            .map_err(ClusterError::from)?;
-        Ok(doc.map(RpcDocument::from))
+        match server.manager.get(&collection, &id).await {
+            Ok(doc) => {
+                timer.success();
+                Ok(doc.map(RpcDocument::from))
+            }
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                Err(err)
+            }
+        }
     }
 
     async fn delete(
@@ -221,12 +244,19 @@ impl PrismCluster for ClusterHandler {
         collection: String,
         ids: Vec<String>,
     ) -> Result<(), ClusterError> {
+        let timer = RpcHandlerTimer::new("delete");
         let server = self.server.read().await;
-        server
-            .manager
-            .delete(&collection, ids)
-            .await
-            .map_err(ClusterError::from)
+        match server.manager.delete(&collection, ids).await {
+            Ok(()) => {
+                timer.success();
+                Ok(())
+            }
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                Err(err)
+            }
+        }
     }
 
     async fn stats(
@@ -234,18 +264,27 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         collection: String,
     ) -> Result<RpcBackendStats, ClusterError> {
+        let timer = RpcHandlerTimer::new("stats");
         let server = self.server.read().await;
-        let stats = server
-            .manager
-            .stats(&collection)
-            .await
-            .map_err(ClusterError::from)?;
-        Ok(RpcBackendStats::from(stats))
+        match server.manager.stats(&collection).await {
+            Ok(stats) => {
+                timer.success();
+                Ok(RpcBackendStats::from(stats))
+            }
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                Err(err)
+            }
+        }
     }
 
     async fn list_collections(self, _ctx: Context) -> Vec<String> {
+        let timer = RpcHandlerTimer::new("list_collections");
         let server = self.server.read().await;
-        server.manager.list_collections()
+        let result = server.manager.list_collections();
+        timer.success();
+        result
     }
 
     async fn delete_by_query(
@@ -253,16 +292,20 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         request: DeleteByQueryRequest,
     ) -> Result<DeleteByQueryResponse, ClusterError> {
+        let timer = RpcHandlerTimer::new("delete_by_query");
         let start = Instant::now();
         let server = self.server.read().await;
 
         // Execute search to find matching documents
         let query: prism::backends::Query = request.query.into();
-        let results = server
-            .manager
-            .search(&request.collection, query)
-            .await
-            .map_err(ClusterError::from)?;
+        let results = match server.manager.search(&request.collection, query).await {
+            Ok(r) => r,
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                return Err(err);
+            }
+        };
 
         let ids_to_delete: Vec<String> = if request.max_docs > 0 {
             results
@@ -278,13 +321,18 @@ impl PrismCluster for ClusterHandler {
         let deleted_count = ids_to_delete.len();
 
         if !request.dry_run && !ids_to_delete.is_empty() {
-            server
+            if let Err(e) = server
                 .manager
                 .delete(&request.collection, ids_to_delete.clone())
                 .await
-                .map_err(ClusterError::from)?;
+            {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                return Err(err);
+            }
         }
 
+        timer.success();
         Ok(DeleteByQueryResponse {
             deleted_count,
             took_ms: start.elapsed().as_millis() as u64,
@@ -301,12 +349,14 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         request: ImportByQueryRequest,
     ) -> Result<ImportByQueryResponse, ClusterError> {
+        let timer = RpcHandlerTimer::new("import_by_query");
         let start = Instant::now();
         let server = self.server.read().await;
 
         // If source_node is specified, this would need to connect to remote
         // For now, we implement local collection-to-collection copy
         if request.source_node.is_some() {
+            timer.error("not_implemented");
             return Err(ClusterError::NotImplemented(
                 "Remote import not yet implemented".to_string(),
             ));
@@ -314,11 +364,14 @@ impl PrismCluster for ClusterHandler {
 
         // Search source collection
         let query: prism::backends::Query = request.query.into();
-        let results = server
-            .manager
-            .search(&request.source_collection, query)
-            .await
-            .map_err(ClusterError::from)?;
+        let results = match server.manager.search(&request.source_collection, query).await {
+            Ok(r) => r,
+            Err(e) => {
+                let err = ClusterError::from(e);
+                timer.error(err.error_type());
+                return Err(err);
+            }
+        };
 
         let mut imported_count = 0;
         let mut failed_count = 0;
@@ -353,6 +406,7 @@ impl PrismCluster for ClusterHandler {
             }
         }
 
+        timer.success();
         Ok(ImportByQueryResponse {
             imported_count,
             failed_count,
@@ -362,7 +416,9 @@ impl PrismCluster for ClusterHandler {
     }
 
     async fn node_info(self, _ctx: Context) -> NodeInfo {
+        let timer = RpcHandlerTimer::new("node_info");
         let server = self.server.read().await;
+        timer.success();
         NodeInfo {
             node_id: server.config.node_id.clone(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -373,6 +429,8 @@ impl PrismCluster for ClusterHandler {
     }
 
     async fn ping(self, _ctx: Context) -> String {
+        let timer = RpcHandlerTimer::new("ping");
+        timer.success();
         "pong".to_string()
     }
 
@@ -385,6 +443,7 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         request: ShardAssignmentRequest,
     ) -> Result<ShardAssignmentResponse, ClusterError> {
+        let timer = RpcHandlerTimer::new("assign_shard");
         let server = self.server.read().await;
 
         // Clone values for logging before moving
@@ -406,11 +465,15 @@ impl PrismCluster for ClusterHandler {
         server.cluster_state.assign_shard(assignment);
         let epoch = server.cluster_state.next_epoch();
 
+        // Update cluster state metrics
+        update_cluster_state_metrics(&server.cluster_state);
+
         info!(
             "Shard {} assigned to primary={}, replicas={}",
             shard_id, primary_node, replica_nodes_str
         );
 
+        timer.success();
         Ok(ShardAssignmentResponse {
             success: true,
             epoch,
@@ -423,6 +486,7 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         request: GetShardAssignmentsRequest,
     ) -> Result<Vec<RpcShardInfo>, ClusterError> {
+        let timer = RpcHandlerTimer::new("get_shard_assignments");
         let server = self.server.read().await;
 
         let assignments = if let Some(ref collection) = request.collection {
@@ -445,6 +509,7 @@ impl PrismCluster for ClusterHandler {
             })
             .collect();
 
+        timer.success();
         Ok(result)
     }
 
@@ -453,16 +518,21 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         request: ShardTransferRequest,
     ) -> Result<ShardTransferResponse, ClusterError> {
+        let timer = RpcHandlerTimer::new("transfer_shard");
         let server = self.server.read().await;
 
         // Find the shard
-        let shard = server
-            .cluster_state
-            .get_shard(&request.shard_id)
-            .ok_or_else(|| ClusterError::CollectionNotFound(request.shard_id.clone()))?;
+        let shard = match server.cluster_state.get_shard(&request.shard_id) {
+            Some(s) => s,
+            None => {
+                timer.error("collection_not_found");
+                return Err(ClusterError::CollectionNotFound(request.shard_id.clone()));
+            }
+        };
 
         // Verify source node has the shard
         if !shard.is_on_node(&request.from_node) {
+            timer.error("invalid_query");
             return Err(ClusterError::InvalidQuery(format!(
                 "Shard {} not found on node {}",
                 request.shard_id, request.from_node
@@ -476,6 +546,12 @@ impl PrismCluster for ClusterHandler {
 
         let transfer_id = uuid::Uuid::new_v4().to_string();
 
+        // Record shard transfer metric
+        crate::metrics::record_shard_transfer(&request.shard_id, &request.from_node, &request.to_node);
+
+        // Update cluster state metrics
+        update_cluster_state_metrics(&server.cluster_state);
+
         info!(
             "Initiated shard transfer {} from {} to {}, transfer_id={}",
             request.shard_id, request.from_node, request.to_node, transfer_id
@@ -483,6 +559,7 @@ impl PrismCluster for ClusterHandler {
 
         // The actual transfer would be handled by a background task
         // For now, we just return the transfer ID
+        timer.success();
         Ok(ShardTransferResponse {
             success: true,
             transfer_id: Some(transfer_id),
@@ -499,6 +576,7 @@ impl PrismCluster for ClusterHandler {
         _ctx: Context,
         request: TriggerRebalanceRequest,
     ) -> Result<RpcRebalanceStatus, ClusterError> {
+        let timer = RpcHandlerTimer::new("trigger_rebalance");
         let server = self.server.read().await;
 
         let trigger = match request.trigger.as_str() {
@@ -510,11 +588,21 @@ impl PrismCluster for ClusterHandler {
             _ => RebalanceTrigger::Manual,
         };
 
-        let status = server
-            .rebalance_engine
-            .trigger(trigger)
-            .map_err(|e| ClusterError::Internal(e))?;
+        // Record rebalance operation
+        record_rebalance_operation(&request.trigger);
 
+        let status = match server.rebalance_engine.trigger(trigger) {
+            Ok(s) => s,
+            Err(e) => {
+                timer.error("internal");
+                return Err(ClusterError::Internal(e));
+            }
+        };
+
+        // Update rebalance status metrics
+        update_rebalance_status_metrics(&status);
+
+        timer.success();
         Ok(RpcRebalanceStatus {
             in_progress: status.in_progress,
             phase: format!("{:?}", status.phase),
@@ -528,9 +616,14 @@ impl PrismCluster for ClusterHandler {
     }
 
     async fn get_rebalance_status(self, _ctx: Context) -> Result<RpcRebalanceStatus, ClusterError> {
+        let timer = RpcHandlerTimer::new("get_rebalance_status");
         let server = self.server.read().await;
         let status = server.rebalance_engine.status();
 
+        // Update rebalance status metrics
+        update_rebalance_status_metrics(&status);
+
+        timer.success();
         Ok(RpcRebalanceStatus {
             in_progress: status.in_progress,
             phase: format!("{:?}", status.phase),

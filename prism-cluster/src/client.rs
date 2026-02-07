@@ -4,6 +4,9 @@
 
 use crate::config::ClusterConfig;
 use crate::error::{ClusterError, Result};
+use crate::metrics::{
+    record_connection_established, record_connection_failed, record_connection_pool_size, RpcTimer,
+};
 use crate::service::PrismClusterClient;
 use crate::transport::make_client_endpoint;
 use crate::types::*;
@@ -65,6 +68,7 @@ impl ClusterClient {
                     created_at: std::time::Instant::now(),
                 },
             );
+            record_connection_pool_size(connections.len());
         }
 
         Ok(client)
@@ -72,19 +76,27 @@ impl ClusterClient {
 
     /// Create a new connection to the specified node
     async fn create_connection(&self, addr: SocketAddr) -> Result<PrismClusterClient> {
+        let addr_str = addr.to_string();
         debug!("Connecting to cluster node at {}", addr);
 
         // Connect - endpoint.connect returns Result<Connecting, ConnectError>
         let connecting = self
             .endpoint
             .connect(addr, "prism-cluster")
-            .map_err(|e| ClusterError::Connection(format!("Failed to connect to {}: {}", addr, e)))?;
+            .map_err(|e| {
+                record_connection_failed(&addr_str, "connect_error");
+                ClusterError::Connection(format!("Failed to connect to {}: {}", addr, e))
+            })?;
 
         // Wait for connection with timeout
         let connection = tokio::time::timeout(self.config.connect_timeout(), connecting)
             .await
-            .map_err(|_| ClusterError::Timeout(format!("Connection to {} timed out", addr)))?
+            .map_err(|_| {
+                record_connection_failed(&addr_str, "timeout");
+                ClusterError::Timeout(format!("Connection to {} timed out", addr))
+            })?
             .map_err(|e| {
+                record_connection_failed(&addr_str, "handshake_error");
                 ClusterError::Connection(format!("Connection handshake failed with {}: {}", addr, e))
             })?;
 
@@ -106,6 +118,7 @@ impl ClusterClient {
         let client = PrismClusterClient::new(TarpcConfig::default(), transport).spawn();
 
         info!("Connected to cluster node at {}", addr);
+        record_connection_established(&addr_str);
         Ok(client)
     }
 
@@ -133,12 +146,23 @@ impl ClusterClient {
         collection: &str,
         docs: Vec<RpcDocument>,
     ) -> Result<()> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("index", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .index(self.context(), collection.to_string(), docs)
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(()) => {
+                timer.success();
+                Ok(())
+            }
+            Err(e) => {
+                timer.error(&e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// Search on a remote node
@@ -148,12 +172,23 @@ impl ClusterClient {
         collection: &str,
         query: RpcQuery,
     ) -> Result<RpcSearchResults> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("search", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .search(self.context(), collection.to_string(), query)
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(results) => {
+                timer.success();
+                Ok(results)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// Get document from a remote node
@@ -163,42 +198,78 @@ impl ClusterClient {
         collection: &str,
         id: &str,
     ) -> Result<Option<RpcDocument>> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("get", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .get(self.context(), collection.to_string(), id.to_string())
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(doc) => {
+                timer.success();
+                Ok(doc)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// Delete documents from a remote node
     pub async fn delete(&self, addr: &str, collection: &str, ids: Vec<String>) -> Result<()> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("delete", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .delete(self.context(), collection.to_string(), ids)
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(()) => {
+                timer.success();
+                Ok(())
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// Get stats from a remote node
     pub async fn stats(&self, addr: &str, collection: &str) -> Result<RpcBackendStats> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("stats", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .stats(self.context(), collection.to_string())
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(stats) => {
+                timer.success();
+                Ok(stats)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// List collections on a remote node
     pub async fn list_collections(&self, addr: &str) -> Result<Vec<String>> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        Ok(client
+        let timer = RpcTimer::new("list_collections", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        let result = client
             .list_collections(self.context())
             .await
-            .map_err(|e| ClusterError::Transport(e.to_string()))?)
+            .map_err(|e| ClusterError::Transport(e.to_string()))?;
+        timer.success();
+        Ok(result)
     }
 
     /// Delete documents by query on a remote node
@@ -207,12 +278,23 @@ impl ClusterClient {
         addr: &str,
         request: DeleteByQueryRequest,
     ) -> Result<DeleteByQueryResponse> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("delete_by_query", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .delete_by_query(self.context(), request)
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(response) => {
+                timer.success();
+                Ok(response)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// Import documents by query on a remote node
@@ -221,32 +303,49 @@ impl ClusterClient {
         addr: &str,
         request: ImportByQueryRequest,
     ) -> Result<ImportByQueryResponse> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        client
+        let timer = RpcTimer::new("import_by_query", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        match client
             .import_by_query(self.context(), request)
             .await
             .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(response) => {
+                timer.success();
+                Ok(response)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
     }
 
     /// Get node info from a remote node
     pub async fn node_info(&self, addr: &str) -> Result<NodeInfo> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        Ok(client
+        let timer = RpcTimer::new("node_info", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        let result = client
             .node_info(self.context())
             .await
-            .map_err(|e| ClusterError::Transport(e.to_string()))?)
+            .map_err(|e| ClusterError::Transport(e.to_string()))?;
+        timer.success();
+        Ok(result)
     }
 
     /// Ping a remote node
     pub async fn ping(&self, addr: &str) -> Result<String> {
-        let addr = Self::parse_addr(addr)?;
-        let client = self.get_client(addr).await?;
-        Ok(client
+        let timer = RpcTimer::new("ping", addr);
+        let sock_addr = Self::parse_addr(addr)?;
+        let client = self.get_client(sock_addr).await?;
+        let result = client
             .ping(self.context())
             .await
-            .map_err(|e| ClusterError::Transport(e.to_string()))?)
+            .map_err(|e| ClusterError::Transport(e.to_string()))?;
+        timer.success();
+        Ok(result)
     }
 
     /// Remove a connection from the pool
@@ -254,6 +353,7 @@ impl ClusterClient {
         if let Ok(addr) = Self::parse_addr(addr) {
             let mut connections = self.connections.write();
             connections.remove(&addr);
+            record_connection_pool_size(connections.len());
         }
     }
 
@@ -261,6 +361,7 @@ impl ClusterClient {
     pub fn clear_connections(&self) {
         let mut connections = self.connections.write();
         connections.clear();
+        record_connection_pool_size(0);
     }
 }
 

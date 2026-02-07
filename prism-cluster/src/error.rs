@@ -43,6 +43,26 @@ pub enum ClusterError {
     NotImplemented(String),
 }
 
+impl ClusterError {
+    /// Get the error type as a string for metrics labeling
+    pub fn error_type(&self) -> &'static str {
+        match self {
+            ClusterError::Connection(_) => "connection",
+            ClusterError::Transport(_) => "transport",
+            ClusterError::Tls(_) => "tls",
+            ClusterError::Serialization(_) => "serialization",
+            ClusterError::CollectionNotFound(_) => "collection_not_found",
+            ClusterError::Backend(_) => "backend",
+            ClusterError::InvalidQuery(_) => "invalid_query",
+            ClusterError::Timeout(_) => "timeout",
+            ClusterError::NodeUnavailable(_) => "node_unavailable",
+            ClusterError::Config(_) => "config",
+            ClusterError::Internal(_) => "internal",
+            ClusterError::NotImplemented(_) => "not_implemented",
+        }
+    }
+}
+
 impl From<prism::Error> for ClusterError {
     fn from(err: prism::Error) -> Self {
         match err {

@@ -22,6 +22,7 @@
 
 pub mod config;
 pub mod error;
+pub mod metrics;
 pub mod placement;
 pub mod rebalance;
 pub mod service;
