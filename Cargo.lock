@@ -2322,6 +2322,7 @@ dependencies = [
  "parking_lot",
  "prism-storage",
  "redis",
+ "regex",
  "reqwest",
  "rusqlite",
  "rustls",

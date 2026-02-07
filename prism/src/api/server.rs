@@ -110,6 +110,7 @@ pub struct ApiServer {
     pipeline_registry: Arc<PipelineRegistry>,
     metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
     ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
+    template_manager: Option<Arc<crate::templates::TemplateManager>>,
 }
 
 impl ApiServer {
@@ -166,12 +167,19 @@ impl ApiServer {
             pipeline_registry: Arc::new(pipeline_registry),
             metrics_handle: None,
             ilm_manager: None,
+            template_manager: None,
         }
     }
 
     /// Set the ILM manager for lifecycle management
     pub fn with_ilm(mut self, ilm_manager: Arc<crate::ilm::IlmManager>) -> Self {
         self.ilm_manager = Some(ilm_manager);
+        self
+    }
+
+    /// Set the template manager for index templates
+    pub fn with_templates(mut self, template_manager: Arc<crate::templates::TemplateManager>) -> Self {
+        self.template_manager = Some(template_manager);
         self
     }
 
@@ -463,6 +471,27 @@ impl ApiServer {
             .route("/_aliases", get(crate::api::routes::list_aliases).put(crate::api::routes::update_aliases))
             .with_state(ilm_state);
 
+        // Template state for template routes (Issue #51)
+        let template_state = crate::api::routes::TemplateAppState {
+            manager: self.manager.clone(),
+            template_manager: self.template_manager.clone(),
+        };
+
+        // Template routes (Issue #51)
+        let template_routes = Router::new()
+            .route("/_template", get(crate::api::routes::list_templates))
+            .route(
+                "/_template/:name",
+                get(crate::api::routes::get_template)
+                    .put(crate::api::routes::put_template)
+                    .delete(crate::api::routes::delete_template),
+            )
+            .route(
+                "/_template/_simulate/:index",
+                get(crate::api::routes::simulate_template),
+            )
+            .with_state(template_state);
+
         // CORS configuration from config file
         // Dashboard runs on different port (e.g., localhost:5173)
         let cors = self.build_cors_layer();
@@ -473,6 +502,7 @@ impl ApiServer {
             .merge(pipeline_routes)
             .merge(mcp_routes)
             .merge(ilm_routes)
+            .merge(template_routes)
             .layer(cors)
             .layer(axum::middleware::from_fn(metrics_middleware))
             .layer(TraceLayer::new_for_http());

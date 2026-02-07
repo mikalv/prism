@@ -15,6 +15,7 @@ pub mod ranking;
 pub mod schema;
 pub mod security;
 pub mod storage;
+pub mod templates;
 pub mod tokenizer;
 
 pub use config::Config;

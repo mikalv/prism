@@ -1283,3 +1283,126 @@ pub async fn update_aliases(
 
     Ok(StatusCode::OK)
 }
+
+// ============================================================================
+// Index Template endpoints
+// ============================================================================
+
+use crate::templates::{IndexTemplate, TemplateManager};
+
+/// App state for template routes
+#[derive(Clone)]
+pub struct TemplateAppState {
+    pub manager: Arc<CollectionManager>,
+    pub template_manager: Option<Arc<TemplateManager>>,
+}
+
+/// GET /_template - List all templates
+pub async fn list_templates(
+    State(state): State<TemplateAppState>,
+) -> Result<Json<ListTemplatesResponse>, StatusCode> {
+    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let templates = tm.list_templates().await;
+    Ok(Json(ListTemplatesResponse { templates }))
+}
+
+#[derive(Serialize)]
+pub struct ListTemplatesResponse {
+    pub templates: Vec<IndexTemplate>,
+}
+
+/// GET /_template/:name - Get a specific template
+pub async fn get_template(
+    Path(name): Path<String>,
+    State(state): State<TemplateAppState>,
+) -> Result<Json<IndexTemplate>, StatusCode> {
+    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let template = tm.get_template(&name).await.ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(template))
+}
+
+/// PUT /_template/:name - Create or update a template
+#[derive(Deserialize)]
+pub struct CreateTemplateRequest {
+    pub index_patterns: Vec<String>,
+    #[serde(default)]
+    pub priority: u32,
+    #[serde(default)]
+    pub settings: crate::templates::TemplateSettings,
+    #[serde(default)]
+    pub schema: crate::templates::TemplateSchema,
+    #[serde(default)]
+    pub aliases: HashMap<String, crate::templates::AliasDefinition>,
+}
+
+pub async fn put_template(
+    Path(name): Path<String>,
+    State(state): State<TemplateAppState>,
+    Json(request): Json<CreateTemplateRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let tm = state.template_manager.as_ref().ok_or((
+        StatusCode::NOT_FOUND,
+        "Template manager not enabled".to_string(),
+    ))?;
+
+    let template = IndexTemplate {
+        name,
+        index_patterns: request.index_patterns,
+        priority: request.priority,
+        settings: request.settings,
+        schema: request.schema,
+        aliases: request.aliases,
+    };
+
+    tm.put_template(template).await.map_err(|e| {
+        tracing::error!("Failed to create template: {:?}", e);
+        (StatusCode::BAD_REQUEST, e.to_string())
+    })?;
+
+    Ok(StatusCode::CREATED)
+}
+
+/// DELETE /_template/:name - Delete a template
+pub async fn delete_template(
+    Path(name): Path<String>,
+    State(state): State<TemplateAppState>,
+) -> Result<StatusCode, StatusCode> {
+    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    match tm.delete_template(&name).await {
+        Ok(Some(_)) => Ok(StatusCode::OK),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(e) => {
+            tracing::error!("Failed to delete template: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// GET /_template/_simulate/:index - Simulate template matching
+#[derive(Serialize)]
+pub struct SimulateTemplateResponse {
+    pub matched: bool,
+    pub template: Option<IndexTemplate>,
+    pub matched_pattern: Option<String>,
+}
+
+pub async fn simulate_template(
+    Path(index_name): Path<String>,
+    State(state): State<TemplateAppState>,
+) -> Result<Json<SimulateTemplateResponse>, StatusCode> {
+    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    match tm.find_best_match(&index_name).await {
+        Some(m) => Ok(Json(SimulateTemplateResponse {
+            matched: true,
+            template: Some(m.template),
+            matched_pattern: Some(m.matched_pattern),
+        })),
+        None => Ok(Json(SimulateTemplateResponse {
+            matched: false,
+            template: None,
+            matched_pattern: None,
+        })),
+    }
+}

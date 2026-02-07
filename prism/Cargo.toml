@@ -28,6 +28,7 @@ toml = { workspace = true }
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+regex = { workspace = true }
 
 # HTTP/API
 axum = { workspace = true }
