@@ -334,6 +334,33 @@ impl RpcHandlerTimer {
     }
 }
 
+/// Record partition events (detected, healed, quorum_lost, quorum_restored)
+pub fn record_partition_event(event_type: &str) {
+    metrics::counter!(
+        "prism_partition_events_total",
+        "event" => event_type.to_string(),
+    )
+    .increment(1);
+}
+
+/// Update partition state gauge
+pub fn update_partition_state(state: &str, has_quorum: bool) {
+    let state_value = match state {
+        "healthy" => 1.0,
+        "partitioned" => 2.0,
+        "healing" => 3.0,
+        _ => 0.0,
+    };
+
+    metrics::gauge!("prism_partition_state").set(state_value);
+    metrics::gauge!("prism_partition_has_quorum").set(if has_quorum { 1.0 } else { 0.0 });
+}
+
+/// Record partition duration when healed
+pub fn record_partition_duration(duration: std::time::Duration) {
+    metrics::histogram!("prism_partition_duration_seconds").record(duration.as_secs_f64());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

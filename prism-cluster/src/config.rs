@@ -55,6 +55,10 @@ pub struct ClusterConfig {
     /// Node discovery configuration
     #[serde(default)]
     pub discovery: DiscoveryConfig,
+
+    /// Consistency and partition handling configuration
+    #[serde(default)]
+    pub consistency: ConsistencyConfig,
 }
 
 fn default_node_id() -> String {
@@ -92,6 +96,7 @@ impl Default for ClusterConfig {
             rebalancing: RebalancingConfig::default(),
             health: HealthConfig::default(),
             discovery: DiscoveryConfig::default(),
+            consistency: ConsistencyConfig::default(),
         }
     }
 }
@@ -329,5 +334,136 @@ impl Default for HealthConfig {
             suspect_timeout_ms: default_suspect_timeout(),
             on_failure: FailureAction::default(),
         }
+    }
+}
+
+/// Minimum nodes required for write operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WriteQuorum {
+    /// Majority of nodes (n/2 + 1)
+    Quorum,
+    /// All nodes must be available
+    All,
+    /// Specific number of nodes
+    Count(usize),
+    /// Single node (no replication requirement)
+    One,
+}
+
+impl Default for WriteQuorum {
+    fn default() -> Self {
+        WriteQuorum::Quorum
+    }
+}
+
+impl WriteQuorum {
+    /// Check if quorum is satisfied given alive and total node counts
+    pub fn is_satisfied(&self, alive_count: usize, total_count: usize) -> bool {
+        match self {
+            WriteQuorum::Quorum => alive_count > total_count / 2,
+            WriteQuorum::All => alive_count == total_count,
+            WriteQuorum::Count(n) => alive_count >= *n,
+            WriteQuorum::One => alive_count >= 1,
+        }
+    }
+
+    /// Get minimum nodes required for this quorum level
+    pub fn min_nodes(&self, total_count: usize) -> usize {
+        match self {
+            WriteQuorum::Quorum => total_count / 2 + 1,
+            WriteQuorum::All => total_count,
+            WriteQuorum::Count(n) => *n,
+            WriteQuorum::One => 1,
+        }
+    }
+}
+
+/// Behavior when the cluster is partitioned
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PartitionBehavior {
+    /// Accept reads but reject writes (safe default)
+    ReadOnly,
+    /// Reject all requests
+    RejectAll,
+    /// Continue serving requests with potentially stale data
+    ServeStale,
+}
+
+impl Default for PartitionBehavior {
+    fn default() -> Self {
+        PartitionBehavior::ReadOnly
+    }
+}
+
+/// Consistency and partition handling configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ConsistencyConfig {
+    /// Minimum nodes required for write operations
+    #[serde(default)]
+    pub min_nodes_for_write: WriteQuorum,
+
+    /// Behavior when the cluster is partitioned (no quorum)
+    #[serde(default)]
+    pub partition_behavior: PartitionBehavior,
+
+    /// Allow reading stale data during partition
+    #[serde(default = "default_allow_stale_reads")]
+    pub allow_stale_reads: bool,
+
+    /// Maximum age of stale data to serve (in seconds)
+    #[serde(default = "default_stale_read_max_age")]
+    pub stale_read_max_age_secs: u64,
+
+    /// Enable automatic partition healing
+    #[serde(default = "default_auto_healing")]
+    pub auto_healing: bool,
+
+    /// Conflict resolution strategy
+    #[serde(default)]
+    pub conflict_resolution: ConflictResolution,
+}
+
+fn default_allow_stale_reads() -> bool {
+    true
+}
+
+fn default_stale_read_max_age() -> u64 {
+    30 // 30 seconds
+}
+
+fn default_auto_healing() -> bool {
+    true
+}
+
+impl Default for ConsistencyConfig {
+    fn default() -> Self {
+        Self {
+            min_nodes_for_write: WriteQuorum::default(),
+            partition_behavior: PartitionBehavior::default(),
+            allow_stale_reads: default_allow_stale_reads(),
+            stale_read_max_age_secs: default_stale_read_max_age(),
+            auto_healing: default_auto_healing(),
+            conflict_resolution: ConflictResolution::default(),
+        }
+    }
+}
+
+/// Strategy for resolving conflicting writes during partition healing
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConflictResolution {
+    /// Use the write with the latest timestamp (simple but may lose data)
+    LastWriteWins,
+    /// Flag conflicts for manual resolution
+    Manual,
+    /// Merge conflicting values (application-specific)
+    Merge,
+}
+
+impl Default for ConflictResolution {
+    fn default() -> Self {
+        ConflictResolution::LastWriteWins
     }
 }

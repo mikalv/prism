@@ -27,6 +27,7 @@ pub mod discovery;
 pub mod error;
 pub mod health;
 pub mod metrics;
+pub mod partition;
 pub mod placement;
 pub mod rebalance;
 pub mod service;
@@ -37,10 +38,14 @@ mod client;
 mod server;
 
 pub use client::ClusterClient;
-pub use config::{ClusterConfig, ClusterTlsConfig, FailureAction, HealthConfig, NodeTopology, RebalancingConfig};
+pub use config::{
+    ClusterConfig, ClusterTlsConfig, ConflictResolution, ConsistencyConfig, FailureAction,
+    HealthConfig, NodeTopology, PartitionBehavior, RebalancingConfig, WriteQuorum,
+};
 pub use discovery::{ClusterEvent, DiscoveredNode, DiscoveryConfig, DnsDiscovery, NodeDiscovery, StaticDiscovery};
 pub use error::ClusterError;
 pub use health::{ClusterHealth, HealthChecker, HealthEvent, HealthState, NodeHealthInfo};
+pub use partition::{PartitionAwareOp, PartitionDetector, PartitionError, PartitionEvent, PartitionState};
 pub use placement::{
     BalanceFactor, ClusterState, ClusterStateSnapshot, NodeInfo, NodeState, PlacementDecision,
     PlacementError, PlacementStrategy, ReplicaRole, ShardAssignment, ShardState, SpreadLevel,
