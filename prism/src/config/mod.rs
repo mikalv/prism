@@ -34,6 +34,10 @@ pub struct Config {
     /// Cluster configuration for inter-node communication
     #[serde(default)]
     pub cluster: ClusterConfig,
+
+    /// Index Lifecycle Management configuration
+    #[serde(default)]
+    pub ilm: crate::ilm::IlmConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -408,6 +412,7 @@ impl Default for Config {
             security: SecurityConfig::default(),
             observability: ObservabilityConfig::default(),
             cluster: ClusterConfig::default(),
+            ilm: crate::ilm::IlmConfig::default(),
         }
     }
 }

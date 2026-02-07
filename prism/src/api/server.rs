@@ -63,6 +63,7 @@ pub struct AppState {
     pub pipeline_registry: Arc<PipelineRegistry>,
     pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
     pub security_config: Arc<RwLock<SecurityConfig>>,
+    pub ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
 }
 
 /// Handle for reloading server configuration at runtime (via SIGHUP)
@@ -108,6 +109,7 @@ pub struct ApiServer {
     config_reloader: ConfigReloader,
     pipeline_registry: Arc<PipelineRegistry>,
     metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+    ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
 }
 
 impl ApiServer {
@@ -163,7 +165,14 @@ impl ApiServer {
             config_reloader,
             pipeline_registry: Arc::new(pipeline_registry),
             metrics_handle: None,
+            ilm_manager: None,
         }
+    }
+
+    /// Set the ILM manager for lifecycle management
+    pub fn with_ilm(mut self, ilm_manager: Arc<crate::ilm::IlmManager>) -> Self {
+        self.ilm_manager = Some(ilm_manager);
+        self
     }
 
     /// Get a handle for reloading configuration at runtime
@@ -319,6 +328,13 @@ impl ApiServer {
             pipeline_registry: self.pipeline_registry.clone(),
             metrics_handle: self.metrics_handle.clone(),
             security_config: self.security_config.clone(),
+            ilm_manager: self.ilm_manager.clone(),
+        };
+
+        // ILM state for ILM routes
+        let ilm_state = crate::api::routes::IlmAppState {
+            manager: self.manager.clone(),
+            ilm_manager: self.ilm_manager.clone(),
         };
 
         // Pipeline-aware routes that need AppState
@@ -415,6 +431,38 @@ impl ApiServer {
             .route("/sse", get(Self::sse_handler).post(Self::sse_post_handler))
             .with_state(app_state);
 
+        // ILM routes (Issue #45)
+        let ilm_routes = Router::new()
+            // Policy management
+            .route("/_ilm/policy", get(crate::api::routes::list_ilm_policies))
+            .route(
+                "/_ilm/policy/:name",
+                get(crate::api::routes::get_ilm_policy)
+                    .put(crate::api::routes::create_ilm_policy)
+                    .delete(crate::api::routes::delete_ilm_policy),
+            )
+            // Index management
+            .route("/_ilm/status", get(crate::api::routes::get_ilm_status))
+            .route(
+                "/:collection/_ilm/explain",
+                get(crate::api::routes::ilm_explain),
+            )
+            .route(
+                "/:index/_rollover",
+                post(crate::api::routes::ilm_rollover),
+            )
+            .route(
+                "/:collection/_ilm/move/:phase",
+                post(crate::api::routes::ilm_move_phase),
+            )
+            .route(
+                "/:collection/_ilm/attach",
+                post(crate::api::routes::ilm_attach_policy),
+            )
+            // Alias management
+            .route("/_aliases", get(crate::api::routes::list_aliases).put(crate::api::routes::update_aliases))
+            .with_state(ilm_state);
+
         // CORS configuration from config file
         // Dashboard runs on different port (e.g., localhost:5173)
         let cors = self.build_cors_layer();
@@ -424,6 +472,7 @@ impl ApiServer {
             .merge(legacy_routes)
             .merge(pipeline_routes)
             .merge(mcp_routes)
+            .merge(ilm_routes)
             .layer(cors)
             .layer(axum::middleware::from_fn(metrics_middleware))
             .layer(TraceLayer::new_for_http());

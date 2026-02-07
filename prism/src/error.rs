@@ -43,6 +43,18 @@ pub enum Error {
 
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+
+    #[error("ILM error: {0}")]
+    Ilm(String),
+
+    #[error("Index is read-only: {0}")]
+    ReadOnly(String),
+
+    #[error("Alias not found: {0}")]
+    AliasNotFound(String),
+
+    #[error("ILM policy not found: {0}")]
+    PolicyNotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

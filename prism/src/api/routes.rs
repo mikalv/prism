@@ -1046,3 +1046,240 @@ pub async fn multi_index_search(
         }
     }
 }
+
+// ============================================================================
+// ILM API (Issue #45)
+// ============================================================================
+
+use crate::ilm::{
+    IlmExplain, IlmIndexStatus, IlmManager, IlmPolicy, Phase, RolloverResult, TransitionResult,
+};
+
+/// ILM-enabled AppState with IlmManager
+#[derive(Clone)]
+pub struct IlmAppState {
+    pub manager: Arc<CollectionManager>,
+    pub ilm_manager: Option<Arc<IlmManager>>,
+}
+
+/// GET /_ilm/policy - List all ILM policies
+pub async fn list_ilm_policies(
+    State(state): State<IlmAppState>,
+) -> Result<Json<Vec<IlmPolicy>>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let policies = ilm.list_policies().await;
+    Ok(Json(policies))
+}
+
+/// GET /_ilm/policy/:name - Get a specific policy
+pub async fn get_ilm_policy(
+    Path(name): Path<String>,
+    State(state): State<IlmAppState>,
+) -> Result<Json<IlmPolicy>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let policy = ilm.get_policy(&name).await.ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(policy))
+}
+
+/// PUT /_ilm/policy/:name - Create or update a policy
+#[derive(Deserialize)]
+pub struct CreatePolicyRequest {
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub rollover_max_size: Option<String>,
+    #[serde(default)]
+    pub rollover_max_age: Option<String>,
+    #[serde(default)]
+    pub rollover_max_docs: Option<usize>,
+    #[serde(default)]
+    pub phases: crate::ilm::config::IlmPhasesConfig,
+}
+
+pub async fn create_ilm_policy(
+    Path(name): Path<String>,
+    State(state): State<IlmAppState>,
+    Json(request): Json<CreatePolicyRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    let config = crate::ilm::IlmPolicyConfig {
+        description: request.description.unwrap_or_default(),
+        rollover_max_size: request.rollover_max_size,
+        rollover_max_age: request.rollover_max_age,
+        rollover_max_docs: request.rollover_max_docs,
+        phases: request.phases,
+    };
+
+    let policy = config.to_policy(name);
+    ilm.upsert_policy(policy)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create ILM policy: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(StatusCode::CREATED)
+}
+
+/// DELETE /_ilm/policy/:name - Delete a policy
+pub async fn delete_ilm_policy(
+    Path(name): Path<String>,
+    State(state): State<IlmAppState>,
+) -> Result<StatusCode, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    ilm.delete_policy(&name)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete ILM policy: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /_ilm/status - Get status of all managed indexes
+pub async fn get_ilm_status(
+    State(state): State<IlmAppState>,
+) -> Result<Json<Vec<IlmIndexStatus>>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let status = ilm.get_status().await;
+    Ok(Json(status))
+}
+
+/// GET /:index/_ilm/explain - Explain ILM state for an index
+pub async fn ilm_explain(
+    Path(collection): Path<String>,
+    State(state): State<IlmAppState>,
+) -> Result<Json<IlmExplain>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    ilm.explain(&collection)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("ILM explain error: {:?}", e);
+            StatusCode::NOT_FOUND
+        })
+}
+
+/// POST /:index/_rollover - Trigger manual rollover
+pub async fn ilm_rollover(
+    Path(index): Path<String>,
+    State(state): State<IlmAppState>,
+) -> Result<Json<RolloverResult>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    ilm.rollover(&index)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("ILM rollover error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+/// POST /:index/_ilm/move/:phase - Force phase transition
+pub async fn ilm_move_phase(
+    Path((collection, phase_str)): Path<(String, String)>,
+    State(state): State<IlmAppState>,
+) -> Result<Json<TransitionResult>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    let phase: Phase = phase_str.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    ilm.move_to_phase(&collection, phase)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("ILM move phase error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+/// POST /:index/_ilm/attach - Attach an ILM policy to a collection
+#[derive(Deserialize)]
+pub struct AttachPolicyRequest {
+    pub policy: String,
+}
+
+pub async fn ilm_attach_policy(
+    Path(collection): Path<String>,
+    State(state): State<IlmAppState>,
+    Json(request): Json<AttachPolicyRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    // Extract index name from collection name (e.g., "logs-2026.01.29-000001" -> "logs")
+    let index_name = collection.split('-').next().unwrap_or(&collection);
+
+    ilm.attach_policy(index_name, &collection, &request.policy)
+        .await
+        .map_err(|e| {
+            tracing::error!("ILM attach policy error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(StatusCode::OK)
+}
+
+/// GET /_aliases - List all aliases
+pub async fn list_aliases(
+    State(state): State<IlmAppState>,
+) -> Result<Json<Vec<crate::ilm::IndexAlias>>, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let aliases = ilm.alias_manager().list().await;
+    Ok(Json(aliases))
+}
+
+/// Alias update action
+#[derive(Deserialize)]
+pub struct AliasAction {
+    #[serde(default)]
+    pub add: Option<AliasActionParams>,
+    #[serde(default)]
+    pub remove: Option<AliasActionParams>,
+}
+
+#[derive(Deserialize)]
+pub struct AliasActionParams {
+    pub alias: String,
+    pub index: String,
+}
+
+/// PUT /_aliases - Bulk alias updates
+#[derive(Deserialize)]
+pub struct BulkAliasRequest {
+    pub actions: Vec<AliasAction>,
+}
+
+pub async fn update_aliases(
+    State(state): State<IlmAppState>,
+    Json(request): Json<BulkAliasRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+
+    let mut adds = Vec::new();
+    let mut removes = Vec::new();
+
+    for action in request.actions {
+        if let Some(add) = action.add {
+            adds.push((add.alias, add.index));
+        }
+        if let Some(remove) = action.remove {
+            removes.push((remove.alias, remove.index));
+        }
+    }
+
+    ilm.alias_manager()
+        .atomic_update(adds, removes)
+        .await
+        .map_err(|e| {
+            tracing::error!("Alias update error: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(StatusCode::OK)
+}

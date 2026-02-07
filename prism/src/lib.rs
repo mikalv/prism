@@ -6,6 +6,7 @@ pub mod collection;
 pub mod config;
 pub mod embedding;
 pub mod error;
+pub mod ilm;
 pub mod mcp;
 pub mod migration;
 pub mod pipeline;

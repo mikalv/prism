@@ -65,7 +65,7 @@ async fn test_full_migration_flow() {
         let addr = listener.local_addr().unwrap();
         println!("Test server listening on: {}", addr);
 
-        axum::serve(listener, api.router()).await.unwrap();
+        axum::serve(listener, api.router().await).await.unwrap();
     });
 
     // Give server time to start

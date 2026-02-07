@@ -34,6 +34,8 @@ async fn test_index_with_embedding_field() {
         storage: Default::default(),
         system_fields: Default::default(),
         hybrid: None,
+        replication: None,
+        ilm_policy: None,
     };
     backend
         .initialize("test_collection", &schema)

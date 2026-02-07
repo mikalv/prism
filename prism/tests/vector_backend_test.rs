@@ -34,6 +34,8 @@ async fn test_initialize_collection() {
         storage: Default::default(),
         system_fields: Default::default(),
         hybrid: None,
+        replication: None,
+        ilm_policy: None,
     };
 
     backend.initialize("test", &schema).await.unwrap();
@@ -75,6 +77,8 @@ async fn test_index_and_search() {
         storage: Default::default(),
         system_fields: Default::default(),
         hybrid: None,
+        replication: None,
+        ilm_policy: None,
     };
 
     backend.initialize("test2", &schema).await.unwrap();

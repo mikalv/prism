@@ -136,14 +136,46 @@ async fn main() -> Result<()> {
     let pipeline_registry = prism::pipeline::registry::PipelineRegistry::load(&pipelines_dir)?;
     tracing::info!("Loaded ingest pipelines from {}", pipelines_dir.display());
 
+    // Create ILM manager if enabled
+    let ilm_manager = if config.ilm.enabled {
+        tracing::info!("ILM enabled, initializing manager...");
+        match prism::ilm::IlmManager::new(
+            manager.clone(),
+            &config.ilm,
+            &config.storage.data_dir,
+        )
+        .await
+        {
+            Ok(ilm) => {
+                let ilm = std::sync::Arc::new(ilm);
+                tracing::info!(
+                    "ILM manager initialized ({} policies)",
+                    config.ilm.policies.len()
+                );
+                Some(ilm)
+            }
+            Err(e) => {
+                tracing::error!("Failed to initialize ILM manager: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Create server
-    let server = prism::api::ApiServer::with_pipelines(
+    let mut server = prism::api::ApiServer::with_pipelines(
         manager,
         config.server.cors.clone(),
         config.security.clone(),
         pipeline_registry,
     )
     .with_metrics(metrics_handle);
+
+    // Add ILM manager if available
+    if let Some(ref ilm) = ilm_manager {
+        server = server.with_ilm(ilm.clone());
+    }
 
     // Get config reloader for SIGHUP handling
     let config_reloader = server.config_reloader();
@@ -197,6 +229,20 @@ async fn main() -> Result<()> {
             }
         });
         tracing::info!("SIGHUP handler registered - send SIGHUP to reload security config");
+    }
+
+    // Start ILM background service if enabled
+    if let Some(ref ilm) = ilm_manager {
+        let ilm_clone = ilm.clone();
+        tokio::spawn(async move {
+            if let Err(e) = ilm_clone.start().await {
+                tracing::error!("ILM manager error: {}", e);
+            }
+        });
+        tracing::info!(
+            "ILM background service started (check interval: {}s)",
+            config.ilm.check_interval_secs
+        );
     }
 
     // Start cluster RPC server if enabled

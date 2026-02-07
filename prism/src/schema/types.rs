@@ -38,6 +38,10 @@ pub struct CollectionSchema {
     /// Replication configuration for distributed deployments
     #[serde(default)]
     pub replication: Option<ReplicationConfig>,
+
+    /// ILM policy name for index lifecycle management
+    #[serde(default)]
+    pub ilm_policy: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

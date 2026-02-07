@@ -29,7 +29,7 @@ async fn setup_server(security: SecurityConfig) -> (TempDir, String) {
     let url = format!("http://{}", addr);
 
     tokio::spawn(async move {
-        axum::serve(listener, server.router()).await.unwrap();
+        axum::serve(listener, server.router().await).await.unwrap();
     });
 
     sleep(Duration::from_millis(50)).await;

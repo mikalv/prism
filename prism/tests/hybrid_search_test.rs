@@ -48,6 +48,8 @@ async fn test_hybrid_merge_behaviour() {
         storage: Default::default(),
         system_fields: Default::default(),
         hybrid: None,
+        replication: None,
+        ilm_policy: None,
     };
 
     text.initialize("col", &schema).await.unwrap();
