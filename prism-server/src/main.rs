@@ -281,16 +281,35 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Serve with optional ES-compat routes
-    #[cfg(feature = "es-compat")]
+    // Build extension router with optional features
+    let mut extension_router = axum::Router::new();
+
+    // Add UI routes if enabled
+    #[cfg(feature = "ui")]
     {
-        let es_router = axum::Router::new()
-            .nest("/_elastic", prism_es_compat::es_compat_router(server.manager()));
-        tracing::info!("Elasticsearch compatibility enabled at /_elastic/*");
-        server.serve_with_extension(&addr, tls, es_router).await?;
+        extension_router = extension_router.nest("/ui", prism_ui::ui_router());
+        if std::path::Path::new("webui").is_dir() {
+            tracing::info!("Web UI enabled at /ui (dev mode: serving from ./webui/)");
+        } else {
+            tracing::info!("Web UI enabled at /ui (embedded assets)");
+        }
     }
 
-    #[cfg(not(feature = "es-compat"))]
+    // Add ES-compat routes if enabled
+    #[cfg(feature = "es-compat")]
+    {
+        extension_router = extension_router
+            .nest("/_elastic", prism_es_compat::es_compat_router(server.manager()));
+        tracing::info!("Elasticsearch compatibility enabled at /_elastic/*");
+    }
+
+    // Serve with extensions if any are enabled
+    #[cfg(any(feature = "ui", feature = "es-compat"))]
+    {
+        server.serve_with_extension(&addr, tls, extension_router).await?;
+    }
+
+    #[cfg(not(any(feature = "ui", feature = "es-compat")))]
     {
         server.serve(&addr, tls).await?;
     }

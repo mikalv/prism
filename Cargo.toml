@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["prism", "prism-server", "prism-cli", "prism-storage", "prism-importer", "prism-cluster", "prism-es-compat", "xtask"]
+members = ["prism", "prism-server", "prism-cli", "prism-storage", "prism-importer", "prism-cluster", "prism-es-compat", "prism-ui", "xtask"]
 
 [workspace.package]
 version = "0.5.0"
@@ -108,3 +108,4 @@ prism-storage = { path = "prism-storage" }
 prism-importer = { path = "prism-importer" }
 prism-cluster = { path = "prism-cluster" }
 prism-es-compat = { path = "prism-es-compat" }
+prism-ui = { path = "prism-ui" }

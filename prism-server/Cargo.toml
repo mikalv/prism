@@ -14,11 +14,13 @@ provider-onnx-real = ["prism/provider-onnx-real"]
 all-providers = ["prism/all-providers"]
 cluster = ["dep:prism-cluster"]
 es-compat = ["dep:prism-es-compat"]
+ui = ["dep:prism-ui"]
 
 [dependencies]
 prism = { workspace = true }
 prism-cluster = { workspace = true, optional = true }
 prism-es-compat = { workspace = true, optional = true }
+prism-ui = { workspace = true, optional = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
