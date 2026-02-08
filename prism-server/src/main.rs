@@ -27,6 +27,14 @@ struct Args {
     /// Data directory path (env: PRISM_DATA_DIR)
     #[arg(long, default_value = "data", env = "PRISM_DATA_DIR")]
     data_dir: String,
+
+    /// Logs directory path - overrides config (env: PRISM_LOG_DIR)
+    #[arg(long, env = "PRISM_LOG_DIR")]
+    log_dir: Option<String>,
+
+    /// Embedding cache directory - overrides config (env: PRISM_CACHE_DIR)
+    #[arg(long, env = "PRISM_CACHE_DIR")]
+    cache_dir: Option<String>,
 }
 
 #[tokio::main]
@@ -72,6 +80,14 @@ async fn main() -> Result<()> {
     tracing::info!("Starting Prism server on {}:{}", args.host, args.port);
     tracing::info!("Schemas dir: {}", args.schemas_dir);
     tracing::info!("Data dir: {}", args.data_dir);
+    if let Some(ref log_dir) = args.log_dir {
+        tracing::info!("Log dir: {}", log_dir);
+        std::fs::create_dir_all(log_dir)?;
+    }
+    if let Some(ref cache_dir) = args.cache_dir {
+        tracing::info!("Cache dir: {}", cache_dir);
+        std::fs::create_dir_all(cache_dir)?;
+    }
 
     config.ensure_dirs()?;
     let data_path = Path::new(&args.data_dir);
@@ -91,10 +107,12 @@ async fn main() -> Result<()> {
         tracing::info!("Setting up embedding provider...");
         match prism::embedding::create_provider(&config.embedding.provider).await {
             Ok(provider) => {
-                let cache_path = config
-                    .embedding
+                // Priority: CLI arg > env var > config > default
+                let cache_path = args
                     .cache_dir
-                    .clone()
+                    .as_ref()
+                    .map(std::path::PathBuf::from)
+                    .or_else(|| config.embedding.cache_dir.clone())
                     .unwrap_or_else(|| config.storage.data_dir.join("embedding_cache.db"));
                 let cache = std::sync::Arc::new(
                     prism::cache::SqliteCache::new(cache_path.to_str().unwrap_or("embedding_cache.db"))
@@ -106,7 +124,7 @@ async fn main() -> Result<()> {
                     prism::cache::KeyStrategy::ModelText,
                 ));
                 vector_backend.set_embedding_provider(cached_provider);
-                tracing::info!("Embedding provider configured successfully");
+                tracing::info!("Embedding provider configured (cache: {})", cache_path.display());
             }
             Err(e) => {
                 tracing::warn!("Failed to create embedding provider: {}. Vector search with auto-embedding will not work.", e);
