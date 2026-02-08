@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: rust-1.93-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y musl-tools musl-dev gcc-aarch64-linux-gnu
+
+      - name: Add targets
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          rustup target add aarch64-unknown-linux-gnu
+
+      - name: Build x86_64-musl (static)
+        run: cargo build --release --target x86_64-unknown-linux-musl -p prism-server -p prism-cli -p prism-importer
+
+      - name: Create x86_64 dist
+        run: cargo xtask dist --target x86_64-unknown-linux-musl
+
+      - name: Upload x86_64-musl
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: dist-linux-x86_64-static
+          path: dist/*.tar.gz
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build aarch64
+        run: |
+          source $HOME/.cargo/env
+          cargo build --release -p prism-server -p prism-cli -p prism-importer
+
+      - name: Create dist
+        run: |
+          source $HOME/.cargo/env
+          cargo xtask dist
+
+      - name: Upload macOS
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: dist-darwin-aarch64
+          path: dist/*.tar.gz
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows10msvc2022
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+          .\rustup-init.exe -y
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+
+      - name: Build
+        run: |
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          cargo build --release -p prism-server -p prism-cli -p prism-importer
+
+      - name: Create dist
+        run: |
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          cargo xtask dist --format zip
+
+      - name: Upload Windows
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: dist-windows-x86_64
+          path: dist/*.zip
+
+  create-release:
+    name: Create Release
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: rust-1.93-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: https://data.forgejo.org/actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create checksums
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz *.zip 2>/dev/null > SHA256SUMS.txt || true
+          cat SHA256SUMS.txt
+
+      - name: Create release
+        uses: https://data.forgejo.org/actions/forgejo-release@v2
+        with:
+          direction: upload
+          tag: ${{ github.ref_name }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          release-dir: artifacts
+          release-notes: |
+            ## Prism ${{ github.ref_name }}
+
+            ### Downloads
+
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Linux | x86_64 (static) | `prism-${{ github.ref_name }}-linux-x86_64-static.tar.gz` |
+            | macOS | aarch64 (Apple Silicon) | `prism-${{ github.ref_name }}-darwin-aarch64.tar.gz` |
+            | Windows | x86_64 | `prism-${{ github.ref_name }}-windows-x86_64.zip` |
+
+            ### Checksums
+
+            See `SHA256SUMS.txt` for file checksums.

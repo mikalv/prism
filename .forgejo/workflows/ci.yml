@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test
+    runs-on: rust-1.93-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Run tests
+        run: cargo test --workspace
+
+  fmt:
+    name: Format
+    runs-on: rust-1.93-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: rust-1.93-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  build-linux:
+    name: Build Linux
+    runs-on: rust-1.93-bookworm
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install musl tools
+        run: |
+          apt-get update
+          apt-get install -y musl-tools musl-dev
+
+      - name: Add targets
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          rustup target add aarch64-unknown-linux-musl
+
+      - name: Build x86_64-musl
+        run: cargo build --release --target x86_64-unknown-linux-musl -p prism-server -p prism-cli
+
+      - name: Upload x86_64-musl
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: prism-linux-x86_64-static
+          path: |
+            target/x86_64-unknown-linux-musl/release/prism-server
+            target/x86_64-unknown-linux-musl/release/prism
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build aarch64
+        run: |
+          source $HOME/.cargo/env
+          cargo build --release -p prism-server -p prism-cli
+
+      - name: Upload macOS aarch64
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: prism-darwin-aarch64
+          path: |
+            target/release/prism-server
+            target/release/prism
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows10msvc2022
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+          .\rustup-init.exe -y
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+
+      - name: Build
+        run: |
+          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          cargo build --release -p prism-server -p prism-cli
+
+      - name: Upload Windows x86_64
+        uses: https://data.forgejo.org/actions/upload-artifact@v4
+        with:
+          name: prism-windows-x86_64
+          path: |
+            target/release/prism-server.exe
+            target/release/prism.exe
