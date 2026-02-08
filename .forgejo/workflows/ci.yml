@@ -28,7 +28,7 @@ jobs:
     runs-on: rust-1.93-bookworm
     steps:
       - name: Install system dependencies
-        run: apt-get update && apt-get install -y git
+        run: apt-get update && apt-get install -y git nodejs npm
 
       - uses: https://data.forgejo.org/actions/checkout@v4
 
