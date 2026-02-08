@@ -8,24 +8,24 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[command(about = "Prism hybrid search server")]
 #[command(version)]
 struct Args {
-    /// Configuration file path
-    #[arg(short, long, default_value = "prism.toml")]
+    /// Configuration file path (env: PRISM_CONFIG_PATH)
+    #[arg(short, long, default_value = "prism.toml", env = "PRISM_CONFIG_PATH")]
     config: String,
 
-    /// Host to bind to
-    #[arg(long, default_value = "127.0.0.1")]
+    /// Host to bind to (env: PRISM_HOST)
+    #[arg(long, default_value = "127.0.0.1", env = "PRISM_HOST")]
     host: String,
 
-    /// Port to listen on
-    #[arg(short, long, default_value = "3080")]
+    /// Port to listen on (env: PRISM_PORT)
+    #[arg(short, long, default_value = "3080", env = "PRISM_PORT")]
     port: u16,
 
-    /// Schemas directory path
-    #[arg(long, default_value = "schemas")]
+    /// Schemas directory path (env: PRISM_SCHEMAS_DIR)
+    #[arg(long, default_value = "schemas", env = "PRISM_SCHEMAS_DIR")]
     schemas_dir: String,
 
-    /// Data directory path
-    #[arg(long, default_value = "data")]
+    /// Data directory path (env: PRISM_DATA_DIR)
+    #[arg(long, default_value = "data", env = "PRISM_DATA_DIR")]
     data_dir: String,
 }
 
@@ -282,7 +282,7 @@ async fn main() -> Result<()> {
     }
 
     // Build extension router with optional features
-    let mut extension_router = axum::Router::new();
+    let mut extension_router: axum::Router<()> = axum::Router::new();
 
     // Add UI routes if enabled
     #[cfg(feature = "ui")]
