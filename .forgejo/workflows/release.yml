@@ -12,12 +12,10 @@ jobs:
     name: Build Linux
     runs-on: rust-1.93-bookworm
     steps:
-      - uses: https://data.forgejo.org/actions/checkout@v4
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y git nodejs npm musl-tools musl-dev gcc-aarch64-linux-gnu
 
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y musl-tools musl-dev gcc-aarch64-linux-gnu
+      - uses: https://data.forgejo.org/actions/checkout@v4
 
       - name: Add targets
         run: |
@@ -96,6 +94,9 @@ jobs:
     needs: [build-linux, build-macos, build-windows]
     runs-on: rust-1.93-bookworm
     steps:
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y git
+
       - uses: https://data.forgejo.org/actions/checkout@v4
 
       - name: Download all artifacts
