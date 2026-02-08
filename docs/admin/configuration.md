@@ -118,10 +118,60 @@ See [Security](security.md) for API keys, RBAC, and audit logging.
 
 ## Environment Variables
 
+Prism supports configuration via environment variables. These override CLI flags and config file settings.
+
+### Server Configuration
+
+| Variable | CLI Flag | Default | Description |
+|----------|----------|---------|-------------|
+| `PRISM_CONFIG_PATH` | `-c, --config` | `prism.toml` | Configuration file path |
+| `PRISM_HOST` | `--host` | `127.0.0.1` | Bind host address |
+| `PRISM_PORT` | `-p, --port` | `3080` | Listen port |
+| `PRISM_DATA_DIR` | `--data-dir` | `data` | Data directory |
+| `PRISM_SCHEMAS_DIR` | `--schemas-dir` | `schemas` | Schemas directory |
+| `PRISM_LOG_DIR` | `--log-dir` | — | Logs directory (optional) |
+| `PRISM_CACHE_DIR` | `--cache-dir` | — | Embedding cache directory |
+
+### Logging Configuration
+
 | Variable | Description |
 |----------|-------------|
 | `RUST_LOG` | Override log level (e.g., `info,prism=debug`) |
 | `LOG_FORMAT` | Override log format (`pretty` or `json`) |
+
+### Priority Order
+
+Configuration is resolved in this order (highest priority first):
+
+1. **CLI arguments** — `prism-server --port 8080`
+2. **Environment variables** — `PRISM_PORT=8080`
+3. **Config file** — `prism.toml`
+4. **Defaults**
+
+### Example: Docker Environment
+
+```yaml
+environment:
+  - PRISM_CONFIG_PATH=/etc/prism/prism.toml
+  - PRISM_DATA_DIR=/var/lib/prism/data
+  - PRISM_LOG_DIR=/var/log/prism
+  - PRISM_CACHE_DIR=/var/cache/prism/embeddings
+  - RUST_LOG=info,prism=debug
+  - LOG_FORMAT=json
+```
+
+### Example: Systemd Service
+
+```ini
+[Service]
+Environment="PRISM_CONFIG_PATH=/etc/prism/prism.toml"
+Environment="PRISM_DATA_DIR=/var/lib/prism/data"
+Environment="PRISM_LOG_DIR=/var/log/prism"
+Environment="PRISM_CACHE_DIR=/var/cache/prism"
+Environment="RUST_LOG=info"
+Environment="LOG_FORMAT=json"
+ExecStart=/usr/local/bin/prism-server
+```
 
 ## Directory Layout
 

@@ -2,6 +2,39 @@
 
 Guide for deploying Prism in production environments.
 
+## Build Features
+
+Prism uses Cargo feature flags to include optional components:
+
+| Feature | Description |
+|---------|-------------|
+| `full` | All embedding providers and storage backends |
+| `ui` | Embedded web UI at `/ui/` |
+| `es-compat` | Elasticsearch-compatible API at `/_elastic/` |
+| `cluster` | Clustering and federation support |
+| `storage-s3` | S3/MinIO storage backend |
+| `provider-openai` | OpenAI embeddings |
+| `provider-ollama` | Ollama embeddings |
+
+### Build Examples
+
+```bash
+# Minimal build (text search only)
+cargo build -p prism-server --release
+
+# With embedded web UI
+cargo build -p prism-server --release --features ui
+
+# Full-featured with UI
+cargo build -p prism-server --release --features "full,ui"
+
+# API server with ES compatibility
+cargo build -p prism-server --release --features "full,es-compat"
+
+# Everything
+cargo build -p prism-server --release --features "full,ui,es-compat,cluster"
+```
+
 ## Pre-Flight Checklist
 
 - [ ] TLS configured (or behind TLS-terminating proxy)
@@ -39,13 +72,23 @@ services:
     ports:
       - "3080:3080"
     volumes:
-      - prism-data:/data
+      - prism-data:/var/lib/prism
+      - prism-logs:/var/log/prism
+      - prism-cache:/var/cache/prism
       - ./prism.toml:/etc/prism/prism.toml:ro
-      - ./schemas:/data/schemas:ro
+      - ./schemas:/etc/prism/schemas:ro
     environment:
+      # Server configuration
+      - PRISM_CONFIG_PATH=/etc/prism/prism.toml
+      - PRISM_DATA_DIR=/var/lib/prism/data
+      - PRISM_SCHEMAS_DIR=/etc/prism/schemas
+      - PRISM_LOG_DIR=/var/log/prism
+      - PRISM_CACHE_DIR=/var/cache/prism/embeddings
+      - PRISM_HOST=0.0.0.0
+      - PRISM_PORT=3080
+      # Logging
       - RUST_LOG=info,prism=debug
       - LOG_FORMAT=json
-    command: ["prism-server", "-c", "/etc/prism/prism.toml", "--host", "0.0.0.0"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3080/health"]
@@ -56,6 +99,8 @@ services:
 
 volumes:
   prism-data:
+  prism-logs:
+  prism-cache:
 ```
 
 ### Production Configuration
@@ -134,10 +179,23 @@ spec:
           ports:
             - containerPort: 3080
           env:
+            # Server paths
+            - name: PRISM_CONFIG_PATH
+              value: "/etc/prism/prism.toml"
+            - name: PRISM_DATA_DIR
+              value: "/data"
+            - name: PRISM_LOG_DIR
+              value: "/data/logs"
+            - name: PRISM_CACHE_DIR
+              value: "/data/cache"
+            - name: PRISM_HOST
+              value: "0.0.0.0"
+            # Logging
             - name: RUST_LOG
               value: "info,prism=debug"
             - name: LOG_FORMAT
               value: "json"
+            # Secrets
             - name: PRISM_ADMIN_KEY
               valueFrom:
                 secretKeyRef:

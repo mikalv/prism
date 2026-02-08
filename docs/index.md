@@ -74,6 +74,9 @@ graph TD
 - [Suggestions](guides/suggestions.md) — Autocomplete
 - [More Like This](guides/more-like-this.md) — Similar documents
 - [Ranking](guides/ranking.md) — Boosting, field weights, signals
+- [Web UI](guides/web-ui.md) — Embedded search interface
+- [Encryption](guides/encryption.md) — AES-256-GCM encryption at rest
+- [Export/Import](guides/export-import.md) — Backup and restore
 
 ## Quick Start
 
@@ -106,4 +109,4 @@ curl -X POST http://localhost:3080/collections/docs/search \
 
 ## Version
 
-This documentation covers Prism v0.3.0.
+This documentation covers Prism v0.5.0.
