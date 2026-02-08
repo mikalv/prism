@@ -1,3 +1,0 @@
-[submodule "websearch"]
-	path = websearch-ui
-	url = git@github.com:mikalv/websearch-ui.git

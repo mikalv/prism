@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+:root {
+  /* Layout */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Tema 1: Neutral (z.ai-inspirert) */
+.theme-neutral {
+  --accent: #6b7280;
+  --accent-hover: #4b5563;
+  --accent-subtle: #9ca3af;
+}
+
+.theme-neutral.light {
+  --bg-primary: #f4f6f8;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e5e7eb;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border: #e5e7eb;
+}
+
+.theme-neutral.dark {
+  --bg-primary: #141618;
+  --bg-secondary: #1e2022;
+  --bg-tertiary: #2a2d30;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a1a1a1;
+  --text-muted: #6b7280;
+  --border: #2a2d30;
+}
+
+/* Tema 2: Teal (Perplexity-inspirert) */
+.theme-teal {
+  --accent: #20b2aa;
+  --accent-hover: #1a9089;
+  --accent-subtle: #5cd5ce;
+}
+
+.theme-teal.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafa;
+  --bg-tertiary: #e6f3f2;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border: #e5e7eb;
+}
+
+.theme-teal.dark {
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #171717;
+  --bg-tertiary: #262626;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a1a1a1;
+  --text-muted: #6b7280;
+  --border: #262626;
+}
+
+/* Tema 3: Indigo (klassisk tech) */
+.theme-indigo {
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-subtle: #a5b4fc;
+}
+
+.theme-indigo.light {
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e0e7ff;
+  --text-primary: #1e1b4b;
+  --text-secondary: #4338ca;
+  --text-muted: #6b7280;
+  --border: #e0e7ff;
+}
+
+.theme-indigo.dark {
+  --bg-primary: #0c0a1d;
+  --bg-secondary: #1e1b4b;
+  --bg-tertiary: #312e81;
+  --text-primary: #e0e7ff;
+  --text-secondary: #a5b4fc;
+  --text-muted: #6b7280;
+  --border: #312e81;
+}
+
+/* Tema 4: Rose (soft modern) */
+.theme-rose {
+  --accent: #f43f5e;
+  --accent-hover: #e11d48;
+  --accent-subtle: #fda4af;
+}
+
+.theme-rose.light {
+  --bg-primary: #fff1f2;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #ffe4e6;
+  --text-primary: #1a1a1a;
+  --text-secondary: #be123c;
+  --text-muted: #9ca3af;
+  --border: #fecdd3;
+}
+
+.theme-rose.dark {
+  --bg-primary: #0f0506;
+  --bg-secondary: #1c1011;
+  --bg-tertiary: #2d1619;
+  --text-primary: #ffe4e6;
+  --text-secondary: #fda4af;
+  --text-muted: #6b7280;
+  --border: #2d1619;
+}
+
+/* Tema 5: Amber (warm) */
+.theme-amber {
+  --accent: #f59e0b;
+  --accent-hover: #d97706;
+  --accent-subtle: #fcd34d;
+}
+
+.theme-amber.light {
+  --bg-primary: #fffbeb;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #fef3c7;
+  --text-primary: #1a1a1a;
+  --text-secondary: #b45309;
+  --text-muted: #9ca3af;
+  --border: #fde68a;
+}
+
+.theme-amber.dark {
+  --bg-primary: #0f0a00;
+  --bg-secondary: #1c1408;
+  --bg-tertiary: #2d2210;
+  --text-primary: #fef3c7;
+  --text-secondary: #fcd34d;
+  --text-muted: #6b7280;
+  --border: #2d2210;
+}
+
+/* Tema 6: Emerald (nature) */
+.theme-emerald {
+  --accent: #10b981;
+  --accent-hover: #059669;
+  --accent-subtle: #6ee7b7;
+}
+
+.theme-emerald.light {
+  --bg-primary: #ecfdf5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #d1fae5;
+  --text-primary: #1a1a1a;
+  --text-secondary: #047857;
+  --text-muted: #9ca3af;
+  --border: #a7f3d0;
+}
+
+.theme-emerald.dark {
+  --bg-primary: #021f13;
+  --bg-secondary: #052e1c;
+  --bg-tertiary: #064e3b;
+  --text-primary: #d1fae5;
+  --text-secondary: #6ee7b7;
+  --text-muted: #6b7280;
+  --border: #064e3b;
+}
+
+/* Animations */
+@keyframes pulse-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out forwards;
+}
+
+.dot-spinner span {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.dot-spinner span:nth-child(1) {
+  animation-delay: 0ms;
+}
+.dot-spinner span:nth-child(2) {
+  animation-delay: 150ms;
+}
+.dot-spinner span:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+/* Default theme - classes set by useTheme hook, fallback values here */
+html {
+  --accent: #20b2aa;
+  --accent-hover: #1a9089;
+  --accent-subtle: #5cd5ce;
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #171717;
+  --bg-tertiary: #262626;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a1a1a1;
+  --text-muted: #6b7280;
+  --border: #262626;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
