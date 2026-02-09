@@ -32,6 +32,9 @@ jobs:
 
       - uses: https://data.forgejo.org/actions/checkout@v4
 
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -43,6 +46,9 @@ jobs:
         run: apt-get update && apt-get install -y git nodejs npm
 
       - uses: https://data.forgejo.org/actions/checkout@v4
+
+      - name: Install clippy
+        run: rustup component add clippy
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
