@@ -67,7 +67,7 @@ pub struct ClusterConfig {
 }
 
 fn default_node_id() -> String {
-    format!("node-{}", uuid::Uuid::new_v4().to_string()[..8].to_string())
+    format!("node-{}", &uuid::Uuid::new_v4().to_string()[..8])
 }
 
 fn default_bind_addr() -> String {
@@ -287,19 +287,15 @@ impl Default for RebalancingConfig {
 /// Action to take when a node fails
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FailureAction {
     /// Trigger shard rebalancing
+    #[default]
     Rebalance,
     /// Only emit alerts/metrics
     AlertOnly,
     /// Require manual intervention
     Manual,
-}
-
-impl Default for FailureAction {
-    fn default() -> Self {
-        FailureAction::Rebalance
-    }
 }
 
 /// Health check configuration
@@ -348,8 +344,10 @@ impl Default for HealthConfig {
 /// Minimum nodes required for write operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum WriteQuorum {
     /// Majority of nodes (n/2 + 1)
+    #[default]
     Quorum,
     /// All nodes must be available
     All,
@@ -357,12 +355,6 @@ pub enum WriteQuorum {
     Count(usize),
     /// Single node (no replication requirement)
     One,
-}
-
-impl Default for WriteQuorum {
-    fn default() -> Self {
-        WriteQuorum::Quorum
-    }
 }
 
 impl WriteQuorum {
@@ -390,19 +382,15 @@ impl WriteQuorum {
 /// Behavior when the cluster is partitioned
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PartitionBehavior {
     /// Accept reads but reject writes (safe default)
+    #[default]
     ReadOnly,
     /// Reject all requests
     RejectAll,
     /// Continue serving requests with potentially stale data
     ServeStale,
-}
-
-impl Default for PartitionBehavior {
-    fn default() -> Self {
-        PartitionBehavior::ReadOnly
-    }
 }
 
 /// Consistency and partition handling configuration
@@ -461,17 +449,13 @@ impl Default for ConsistencyConfig {
 /// Strategy for resolving conflicting writes during partition healing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ConflictResolution {
     /// Use the write with the latest timestamp (simple but may lose data)
+    #[default]
     LastWriteWins,
     /// Flag conflicts for manual resolution
     Manual,
     /// Merge conflicting values (application-specific)
     Merge,
-}
-
-impl Default for ConflictResolution {
-    fn default() -> Self {
-        ConflictResolution::LastWriteWins
-    }
 }

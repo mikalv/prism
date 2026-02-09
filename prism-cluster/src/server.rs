@@ -788,7 +788,7 @@ impl tokio::io::AsyncWrite for QuicBiStream {
     ) -> std::task::Poll<std::io::Result<usize>> {
         std::pin::Pin::new(&mut self.send)
             .poll_write(cx, buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .map_err(|e| std::io::Error::other(e))
     }
 
     fn poll_flush(

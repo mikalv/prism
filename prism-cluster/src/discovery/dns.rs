@@ -148,11 +148,9 @@ impl DnsDiscovery {
                 format!("{}:{}", dns_name, default_port)
             };
 
-            lookup_addr.to_socket_addrs().map(|addrs| {
-                addrs
-                    .map(|addr| DiscoveredNode::new(addr))
-                    .collect::<Vec<_>>()
-            })
+            lookup_addr
+                .to_socket_addrs()
+                .map(|addrs| addrs.map(DiscoveredNode::new).collect::<Vec<_>>())
         })
         .await
         .map_err(|e| ClusterError::Discovery(format!("DNS task failed: {}", e)))?;

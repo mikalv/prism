@@ -162,7 +162,7 @@ impl TantivyStorageAdapter {
                         .build()
                 })
                 .join()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Failed to create runtime"))??
+                .map_err(|_| io::Error::other("Failed to create runtime"))??
             }
             Err(_) => {
                 // Not in a runtime - create one directly
@@ -227,10 +227,7 @@ impl TantivyStorageAdapter {
         .map(|meta| meta.size as usize)
         .map_err(|e| match e {
             StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path.to_path_buf()),
-            _ => OpenReadError::wrap_io_error(
-                io::Error::new(io::ErrorKind::Other, e.to_string()),
-                path.to_path_buf(),
-            ),
+            _ => OpenReadError::wrap_io_error(io::Error::other(e.to_string()), path.to_path_buf()),
         })
     }
 }
@@ -307,7 +304,7 @@ impl FileHandle for StorageFileHandle {
             let data = storage
                 .read(&path)
                 .await
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| io::Error::other(e.to_string()))?;
 
             // Extract the requested range
             if range.end > data.len() {
@@ -401,7 +398,7 @@ impl TerminatingWrite for StorageWriteHandle {
             storage
                 .write(&path, Bytes::from(data))
                 .await
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+                .map_err(|e| io::Error::other(e.to_string()))
         })?;
 
         // Clean up local buffer
@@ -446,12 +443,7 @@ impl Directory for TantivyStorageAdapter {
             &self.runtime,
             async move { storage.exists(&storage_path).await },
         )
-        .map_err(|e| {
-            OpenReadError::wrap_io_error(
-                io::Error::new(io::ErrorKind::Other, e.to_string()),
-                path_buf,
-            )
-        })
+        .map_err(|e| OpenReadError::wrap_io_error(io::Error::other(e.to_string()), path_buf))
     }
 
     fn atomic_read(&self, path: &Path) -> Result<Vec<u8>, OpenReadError> {
@@ -467,10 +459,7 @@ impl Directory for TantivyStorageAdapter {
         .map(|b| b.to_vec())
         .map_err(|e| match e {
             StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path_buf),
-            _ => OpenReadError::wrap_io_error(
-                io::Error::new(io::ErrorKind::Other, e.to_string()),
-                path_buf,
-            ),
+            _ => OpenReadError::wrap_io_error(io::Error::other(e.to_string()), path_buf),
         })
     }
 
@@ -490,7 +479,7 @@ impl Directory for TantivyStorageAdapter {
             storage
                 .write(&storage_path, data_owned)
                 .await
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+                .map_err(|e| io::Error::other(e.to_string()))
         })?;
 
         // Update cache
@@ -512,7 +501,7 @@ impl Directory for TantivyStorageAdapter {
             async move { storage.delete(&storage_path).await },
         )
         .map_err(|e| DeleteError::IoError {
-            io_error: Arc::new(io::Error::new(io::ErrorKind::Other, e.to_string())),
+            io_error: Arc::new(io::Error::other(e.to_string())),
             filepath: path_buf,
         })?;
 

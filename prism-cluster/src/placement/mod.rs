@@ -35,8 +35,10 @@ use std::collections::HashMap;
 /// Level at which to spread replicas
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SpreadLevel {
     /// Spread across availability zones (strongest failure isolation)
+    #[default]
     Zone,
     /// Spread across racks within a zone
     Rack,
@@ -44,12 +46,6 @@ pub enum SpreadLevel {
     Region,
     /// No placement constraints
     None,
-}
-
-impl Default for SpreadLevel {
-    fn default() -> Self {
-        SpreadLevel::Zone
-    }
 }
 
 impl SpreadLevel {
@@ -68,8 +64,10 @@ impl SpreadLevel {
 /// Factor to consider when balancing shards across nodes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum BalanceFactor {
     /// Balance by number of shards on each node
+    #[default]
     ShardCount,
     /// Balance by disk usage
     DiskUsage,
@@ -77,12 +75,6 @@ pub enum BalanceFactor {
     IndexSize,
     /// Prefer nodes with SSD storage
     PreferSsd,
-}
-
-impl Default for BalanceFactor {
-    fn default() -> Self {
-        BalanceFactor::ShardCount
-    }
 }
 
 /// Placement strategy configuration
@@ -123,8 +115,10 @@ impl Default for PlacementStrategy {
 /// State of a shard in the cluster
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ShardState {
     /// Shard is being initialized
+    #[default]
     Initializing,
     /// Shard is active and serving requests
     Active,
@@ -136,12 +130,6 @@ pub enum ShardState {
     Deleting,
     /// Shard is in an error state
     Error,
-}
-
-impl Default for ShardState {
-    fn default() -> Self {
-        ShardState::Initializing
-    }
 }
 
 impl ShardState {
@@ -159,17 +147,13 @@ impl ShardState {
 /// Role of a shard replica
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ReplicaRole {
     /// Primary replica (handles writes and reads)
+    #[default]
     Primary,
     /// Replica (handles reads, receives replicated writes)
     Replica,
-}
-
-impl Default for ReplicaRole {
-    fn default() -> Self {
-        ReplicaRole::Primary
-    }
 }
 
 /// Assignment of a shard to a node

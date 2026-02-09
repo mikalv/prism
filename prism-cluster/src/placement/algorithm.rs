@@ -186,7 +186,7 @@ fn select_nodes_with_spread(
     strategy: &PlacementStrategy,
 ) -> Result<Vec<String>, PlacementError> {
     // Build a map of domain -> nodes for spread constraint
-    let domain_nodes = group_nodes_by_domain(nodes, strategy.spread_across);
+    let _domain_nodes = group_nodes_by_domain(nodes, strategy.spread_across);
 
     // Score all nodes
     let mut node_scores: Vec<(&NodeInfo, f64)> = nodes

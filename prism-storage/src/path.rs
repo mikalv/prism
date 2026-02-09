@@ -25,6 +25,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Backend type for storage organization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -51,15 +52,16 @@ impl fmt::Display for StorageBackend {
     }
 }
 
-impl StorageBackend {
-    /// Parse backend from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for StorageBackend {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "tantivy" | "text" => Some(StorageBackend::Tantivy),
-            "vector" | "hnsw" => Some(StorageBackend::Vector),
-            "graph" => Some(StorageBackend::Graph),
-            "meta" | "metadata" => Some(StorageBackend::Meta),
-            _ => None,
+            "tantivy" | "text" => Ok(StorageBackend::Tantivy),
+            "vector" | "hnsw" => Ok(StorageBackend::Vector),
+            "graph" => Ok(StorageBackend::Graph),
+            "meta" | "metadata" => Ok(StorageBackend::Meta),
+            _ => Err(format!("unknown storage backend: {}", s)),
         }
     }
 }
@@ -182,7 +184,7 @@ impl StoragePath {
         }
 
         let collection = parts[0].to_string();
-        let backend = StorageBackend::from_str(parts[1])?;
+        let backend = parts[1].parse::<StorageBackend>().ok()?;
 
         if parts.len() == 3 {
             // collection/backend/segment
@@ -287,17 +289,17 @@ mod tests {
     #[test]
     fn test_backend_from_str() {
         assert_eq!(
-            StorageBackend::from_str("tantivy"),
+            "tantivy".parse::<StorageBackend>().ok(),
             Some(StorageBackend::Tantivy)
         );
         assert_eq!(
-            StorageBackend::from_str("text"),
+            "text".parse::<StorageBackend>().ok(),
             Some(StorageBackend::Tantivy)
         );
         assert_eq!(
-            StorageBackend::from_str("VECTOR"),
+            "VECTOR".parse::<StorageBackend>().ok(),
             Some(StorageBackend::Vector)
         );
-        assert_eq!(StorageBackend::from_str("unknown"), None);
+        assert!("unknown".parse::<StorageBackend>().is_err());
     }
 }

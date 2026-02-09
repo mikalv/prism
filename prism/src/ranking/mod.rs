@@ -31,7 +31,7 @@ impl RankingConfig {
     /// Create ranking config from schema's BoostingConfig
     pub fn from_boosting_config(config: &BoostingConfig) -> Self {
         let recency_decay = config.recency.as_ref().map(|r| {
-            let function = DecayFunction::from_str(&r.decay_function);
+            let function = r.decay_function.parse::<DecayFunction>().unwrap();
             let scale = parse_duration(&r.scale).unwrap_or(Duration::from_secs(7 * 86400));
             let offset = r.offset.as_ref().and_then(|s| parse_duration(s));
 

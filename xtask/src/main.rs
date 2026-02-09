@@ -224,7 +224,7 @@ fn release_bin(root: &Path, target: &Option<String>, name: &str) -> PathBuf {
     p.push("release");
 
     // Add .exe extension for Windows targets
-    let bin_name = if target.as_ref().map_or(false, |t| t.contains("windows")) {
+    let bin_name = if target.as_ref().is_some_and(|t| t.contains("windows")) {
         format!("{}.exe", name)
     } else {
         name.to_string()
@@ -235,7 +235,7 @@ fn release_bin(root: &Path, target: &Option<String>, name: &str) -> PathBuf {
 
 /// Get the appropriate binary extension for a target
 fn bin_extension(target: &Option<String>) -> &'static str {
-    if target.as_ref().map_or(false, |t| t.contains("windows")) {
+    if target.as_ref().is_some_and(|t| t.contains("windows")) {
         ".exe"
     } else {
         ""
@@ -292,10 +292,7 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
         for entry in fs::read_dir(&schemas_src)? {
             let entry = entry?;
             let path = entry.path();
-            if path
-                .extension()
-                .map_or(false, |e| e == "yaml" || e == "yml")
-            {
+            if path.extension().is_some_and(|e| e == "yaml" || e == "yml") {
                 let dest = base.join("conf/schemas").join(entry.file_name());
                 fs::copy(&path, &dest)?;
             }

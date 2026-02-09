@@ -536,7 +536,7 @@ embedding_generation:
 
         assert!(schema.embedding_generation.is_some());
         let emb_gen = schema.embedding_generation.unwrap();
-        assert_eq!(emb_gen.enabled, false);
+        assert!(!emb_gen.enabled);
         assert_eq!(emb_gen.model, "all-MiniLM-L6-v2");
     }
 

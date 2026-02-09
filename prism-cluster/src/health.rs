@@ -28,19 +28,15 @@ use tracing::{debug, info, warn};
 /// Health state of a node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum HealthState {
     /// Node is responding to heartbeats
+    #[default]
     Alive,
     /// Node has missed heartbeats but may recover
     Suspect,
     /// Node is confirmed down
     Dead,
-}
-
-impl Default for HealthState {
-    fn default() -> Self {
-        HealthState::Alive
-    }
 }
 
 impl HealthState {

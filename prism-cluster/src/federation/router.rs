@@ -4,7 +4,7 @@
 //! should be routed for indexing.
 
 use crate::error::{ClusterError, Result};
-use crate::placement::{ClusterState, ShardAssignment, ShardState};
+use crate::placement::{ClusterState, ShardAssignment};
 use crate::types::RpcQuery;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -14,8 +14,10 @@ use std::sync::Arc;
 /// Routing strategy for queries
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum RoutingStrategy {
     /// Broadcast to all shards (default for search)
+    #[default]
     Broadcast,
     /// Route to specific shard based on document ID hash
     HashRouting,
@@ -23,12 +25,6 @@ pub enum RoutingStrategy {
     FieldRouting,
     /// Custom routing key provided in query
     CustomRouting,
-}
-
-impl Default for RoutingStrategy {
-    fn default() -> Self {
-        RoutingStrategy::Broadcast
-    }
 }
 
 /// Target shard for query execution

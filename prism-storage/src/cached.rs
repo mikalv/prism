@@ -548,7 +548,7 @@ mod tests {
 
         // Write more than max_size (10 KB)
         for i in 0..20 {
-            let path = StoragePath::vector("test", "shard_0", &format!("file_{}.bin", i));
+            let path = StoragePath::vector("test", "shard_0", format!("file_{}.bin", i));
             let data = Bytes::from(vec![0u8; 1024]); // 1 KB each
             storage.write(&path, data).await.unwrap();
         }

@@ -244,7 +244,7 @@ pub fn import_snapshot(
             file_count += 1;
 
             if let Some(p) = progress {
-                if file_count % 100 == 0 {
+                if file_count.is_multiple_of(100) {
                     p.on_progress(extracted_size, total_size, "Extracting files");
                 }
             }

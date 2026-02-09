@@ -85,10 +85,10 @@ impl DataImporter {
             if !response.status().is_success() {
                 let status = response.status();
                 let error_text = response.text().await.unwrap_or_default();
-                return Err(crate::error::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("HTTP error {}: {}", status, error_text),
-                )));
+                return Err(crate::error::Error::Io(std::io::Error::other(format!(
+                    "HTTP error {}: {}",
+                    status, error_text
+                ))));
             }
         }
 

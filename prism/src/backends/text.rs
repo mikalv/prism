@@ -1199,8 +1199,8 @@ fn execute_single_agg(
                         };
                         if let Some(v) = v {
                             for (range, addrs) in &mut range_docs {
-                                let above_from = range.from.map_or(true, |from| v >= from);
-                                let below_to = range.to.map_or(true, |to| v < to);
+                                let above_from = range.from.is_none_or(|from| v >= from);
+                                let below_to = range.to.is_none_or(|to| v < to);
                                 if above_from && below_to {
                                     addrs.push(doc_addr);
                                 }
@@ -1471,8 +1471,8 @@ fn compute_range_buckets(values: &[f64], ranges: &[RangeEntry]) -> Vec<Bucket> {
             let count = values
                 .iter()
                 .filter(|&&v| {
-                    let above_from = range.from.map_or(true, |from| v >= from);
-                    let below_to = range.to.map_or(true, |to| v < to);
+                    let above_from = range.from.is_none_or(|from| v >= from);
+                    let below_to = range.to.is_none_or(|to| v < to);
                     above_from && below_to
                 })
                 .count() as u64;
@@ -1849,7 +1849,7 @@ impl TextBackend {
             let mut total_df: u64 = 0;
             for &field in &resolve_fields {
                 let t = Term::from_field_text(field, term_str);
-                total_df += searcher.doc_freq(&t)? as u64;
+                total_df += searcher.doc_freq(&t)?;
             }
             if total_df < min_doc_freq {
                 continue;
@@ -2073,7 +2073,7 @@ impl TextBackend {
                         while term_stream.advance() {
                             let term_bytes = term_stream.key();
                             if let Ok(postings) = inverted_index.read_postings_from_terminfo(
-                                &term_stream.value(),
+                                term_stream.value(),
                                 IndexRecordOption::Basic,
                             ) {
                                 // Check if this document contains this term

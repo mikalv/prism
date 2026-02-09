@@ -37,19 +37,15 @@ use serde::{Deserialize, Serialize};
 /// Schema propagation strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PropagationStrategy {
     /// Immediate propagation (for additive changes)
     Immediate,
     /// Versioned propagation with migration window
+    #[default]
     Versioned,
     /// Manual propagation (require explicit trigger)
     Manual,
-}
-
-impl Default for PropagationStrategy {
-    fn default() -> Self {
-        PropagationStrategy::Versioned
-    }
 }
 
 /// Result of a schema operation

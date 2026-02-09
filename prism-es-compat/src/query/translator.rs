@@ -29,10 +29,7 @@ impl QueryTranslator {
         };
 
         // Translate highlight config
-        let highlight = request
-            .highlight
-            .as_ref()
-            .map(|h| Self::translate_highlight(h));
+        let highlight = request.highlight.as_ref().map(Self::translate_highlight);
 
         let query = Query {
             query_string,
@@ -78,7 +75,7 @@ impl QueryTranslator {
             }
 
             EsQuery::MultiMatch(mm) => {
-                let fields = mm.fields.as_ref().map(|f| f.as_slice()).unwrap_or(&[]);
+                let fields = mm.fields.as_deref().unwrap_or(&[]);
                 if fields.is_empty() {
                     // Search all fields
                     Ok(escape_value(&mm.query))
@@ -240,7 +237,7 @@ impl QueryTranslator {
             if !should_queries.is_empty() {
                 let should_parts: Vec<String> = should_queries
                     .iter()
-                    .map(|q| Self::translate_query(q))
+                    .map(Self::translate_query)
                     .collect::<Result<Vec<_>, _>>()?;
                 // If there are no must/filter, should becomes the main query
                 if parts.is_empty() {
@@ -302,7 +299,7 @@ impl QueryTranslator {
         let sub_aggs = agg
             .aggs
             .as_ref()
-            .map(|a| Self::translate_aggregations(a))
+            .map(Self::translate_aggregations)
             .transpose()?;
 
         // Check metric aggregations

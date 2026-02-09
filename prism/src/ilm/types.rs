@@ -92,17 +92,13 @@ impl std::str::FromStr for Phase {
 /// Storage tier for data placement
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StorageTier {
     /// Local SSD/disk storage
+    #[default]
     Local,
     /// S3 or compatible object storage
     S3,
-}
-
-impl Default for StorageTier {
-    fn default() -> Self {
-        StorageTier::Local
-    }
 }
 
 impl std::fmt::Display for StorageTier {

@@ -50,10 +50,7 @@ impl PipelineRegistry {
         for entry in entries {
             let entry = entry.map_err(|e| Error::Config(e.to_string()))?;
             let path = entry.path();
-            if path
-                .extension()
-                .map_or(false, |e| e == "yaml" || e == "yml")
-            {
+            if path.extension().is_some_and(|e| e == "yaml" || e == "yml") {
                 let content = std::fs::read_to_string(&path).map_err(|e| {
                     Error::Config(format!("Cannot read '{}': {}", path.display(), e))
                 })?;
@@ -74,8 +71,8 @@ impl PipelineRegistry {
     /// List all pipelines as (name, description, processor_count).
     pub fn list(&self) -> Vec<(String, String, usize)> {
         self.pipelines
-            .iter()
-            .map(|(_, p)| (p.name.clone(), p.description.clone(), p.processors.len()))
+            .values()
+            .map(|p| (p.name.clone(), p.description.clone(), p.processors.len()))
             .collect()
     }
 

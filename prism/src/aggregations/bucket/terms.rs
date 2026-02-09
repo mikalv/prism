@@ -22,14 +22,8 @@ pub struct TermsSegment {
     counts: HashMap<String, u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TermsFruit(HashMap<String, u64>);
-
-impl Default for TermsFruit {
-    fn default() -> Self {
-        TermsFruit(HashMap::new())
-    }
-}
 
 impl Default for TermsPrepared {
     fn default() -> Self {

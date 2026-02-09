@@ -373,7 +373,7 @@ impl RebalanceEngine {
             .filter(|op| op.status == OperationStatus::Transferring)
             .count();
 
-        let slots_available = self.config.max_concurrent_moves.saturating_sub(in_transit);
+        let _slots_available = self.config.max_concurrent_moves.saturating_sub(in_transit);
 
         // Find operations to start
         let completed: std::collections::HashSet<_> = status
@@ -545,7 +545,7 @@ impl RebalanceEngine {
         }
 
         let all_assignments = self.cluster_state.get_all_shards();
-        let nodes = self.cluster_state.get_healthy_nodes();
+        let _nodes = self.cluster_state.get_healthy_nodes();
 
         // Move some shards from overloaded nodes to the new node
         let target_shards = self.config.max_concurrent_moves.max(1);

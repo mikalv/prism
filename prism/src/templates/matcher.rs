@@ -2,7 +2,7 @@
 //!
 //! Matches index names against template patterns (with wildcard support).
 
-use super::types::{IndexTemplate, TemplateMatch, TemplateRegistry};
+use super::types::{TemplateMatch, TemplateRegistry};
 use regex::Regex;
 
 /// Matches index names against template patterns

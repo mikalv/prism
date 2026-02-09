@@ -8,6 +8,7 @@ pub struct SumAgg {
     field: String,
 }
 
+#[derive(Default)]
 pub struct SumPrepared {
     field: String,
 }
@@ -25,14 +26,6 @@ pub struct SumFruit(f64);
 impl Default for SumFruit {
     fn default() -> Self {
         SumFruit(0.0)
-    }
-}
-
-impl Default for SumPrepared {
-    fn default() -> Self {
-        SumPrepared {
-            field: String::new(),
-        }
     }
 }
 

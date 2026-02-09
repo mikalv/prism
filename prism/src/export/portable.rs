@@ -97,7 +97,7 @@ pub async fn export_portable<W: Write>(
 
         exported_count += 1;
         if let Some(p) = progress {
-            if exported_count % 1000 == 0 || exported_count == total_docs {
+            if exported_count.is_multiple_of(1000) || exported_count == total_docs {
                 p.on_progress(exported_count, total_docs, "Exporting documents");
             }
         }
@@ -131,7 +131,7 @@ async fn iterate_all_documents(
     // Use a match-all query with high limit to get all documents
     // This is a simplification - for very large collections, we'd need pagination
     let stats = manager.stats(collection).await?;
-    let total = stats.document_count as usize;
+    let total = stats.document_count;
 
     if total == 0 {
         return Ok(documents);

@@ -228,7 +228,7 @@ impl ApiServer {
         addr: &str,
         tls_config: Option<&TlsConfig>,
     ) -> Result<()> {
-        let tls_enabled = tls_config.map_or(false, |t| t.enabled);
+        let tls_enabled = tls_config.is_some_and(|t| t.enabled);
 
         if tls_enabled {
             let tls = tls_config.unwrap();

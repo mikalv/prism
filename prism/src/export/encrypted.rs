@@ -122,7 +122,7 @@ impl EncryptedExportConfig {
 
     /// Export key as hex string (for saving).
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.key)
+        hex::encode(self.key)
     }
 }
 

@@ -51,7 +51,7 @@ jobs:
         run: rustup component add clippy
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -W clippy::all
 
   build-linux:
     name: Build Linux

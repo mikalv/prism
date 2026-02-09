@@ -8,6 +8,7 @@ pub struct AvgAgg {
     field: String,
 }
 
+#[derive(Default)]
 pub struct AvgPrepared {
     field: String,
 }
@@ -29,14 +30,6 @@ pub struct AvgFruit {
 impl Default for AvgFruit {
     fn default() -> Self {
         AvgFruit { sum: 0.0, count: 0 }
-    }
-}
-
-impl Default for AvgPrepared {
-    fn default() -> Self {
-        AvgPrepared {
-            field: String::new(),
-        }
     }
 }
 

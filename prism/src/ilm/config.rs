@@ -223,13 +223,13 @@ pub fn parse_duration(s: &str) -> Option<Duration> {
 pub fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();
 
-    if secs >= 604800 && secs % 604800 == 0 {
+    if secs >= 604800 && secs.is_multiple_of(604800) {
         format!("{}w", secs / 604800)
-    } else if secs >= 86400 && secs % 86400 == 0 {
+    } else if secs >= 86400 && secs.is_multiple_of(86400) {
         format!("{}d", secs / 86400)
-    } else if secs >= 3600 && secs % 3600 == 0 {
+    } else if secs >= 3600 && secs.is_multiple_of(3600) {
         format!("{}h", secs / 3600)
-    } else if secs >= 60 && secs % 60 == 0 {
+    } else if secs >= 60 && secs.is_multiple_of(60) {
         format!("{}m", secs / 60)
     } else {
         format!("{}s", secs)
@@ -243,17 +243,17 @@ pub fn format_size(bytes: u64) -> String {
     const MB: u64 = 1024 * 1024;
     const KB: u64 = 1024;
 
-    if bytes >= TB && bytes % TB == 0 {
+    if bytes >= TB && bytes.is_multiple_of(TB) {
         format!("{}TB", bytes / TB)
-    } else if bytes >= GB && bytes % GB == 0 {
+    } else if bytes >= GB && bytes.is_multiple_of(GB) {
         format!("{}GB", bytes / GB)
     } else if bytes >= GB {
         format!("{:.1}GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB && bytes % MB == 0 {
+    } else if bytes >= MB && bytes.is_multiple_of(MB) {
         format!("{}MB", bytes / MB)
     } else if bytes >= MB {
         format!("{:.1}MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB && bytes % KB == 0 {
+    } else if bytes >= KB && bytes.is_multiple_of(KB) {
         format!("{}KB", bytes / KB)
     } else if bytes >= KB {
         format!("{:.1}KB", bytes as f64 / KB as f64)

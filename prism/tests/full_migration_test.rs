@@ -43,7 +43,7 @@ async fn test_full_migration_flow() {
     // Step 3: Export data to JSONL
     let exporter = DataExporter::new(&old_data_dir);
     exporter
-        .export_all(&vec![collection_name.to_string()], &jsonl_dir)
+        .export_all(&[collection_name.to_string()], &jsonl_dir)
         .unwrap();
 
     let jsonl_file = jsonl_dir.join(format!("{}.jsonl", collection_name));
@@ -95,7 +95,7 @@ async fn test_full_migration_flow() {
         .unwrap();
     assert_eq!(doc1.get("title").unwrap().as_str().unwrap(), "Document 1");
     assert_eq!(doc1.get("count").unwrap().as_i64().unwrap(), 100);
-    assert_eq!(doc1.get("active").unwrap().as_bool().unwrap(), true);
+    assert!(doc1.get("active").unwrap().as_bool().unwrap());
 
     // Cleanup
     server_handle.abort();

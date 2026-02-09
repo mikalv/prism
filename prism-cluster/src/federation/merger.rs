@@ -12,9 +12,11 @@ use std::collections::HashMap;
 /// Strategy for merging search results from multiple shards
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MergeStrategy {
     /// Simple merge: concatenate and sort by score
     /// Best for: filter queries, exact matches, vector search (already normalized)
+    #[default]
     Simple,
 
     /// Score normalization: normalize scores across shards before merging
@@ -38,12 +40,6 @@ pub enum MergeStrategy {
         /// Weight per shard (shard_id -> weight)
         weights: HashMap<String, f32>,
     },
-}
-
-impl Default for MergeStrategy {
-    fn default() -> Self {
-        MergeStrategy::Simple
-    }
 }
 
 impl MergeStrategy {

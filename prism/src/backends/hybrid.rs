@@ -105,7 +105,7 @@ impl HybridSearchCoordinator {
                 });
         }
 
-        let mut out: Vec<SearchResult> = combined.into_iter().map(|(_, v)| v).collect();
+        let mut out: Vec<SearchResult> = combined.into_values().collect();
         out.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)

@@ -32,16 +32,13 @@
 //! }
 //! ```
 
-use crate::config::{
-    ClusterConfig, ConflictResolution, ConsistencyConfig, PartitionBehavior, WriteQuorum,
-};
-use crate::health::{ClusterHealth, HealthChecker, HealthEvent, HealthState};
+use crate::config::{ClusterConfig, ConflictResolution, ConsistencyConfig, PartitionBehavior};
+use crate::health::{ClusterHealth, HealthChecker, HealthState};
 use crate::metrics;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 

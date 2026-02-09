@@ -45,9 +45,10 @@ const ALG_LZ4: u8 = 0x01;
 const ALG_ZSTD: u8 = 0x02;
 
 /// Compression algorithm selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CompressionAlgorithm {
     /// LZ4 - Very fast compression/decompression, moderate ratio
+    #[default]
     Lz4,
     /// Zstd - Fast with better compression ratio, configurable level
     Zstd {
@@ -56,12 +57,6 @@ pub enum CompressionAlgorithm {
     },
     /// No compression (passthrough)
     None,
-}
-
-impl Default for CompressionAlgorithm {
-    fn default() -> Self {
-        Self::Lz4
-    }
 }
 
 impl CompressionAlgorithm {
@@ -273,7 +268,7 @@ impl SegmentStorage for CompressedStorage {
         debug!("CompressedStorage write: {} ({} bytes)", path, data.len());
 
         let compressed = self.compress(&data)?;
-        let compression_ratio = if data.len() > 0 {
+        let compression_ratio = if !data.is_empty() {
             compressed.len() as f64 / data.len() as f64
         } else {
             1.0

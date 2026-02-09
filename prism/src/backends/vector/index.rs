@@ -188,10 +188,10 @@ impl HnswIndex for InstantDistanceAdapter {
             metric: self.metric,
         };
         let mut search = self.searcher.lock();
-        let iter = hnsw.search(&query, &mut *search);
+        let iter = hnsw.search(&query, &mut search);
         let mut out = Vec::new();
         for item in iter {
-            out.push((item.value.clone(), 1.0 - item.distance));
+            out.push((*item.value, 1.0 - item.distance));
             if out.len() >= k {
                 break;
             }

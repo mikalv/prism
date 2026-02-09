@@ -1,7 +1,6 @@
 //! Tests for config module
 
 use prism::config::{expand_tilde, Config};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 

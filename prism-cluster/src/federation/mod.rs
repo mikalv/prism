@@ -35,9 +35,8 @@ mod router;
 pub use merger::{MergeStrategy, ResultMerger, ScoreNormalizer};
 pub use router::{QueryRouter, RoutingDecision, RoutingStrategy, ShardTarget};
 
-use crate::config::ClusterConfig;
 use crate::error::{ClusterError, Result};
-use crate::placement::{ClusterState, ShardAssignment};
+use crate::placement::ClusterState;
 use crate::types::{RpcDocument, RpcQuery, RpcSearchResult, RpcSearchResults};
 use crate::ClusterClient;
 use serde::{Deserialize, Serialize};
@@ -45,7 +44,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// Federation configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -3,6 +3,7 @@
 //! These functions adjust document scores based on their age, making
 //! newer documents rank higher than older ones.
 
+use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Decay function types
@@ -16,14 +17,15 @@ pub enum DecayFunction {
     Gaussian,
 }
 
-impl DecayFunction {
-    /// Parse decay function from string
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl FromStr for DecayFunction {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "linear" => DecayFunction::Linear,
             "gauss" | "gaussian" => DecayFunction::Gaussian,
             _ => DecayFunction::Exponential, // default
-        }
+        })
     }
 }
 

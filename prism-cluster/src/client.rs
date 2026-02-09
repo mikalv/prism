@@ -154,7 +154,7 @@ impl ClusterClient {
                 Ok(())
             }
             Err(e) => {
-                timer.error(&e.error_type());
+                timer.error(e.error_type());
                 Err(e)
             }
         }
@@ -452,7 +452,7 @@ impl tokio::io::AsyncWrite for QuicBiStream {
     ) -> std::task::Poll<io::Result<usize>> {
         std::pin::Pin::new(&mut self.send)
             .poll_write(cx, buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            .map_err(|e| io::Error::other(e))
     }
 
     fn poll_flush(

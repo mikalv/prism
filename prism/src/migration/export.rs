@@ -38,7 +38,7 @@ impl DataExporter {
             let alive_bitset = segment_reader.alive_bitset();
 
             for doc_id in 0..segment_reader.num_docs() {
-                if let Some(ref bitset) = alive_bitset {
+                if let Some(bitset) = alive_bitset {
                     if !bitset.is_alive(doc_id) {
                         continue;
                     }

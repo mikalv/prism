@@ -1,6 +1,5 @@
 use prism::migration::import::DataImporter;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -9,7 +8,7 @@ async fn test_import_creates_importer() {
     let input_dir = temp_dir.path().join("input");
     fs::create_dir(&input_dir).unwrap();
 
-    let importer = DataImporter::new(input_dir, "http://localhost:8080".to_string());
+    let _importer = DataImporter::new(input_dir, "http://localhost:8080".to_string());
 
     // Just verify it constructs successfully
     assert!(true);

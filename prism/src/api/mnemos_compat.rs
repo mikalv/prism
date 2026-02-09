@@ -101,8 +101,7 @@ pub async fn session_init(
     let project_name = req
         .folder_path
         .split('/')
-        .filter(|s| !s.is_empty())
-        .last()
+        .rfind(|s| !s.is_empty())
         .unwrap_or("default")
         .to_string();
 

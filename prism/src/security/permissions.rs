@@ -57,10 +57,10 @@ impl PermissionChecker {
         for role_name in &user.roles {
             if let Some(patterns) = self.roles.get(role_name) {
                 for (pattern, perms) in patterns {
-                    if glob_match(pattern, collection) {
-                        if perms.iter().any(|p| p == "*" || p == permission.as_str()) {
-                            return true;
-                        }
+                    if glob_match(pattern, collection)
+                        && perms.iter().any(|p| p == "*" || p == permission.as_str())
+                    {
+                        return true;
                     }
                 }
             }

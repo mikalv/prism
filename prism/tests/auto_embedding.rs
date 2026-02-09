@@ -2,7 +2,6 @@ use prism::backends::vector::VectorBackend;
 use prism::backends::Document;
 use prism::backends::SearchBackend;
 use prism::schema::CollectionSchema;
-use std::sync::Arc;
 
 // A minimal test that indexes a document with a precomputed embedding to verify indexing path
 #[tokio::test]

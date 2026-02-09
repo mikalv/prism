@@ -76,10 +76,10 @@ pub async fn auth_middleware(
         if !checker.check_permission(&user, collection, perm) {
             return Err(StatusCode::FORBIDDEN);
         }
-    } else if path.starts_with("/admin/") {
-        if !checker.check_permission(&user, "*", Permission::Admin) {
-            return Err(StatusCode::FORBIDDEN);
-        }
+    } else if path.starts_with("/admin/")
+        && !checker.check_permission(&user, "*", Permission::Admin)
+    {
+        return Err(StatusCode::FORBIDDEN);
     }
 
     // Store AuthUser in request extensions for handlers
@@ -128,10 +128,10 @@ pub async fn auth_middleware_dynamic(
         if !checker.check_permission(&user, collection, perm) {
             return Err(StatusCode::FORBIDDEN);
         }
-    } else if path.starts_with("/admin/") {
-        if !checker.check_permission(&user, "*", Permission::Admin) {
-            return Err(StatusCode::FORBIDDEN);
-        }
+    } else if path.starts_with("/admin/")
+        && !checker.check_permission(&user, "*", Permission::Admin)
+    {
+        return Err(StatusCode::FORBIDDEN);
     }
 
     // Store AuthUser in request extensions for handlers

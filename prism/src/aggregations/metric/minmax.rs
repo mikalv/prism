@@ -22,14 +22,8 @@ pub struct MinMaxSegment {
     fast_field_reader: Option<Column<u64>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MinMaxFruit(Option<f64>);
-
-impl Default for MinMaxFruit {
-    fn default() -> Self {
-        MinMaxFruit(None)
-    }
-}
 
 impl Default for MinMaxPrepared {
     fn default() -> Self {

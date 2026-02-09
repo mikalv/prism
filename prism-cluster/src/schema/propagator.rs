@@ -434,7 +434,7 @@ impl SchemaPropagator {
     }
 
     /// Get nodes that are missing a schema version
-    pub async fn get_outdated_nodes(&self, collection: &str, version: u64) -> Vec<String> {
+    pub async fn get_outdated_nodes(&self, _collection: &str, _version: u64) -> Vec<String> {
         // This would query each node for their schema version
         // For now, we track this via propagation status
         // In a full implementation, we'd maintain a version map

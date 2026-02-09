@@ -7,14 +7,8 @@ pub struct CountAgg;
 pub struct CountPrepared;
 pub struct CountSegment;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CountFruit(u64);
-
-impl Default for CountFruit {
-    fn default() -> Self {
-        CountFruit(0)
-    }
-}
 
 impl Default for CountPrepared {
     fn default() -> Self {

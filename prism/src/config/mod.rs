@@ -15,7 +15,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Main configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
@@ -132,7 +132,7 @@ impl Default for TlsConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct SecurityConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -164,17 +164,6 @@ pub struct AuditConfig {
     pub enabled: bool,
     #[serde(default = "default_true")]
     pub index_to_collection: bool,
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            api_keys: Vec::new(),
-            roles: HashMap::new(),
-            audit: AuditConfig::default(),
-        }
-    }
 }
 
 impl Default for AuditConfig {
@@ -403,22 +392,6 @@ impl Default for ClusterTlsConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            storage: StorageConfig::default(),
-            unified_storage: None,
-            embedding: EmbeddingConfig::default(),
-            logging: LoggingConfig::default(),
-            security: SecurityConfig::default(),
-            observability: ObservabilityConfig::default(),
-            cluster: ClusterConfig::default(),
-            ilm: crate::ilm::IlmConfig::default(),
-        }
-    }
-}
-
 /// Expand ~ to home directory in path
 pub fn expand_tilde(path: &Path) -> Result<PathBuf> {
     let s = path.to_string_lossy();
@@ -584,8 +557,6 @@ impl Config {
 
     /// Check if remote storage is configured (S3 or cached)
     pub fn is_remote_storage(&self) -> bool {
-        self.unified_storage
-            .as_ref()
-            .map_or(false, |u| u.is_remote())
+        self.unified_storage.as_ref().is_some_and(|u| u.is_remote())
     }
 }
