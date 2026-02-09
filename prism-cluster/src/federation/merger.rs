@@ -101,7 +101,9 @@ impl ResultMerger {
             MergeStrategy::ScoreNormalized => self.merge_normalized(shard_results, limit),
             MergeStrategy::ReciprocalRankFusion { k } => self.merge_rrf(shard_results, limit, *k),
             MergeStrategy::TwoPhase => self.merge_simple(shard_results, limit), // Same as simple for now
-            MergeStrategy::Weighted { weights } => self.merge_weighted(shard_results, limit, weights),
+            MergeStrategy::Weighted { weights } => {
+                self.merge_weighted(shard_results, limit, weights)
+            }
         }
     }
 
@@ -109,13 +111,15 @@ impl ResultMerger {
     fn merge_simple(&self, shard_results: Vec<RpcSearchResults>, limit: usize) -> MergedResults {
         let total: usize = shard_results.iter().map(|r| r.total).sum();
 
-        let mut all_results: Vec<RpcSearchResult> = shard_results
-            .into_iter()
-            .flat_map(|r| r.results)
-            .collect();
+        let mut all_results: Vec<RpcSearchResult> =
+            shard_results.into_iter().flat_map(|r| r.results).collect();
 
         // Sort by score descending
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Deduplicate by ID (keep highest score)
         let mut seen = std::collections::HashSet::new();
@@ -132,7 +136,11 @@ impl ResultMerger {
     }
 
     /// Score-normalized merge: normalize scores per shard before merging
-    fn merge_normalized(&self, shard_results: Vec<RpcSearchResults>, limit: usize) -> MergedResults {
+    fn merge_normalized(
+        &self,
+        shard_results: Vec<RpcSearchResults>,
+        limit: usize,
+    ) -> MergedResults {
         let total: usize = shard_results.iter().map(|r| r.total).sum();
 
         let mut all_results: Vec<RpcSearchResult> = Vec::new();
@@ -143,7 +151,11 @@ impl ResultMerger {
         }
 
         // Sort by normalized score descending
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Deduplicate
         let mut seen = std::collections::HashSet::new();
@@ -161,7 +173,12 @@ impl ResultMerger {
     /// Reciprocal Rank Fusion merge
     ///
     /// RRF score = sum(1 / (k + rank)) for each result list containing the doc
-    fn merge_rrf(&self, shard_results: Vec<RpcSearchResults>, limit: usize, k: u32) -> MergedResults {
+    fn merge_rrf(
+        &self,
+        shard_results: Vec<RpcSearchResults>,
+        limit: usize,
+        k: u32,
+    ) -> MergedResults {
         let total: usize = shard_results.iter().map(|r| r.total).sum();
 
         // Calculate RRF scores
@@ -188,7 +205,11 @@ impl ResultMerger {
             .collect();
 
         // Sort by RRF score descending
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         results.truncate(limit);
 
@@ -255,7 +276,11 @@ impl ScoreNormalizer {
 
         let n = results.len() as f32;
         let mean: f32 = results.iter().map(|r| r.score).sum::<f32>() / n;
-        let variance: f32 = results.iter().map(|r| (r.score - mean).powi(2)).sum::<f32>() / n;
+        let variance: f32 = results
+            .iter()
+            .map(|r| (r.score - mean).powi(2))
+            .sum::<f32>()
+            / n;
         let std_dev = variance.sqrt();
 
         if std_dev > 0.0 {
@@ -301,14 +326,9 @@ mod tests {
     fn test_merge_simple() {
         let merger = ResultMerger::new(MergeStrategy::Simple);
 
-        let shard1 = make_shard_results(vec![
-            make_result("doc-1", 0.9),
-            make_result("doc-2", 0.7),
-        ]);
-        let shard2 = make_shard_results(vec![
-            make_result("doc-3", 0.85),
-            make_result("doc-4", 0.6),
-        ]);
+        let shard1 = make_shard_results(vec![make_result("doc-1", 0.9), make_result("doc-2", 0.7)]);
+        let shard2 =
+            make_shard_results(vec![make_result("doc-3", 0.85), make_result("doc-4", 0.6)]);
 
         let merged = merger.merge(vec![shard1, shard2], 10, &MergeStrategy::Simple);
 
@@ -322,20 +342,21 @@ mod tests {
         let merger = ResultMerger::new(MergeStrategy::Simple);
 
         // Same doc appears in both shards at different ranks
-        let shard1 = make_shard_results(vec![
-            make_result("doc-1", 0.9),
-            make_result("doc-2", 0.7),
-        ]);
+        let shard1 = make_shard_results(vec![make_result("doc-1", 0.9), make_result("doc-2", 0.7)]);
         let shard2 = make_shard_results(vec![
             make_result("doc-2", 0.85), // doc-2 is #1 here
             make_result("doc-3", 0.6),
         ]);
 
-        let merged = merger.merge(vec![shard1, shard2], 10, &MergeStrategy::ReciprocalRankFusion { k: 60 });
+        let merged = merger.merge(
+            vec![shard1, shard2],
+            10,
+            &MergeStrategy::ReciprocalRankFusion { k: 60 },
+        );
 
         // doc-2 appears in both, should have higher RRF score
         assert_eq!(merged.results.len(), 3); // 3 unique docs
-        // doc-2 should be first (appears in both lists)
+                                             // doc-2 should be first (appears in both lists)
         assert_eq!(merged.results[0].id, "doc-2");
     }
 
@@ -343,9 +364,7 @@ mod tests {
     fn test_merge_deduplication() {
         let merger = ResultMerger::new(MergeStrategy::Simple);
 
-        let shard1 = make_shard_results(vec![
-            make_result("doc-1", 0.9),
-        ]);
+        let shard1 = make_shard_results(vec![make_result("doc-1", 0.9)]);
         let shard2 = make_shard_results(vec![
             make_result("doc-1", 0.85), // Duplicate with lower score
         ]);
@@ -373,9 +392,18 @@ mod tests {
 
     #[test]
     fn test_merge_strategy_from_string() {
-        assert_eq!(MergeStrategy::from_string("simple"), Some(MergeStrategy::Simple));
-        assert_eq!(MergeStrategy::from_string("rrf"), Some(MergeStrategy::ReciprocalRankFusion { k: 60 }));
-        assert_eq!(MergeStrategy::from_string("normalized"), Some(MergeStrategy::ScoreNormalized));
+        assert_eq!(
+            MergeStrategy::from_string("simple"),
+            Some(MergeStrategy::Simple)
+        );
+        assert_eq!(
+            MergeStrategy::from_string("rrf"),
+            Some(MergeStrategy::ReciprocalRankFusion { k: 60 })
+        );
+        assert_eq!(
+            MergeStrategy::from_string("normalized"),
+            Some(MergeStrategy::ScoreNormalized)
+        );
         assert_eq!(MergeStrategy::from_string("unknown"), None);
     }
 }

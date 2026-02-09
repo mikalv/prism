@@ -115,16 +115,22 @@ async fn main() -> Result<()> {
                     .or_else(|| config.embedding.cache_dir.clone())
                     .unwrap_or_else(|| config.storage.data_dir.join("embedding_cache.db"));
                 let cache = std::sync::Arc::new(
-                    prism::cache::SqliteCache::new(cache_path.to_str().unwrap_or("embedding_cache.db"))
-                        .expect("Failed to create embedding cache"),
+                    prism::cache::SqliteCache::new(
+                        cache_path.to_str().unwrap_or("embedding_cache.db"),
+                    )
+                    .expect("Failed to create embedding cache"),
                 );
-                let cached_provider = std::sync::Arc::new(prism::embedding::CachedEmbeddingProvider::new(
-                    provider,
-                    cache,
-                    prism::cache::KeyStrategy::ModelText,
-                ));
+                let cached_provider =
+                    std::sync::Arc::new(prism::embedding::CachedEmbeddingProvider::new(
+                        provider,
+                        cache,
+                        prism::cache::KeyStrategy::ModelText,
+                    ));
                 vector_backend.set_embedding_provider(cached_provider);
-                tracing::info!("Embedding provider configured (cache: {})", cache_path.display());
+                tracing::info!(
+                    "Embedding provider configured (cache: {})",
+                    cache_path.display()
+                );
             }
             Err(e) => {
                 tracing::warn!("Failed to create embedding provider: {}. Vector search with auto-embedding will not work.", e);
@@ -157,12 +163,8 @@ async fn main() -> Result<()> {
     // Create ILM manager if enabled
     let ilm_manager = if config.ilm.enabled {
         tracing::info!("ILM enabled, initializing manager...");
-        match prism::ilm::IlmManager::new(
-            manager.clone(),
-            &config.ilm,
-            &config.storage.data_dir,
-        )
-        .await
+        match prism::ilm::IlmManager::new(manager.clone(), &config.ilm, &config.storage.data_dir)
+            .await
         {
             Ok(ilm) => {
                 let ilm = std::sync::Arc::new(ilm);
@@ -231,7 +233,8 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             use tokio::signal::unix::{signal, SignalKind};
 
-            let mut sighup = signal(SignalKind::hangup()).expect("Failed to register SIGHUP handler");
+            let mut sighup =
+                signal(SignalKind::hangup()).expect("Failed to register SIGHUP handler");
 
             loop {
                 sighup.recv().await;
@@ -316,15 +319,19 @@ async fn main() -> Result<()> {
     // Add ES-compat routes if enabled
     #[cfg(feature = "es-compat")]
     {
-        extension_router = extension_router
-            .nest("/_elastic", prism_es_compat::es_compat_router(server.manager()));
+        extension_router = extension_router.nest(
+            "/_elastic",
+            prism_es_compat::es_compat_router(server.manager()),
+        );
         tracing::info!("Elasticsearch compatibility enabled at /_elastic/*");
     }
 
     // Serve with extensions if any are enabled
     #[cfg(any(feature = "ui", feature = "es-compat"))]
     {
-        server.serve_with_extension(&addr, tls, extension_router).await?;
+        server
+            .serve_with_extension(&addr, tls, extension_router)
+            .await?;
     }
 
     #[cfg(not(any(feature = "ui", feature = "es-compat")))]

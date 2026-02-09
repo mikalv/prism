@@ -400,19 +400,16 @@ impl SchemaPropagator {
     }
 
     /// Sync schemas with a specific node
-    pub async fn sync_with_node(&self, node_id: &str, address: &str) -> Result<usize, ClusterError> {
+    pub async fn sync_with_node(
+        &self,
+        node_id: &str,
+        address: &str,
+    ) -> Result<usize, ClusterError> {
         let snapshot = self.registry.snapshot().await;
         let mut synced = 0;
 
         for (collection, versioned) in snapshot.schemas {
-            match propagate_to_node(
-                &self.client,
-                node_id,
-                address,
-                &versioned,
-                &self.config,
-            )
-            .await
+            match propagate_to_node(&self.client, node_id, address, &versioned, &self.config).await
             {
                 Ok(_) => {
                     synced += 1;
@@ -437,11 +434,7 @@ impl SchemaPropagator {
     }
 
     /// Get nodes that are missing a schema version
-    pub async fn get_outdated_nodes(
-        &self,
-        collection: &str,
-        version: u64,
-    ) -> Vec<String> {
+    pub async fn get_outdated_nodes(&self, collection: &str, version: u64) -> Vec<String> {
         // This would query each node for their schema version
         // For now, we track this via propagation status
         // In a full implementation, we'd maintain a version map
@@ -472,12 +465,7 @@ async fn propagate_to_node(
         }
 
         let start = Instant::now();
-        match tokio::time::timeout(
-            timeout,
-            client.apply_schema(address, versioned.clone()),
-        )
-        .await
-        {
+        match tokio::time::timeout(timeout, client.apply_schema(address, versioned.clone())).await {
             Ok(Ok(_)) => {
                 metrics::record_schema_node_propagation(
                     &versioned.collection,
@@ -529,11 +517,8 @@ mod tests {
 
     #[test]
     fn test_propagation_status() {
-        let mut status = PropagationStatus::new(
-            "products",
-            1,
-            vec!["node-1".into(), "node-2".into()],
-        );
+        let mut status =
+            PropagationStatus::new("products", 1, vec!["node-1".into(), "node-2".into()]);
 
         assert!(!status.complete);
         assert_eq!(status.pending.len(), 2);

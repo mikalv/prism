@@ -29,7 +29,10 @@ impl QueryTranslator {
         };
 
         // Translate highlight config
-        let highlight = request.highlight.as_ref().map(|h| Self::translate_highlight(h));
+        let highlight = request
+            .highlight
+            .as_ref()
+            .map(|h| Self::translate_highlight(h));
 
         let query = Query {
             query_string,
@@ -185,7 +188,10 @@ impl QueryTranslator {
             (Some((l, l_inc)), Some((u, u_inc))) => {
                 let l_bracket = if l_inc { "[" } else { "{" };
                 let u_bracket = if u_inc { "]" } else { "}" };
-                Ok(format!("{}:{}{} TO {}{}", field, l_bracket, l, u, u_bracket))
+                Ok(format!(
+                    "{}:{}{} TO {}{}",
+                    field, l_bracket, l, u, u_bracket
+                ))
             }
             (Some((l, l_inc)), None) => {
                 let l_bracket = if l_inc { "[" } else { "{" };
@@ -515,7 +521,10 @@ mod tests {
     #[test]
     fn test_term_query() {
         let mut fields = HashMap::new();
-        fields.insert("status".to_string(), TermValue::Simple(Value::String("error".to_string())));
+        fields.insert(
+            "status".to_string(),
+            TermValue::Simple(Value::String("error".to_string())),
+        );
         let query = EsQuery::Term(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
         assert_eq!(result, "status:error");
@@ -524,7 +533,10 @@ mod tests {
     #[test]
     fn test_match_query() {
         let mut fields = HashMap::new();
-        fields.insert("message".to_string(), MatchQuery::Simple("test query".to_string()));
+        fields.insert(
+            "message".to_string(),
+            MatchQuery::Simple("test query".to_string()),
+        );
         let query = EsQuery::Match(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
         assert_eq!(result, "message:\"test query\"");
@@ -533,17 +545,19 @@ mod tests {
     #[test]
     fn test_bool_query() {
         let bool_query = BoolQuery {
-            must: Some(QueryList::Multiple(vec![
-                EsQuery::Term({
-                    let mut m = HashMap::new();
-                    m.insert("level".to_string(), TermValue::Simple(Value::String("error".to_string())));
-                    m
-                }),
-            ])),
-            filter: Some(QueryList::Multiple(vec![
-                EsQuery::Range({
-                    let mut m = HashMap::new();
-                    m.insert("@timestamp".to_string(), RangeParams {
+            must: Some(QueryList::Multiple(vec![EsQuery::Term({
+                let mut m = HashMap::new();
+                m.insert(
+                    "level".to_string(),
+                    TermValue::Simple(Value::String("error".to_string())),
+                );
+                m
+            })])),
+            filter: Some(QueryList::Multiple(vec![EsQuery::Range({
+                let mut m = HashMap::new();
+                m.insert(
+                    "@timestamp".to_string(),
+                    RangeParams {
                         gte: Some(Value::String("now-15m".to_string())),
                         gt: None,
                         lte: None,
@@ -551,10 +565,10 @@ mod tests {
                         format: None,
                         time_zone: None,
                         boost: None,
-                    });
-                    m
-                }),
-            ])),
+                    },
+                );
+                m
+            })])),
             must_not: None,
             should: None,
             minimum_should_match: None,
@@ -570,15 +584,18 @@ mod tests {
     #[test]
     fn test_range_query() {
         let mut fields = HashMap::new();
-        fields.insert("age".to_string(), RangeParams {
-            gte: Some(Value::Number(serde_json::Number::from(18))),
-            gt: None,
-            lte: Some(Value::Number(serde_json::Number::from(65))),
-            lt: None,
-            format: None,
-            time_zone: None,
-            boost: None,
-        });
+        fields.insert(
+            "age".to_string(),
+            RangeParams {
+                gte: Some(Value::Number(serde_json::Number::from(18))),
+                gt: None,
+                lte: Some(Value::Number(serde_json::Number::from(65))),
+                lt: None,
+                format: None,
+                time_zone: None,
+                boost: None,
+            },
+        );
 
         let query = EsQuery::Range(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
@@ -588,19 +605,33 @@ mod tests {
     #[test]
     fn test_aggregation_translation() {
         let mut aggs = HashMap::new();
-        aggs.insert("status_count".to_string(), EsAggregation {
-            terms: Some(TermsAgg {
-                field: "status".to_string(),
-                size: Some(10),
-                order: None,
-                min_doc_count: None,
-            }),
-            avg: None, sum: None, min: None, max: None, stats: None,
-            value_count: None, cardinality: None, percentiles: None,
-            histogram: None, date_histogram: None, range: None,
-            date_range: None, filter: None, filters: None, global: None,
-            aggs: None,
-        });
+        aggs.insert(
+            "status_count".to_string(),
+            EsAggregation {
+                terms: Some(TermsAgg {
+                    field: "status".to_string(),
+                    size: Some(10),
+                    order: None,
+                    min_doc_count: None,
+                }),
+                avg: None,
+                sum: None,
+                min: None,
+                max: None,
+                stats: None,
+                value_count: None,
+                cardinality: None,
+                percentiles: None,
+                histogram: None,
+                date_histogram: None,
+                range: None,
+                date_range: None,
+                filter: None,
+                filters: None,
+                global: None,
+                aggs: None,
+            },
+        );
 
         let result = QueryTranslator::translate_aggregations(&aggs).unwrap();
         assert_eq!(result.len(), 1);

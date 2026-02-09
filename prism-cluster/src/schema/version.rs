@@ -86,9 +86,7 @@ impl ChangeType {
     pub fn is_additive(&self) -> bool {
         matches!(
             self,
-            ChangeType::FieldAdded
-                | ChangeType::FieldMadeOptional
-                | ChangeType::IndexAdded
+            ChangeType::FieldAdded | ChangeType::FieldMadeOptional | ChangeType::IndexAdded
         )
     }
 }
@@ -277,7 +275,12 @@ fn detect_changes_recursive(
                         if old_value != new_value {
                             // Recurse into nested objects
                             if old_value.is_object() && new_value.is_object() {
-                                detect_changes_recursive(old_value, new_value, &field_path, changes);
+                                detect_changes_recursive(
+                                    old_value,
+                                    new_value,
+                                    &field_path,
+                                    changes,
+                                );
                             } else {
                                 // Type or value changed
                                 changes.push(
@@ -298,13 +301,9 @@ fn detect_changes_recursive(
         (serde_json::Value::Array(old_arr), serde_json::Value::Array(new_arr)) => {
             if old_arr != new_arr {
                 changes.push(
-                    SchemaChange::new(
-                        ChangeType::FieldTypeChanged,
-                        path,
-                        "Array contents changed",
-                    )
-                    .with_old_value(old.clone())
-                    .with_new_value(new.clone()),
+                    SchemaChange::new(ChangeType::FieldTypeChanged, path, "Array contents changed")
+                        .with_old_value(old.clone())
+                        .with_new_value(new.clone()),
                 );
             }
         }

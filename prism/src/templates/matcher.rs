@@ -94,7 +94,10 @@ mod tests {
 
     #[test]
     fn test_wildcard_suffix() {
-        assert!(TemplateMatcher::matches_pattern("logs-2026.01.29", "logs-*"));
+        assert!(TemplateMatcher::matches_pattern(
+            "logs-2026.01.29",
+            "logs-*"
+        ));
         assert!(TemplateMatcher::matches_pattern("logs-", "logs-*"));
         assert!(!TemplateMatcher::matches_pattern("log-2026", "logs-*"));
     }
@@ -107,8 +110,14 @@ mod tests {
 
     #[test]
     fn test_wildcard_middle() {
-        assert!(TemplateMatcher::matches_pattern("logs-2026-data", "logs-*-data"));
-        assert!(TemplateMatcher::matches_pattern("logs--data", "logs-*-data"));
+        assert!(TemplateMatcher::matches_pattern(
+            "logs-2026-data",
+            "logs-*-data"
+        ));
+        assert!(TemplateMatcher::matches_pattern(
+            "logs--data",
+            "logs-*-data"
+        ));
     }
 
     #[test]

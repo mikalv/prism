@@ -40,8 +40,8 @@ pub fn export_snapshot(
     let mut processed_size = 0u64;
 
     // Create output file
-    let output_file =
-        File::create(output_path).map_err(|e| Error::Export(format!("Cannot create output file: {}", e)))?;
+    let output_file = File::create(output_path)
+        .map_err(|e| Error::Export(format!("Cannot create output file: {}", e)))?;
 
     // Create zstd encoder
     let encoder = zstd::stream::Encoder::new(output_file, 3)
@@ -73,25 +73,53 @@ pub fn export_snapshot(
     // Add schema.yaml if it exists
     let schema_path = collection_dir.join("schema.yaml");
     if schema_path.exists() {
-        add_file_to_archive(&mut archive, &schema_path, "schema.yaml", &mut processed_size, total_size, progress)?;
+        add_file_to_archive(
+            &mut archive,
+            &schema_path,
+            "schema.yaml",
+            &mut processed_size,
+            total_size,
+            progress,
+        )?;
     }
 
     // Add text backend files
     let text_dir = collection_dir.join("text");
     if text_dir.exists() {
-        add_directory_to_archive(&mut archive, &text_dir, "text", &mut processed_size, total_size, progress)?;
+        add_directory_to_archive(
+            &mut archive,
+            &text_dir,
+            "text",
+            &mut processed_size,
+            total_size,
+            progress,
+        )?;
     }
 
     // Add vector backend files
     let vector_dir = collection_dir.join("vector");
     if vector_dir.exists() {
-        add_directory_to_archive(&mut archive, &vector_dir, "vector", &mut processed_size, total_size, progress)?;
+        add_directory_to_archive(
+            &mut archive,
+            &vector_dir,
+            "vector",
+            &mut processed_size,
+            total_size,
+            progress,
+        )?;
     }
 
     // Add graph backend files
     let graph_dir = collection_dir.join("graph");
     if graph_dir.exists() {
-        add_directory_to_archive(&mut archive, &graph_dir, "graph", &mut processed_size, total_size, progress)?;
+        add_directory_to_archive(
+            &mut archive,
+            &graph_dir,
+            "graph",
+            &mut processed_size,
+            total_size,
+            progress,
+        )?;
     }
 
     // Finish archive
@@ -129,12 +157,9 @@ pub fn import_snapshot(
     progress: Option<&dyn ExportProgress>,
 ) -> Result<SnapshotImportResult> {
     // Open input file
-    let input_file =
-        File::open(input_path).map_err(|e| Error::Import(format!("Cannot open input file: {}", e)))?;
-    let total_size = input_file
-        .metadata()
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let input_file = File::open(input_path)
+        .map_err(|e| Error::Import(format!("Cannot open input file: {}", e)))?;
+    let total_size = input_file.metadata().map(|m| m.len()).unwrap_or(0);
 
     // Create zstd decoder
     let decoder = zstd::stream::Decoder::new(BufReader::new(input_file))
@@ -149,7 +174,8 @@ pub fn import_snapshot(
         .entries()
         .map_err(|e| Error::Import(format!("Cannot read entries: {}", e)))?
     {
-        let mut entry = entry_result.map_err(|e| Error::Import(format!("Entry read failed: {}", e)))?;
+        let mut entry =
+            entry_result.map_err(|e| Error::Import(format!("Entry read failed: {}", e)))?;
         let path = entry
             .path()
             .map_err(|e| Error::Import(format!("Path read failed: {}", e)))?
@@ -179,8 +205,8 @@ pub fn import_snapshot(
         .map_err(|e| Error::Import(format!("Cannot create collection directory: {}", e)))?;
 
     // Re-open archive for extraction
-    let input_file =
-        File::open(input_path).map_err(|e| Error::Import(format!("Cannot open input file: {}", e)))?;
+    let input_file = File::open(input_path)
+        .map_err(|e| Error::Import(format!("Cannot open input file: {}", e)))?;
     let decoder = zstd::stream::Decoder::new(BufReader::new(input_file))
         .map_err(|e| Error::Import(format!("Zstd decoder creation failed: {}", e)))?;
     let mut archive = tar::Archive::new(decoder);
@@ -193,7 +219,8 @@ pub fn import_snapshot(
         .entries()
         .map_err(|e| Error::Import(format!("Cannot read entries: {}", e)))?
     {
-        let mut entry = entry_result.map_err(|e| Error::Import(format!("Entry read failed: {}", e)))?;
+        let mut entry =
+            entry_result.map_err(|e| Error::Import(format!("Entry read failed: {}", e)))?;
         let path = entry
             .path()
             .map_err(|e| Error::Import(format!("Path read failed: {}", e)))?
@@ -209,8 +236,8 @@ pub fn import_snapshot(
 
         // Extract file
         if entry.header().entry_type().is_file() {
-            let mut output =
-                File::create(&dest_path).map_err(|e| Error::Import(format!("Cannot create file: {}", e)))?;
+            let mut output = File::create(&dest_path)
+                .map_err(|e| Error::Import(format!("Cannot create file: {}", e)))?;
             let size = std::io::copy(&mut entry, &mut output)
                 .map_err(|e| Error::Import(format!("Extract failed: {}", e)))?;
             extracted_size += size;
@@ -254,7 +281,9 @@ fn calculate_dir_size(path: &Path) -> Result<u64> {
             .map_err(|e| Error::Export(format!("Cannot read file size: {}", e)));
     }
 
-    for entry in fs::read_dir(path).map_err(|e| Error::Export(format!("Cannot read directory: {}", e)))? {
+    for entry in
+        fs::read_dir(path).map_err(|e| Error::Export(format!("Cannot read directory: {}", e)))?
+    {
         let entry = entry.map_err(|e| Error::Export(format!("Directory entry error: {}", e)))?;
         let path = entry.path();
 
@@ -275,7 +304,9 @@ fn add_bytes_to_archive<W: Write>(
     data: &[u8],
 ) -> Result<()> {
     let mut header = tar::Header::new_gnu();
-    header.set_path(name).map_err(|e| Error::Export(format!("Path error: {}", e)))?;
+    header
+        .set_path(name)
+        .map_err(|e| Error::Export(format!("Path error: {}", e)))?;
     header.set_size(data.len() as u64);
     header.set_mode(0o644);
     header.set_mtime(
@@ -302,11 +333,9 @@ fn add_file_to_archive<W: Write>(
     total: u64,
     progress: Option<&dyn ExportProgress>,
 ) -> Result<()> {
-    let mut file = File::open(file_path).map_err(|e| Error::Export(format!("Cannot open file: {}", e)))?;
-    let size = file
-        .metadata()
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let mut file =
+        File::open(file_path).map_err(|e| Error::Export(format!("Cannot open file: {}", e)))?;
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
     let mut header = tar::Header::new_gnu();
     header
@@ -345,8 +374,8 @@ fn add_directory_to_archive<W: Write>(
     total: u64,
     progress: Option<&dyn ExportProgress>,
 ) -> Result<()> {
-    for entry in
-        fs::read_dir(dir_path).map_err(|e| Error::Export(format!("Cannot read directory: {}", e)))?
+    for entry in fs::read_dir(dir_path)
+        .map_err(|e| Error::Export(format!("Cannot read directory: {}", e)))?
     {
         let entry = entry.map_err(|e| Error::Export(format!("Directory entry error: {}", e)))?;
         let path = entry.path();

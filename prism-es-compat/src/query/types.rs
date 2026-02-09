@@ -54,7 +54,10 @@ pub enum TrackTotalHits {
 pub enum SourceFilter {
     Bool(bool),
     Fields(Vec<String>),
-    Object { includes: Option<Vec<String>>, excludes: Option<Vec<String>> },
+    Object {
+        includes: Option<Vec<String>>,
+        excludes: Option<Vec<String>>,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

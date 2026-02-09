@@ -61,8 +61,8 @@ impl std::fmt::Debug for EncryptedExportConfig {
 impl EncryptedExportConfig {
     /// Create config from hex-encoded key.
     pub fn from_hex(hex_key: &str) -> Result<Self> {
-        let bytes = hex::decode(hex_key)
-            .map_err(|e| Error::Export(format!("Invalid hex key: {}", e)))?;
+        let bytes =
+            hex::decode(hex_key).map_err(|e| Error::Export(format!("Invalid hex key: {}", e)))?;
 
         if bytes.len() != KEY_SIZE {
             return Err(Error::Export(format!(
@@ -221,10 +221,7 @@ pub fn import_encrypted(
     let mut file = File::open(input_path)
         .map_err(|e| Error::Import(format!("Failed to open input: {}", e)))?;
 
-    let file_size = file
-        .metadata()
-        .map(|m| m.len() as usize)
-        .unwrap_or(0);
+    let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
 
     if file_size < HEADER_SIZE {
         return Err(Error::Import("File too small to be encrypted".to_string()));
@@ -262,9 +259,9 @@ pub fn import_encrypted(
     let cipher = Aes256Gcm::new_from_slice(&config.key)
         .map_err(|e| Error::Import(format!("Cipher init failed: {}", e)))?;
 
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_slice())
-        .map_err(|_| Error::Import("Decryption failed (wrong key or corrupted data)".to_string()))?;
+    let plaintext = cipher.decrypt(nonce, ciphertext.as_slice()).map_err(|_| {
+        Error::Import("Decryption failed (wrong key or corrupted data)".to_string())
+    })?;
 
     // Write to temp file
     let temp_path = input_path.with_extension("dec.tmp");
@@ -368,7 +365,10 @@ mod tests {
         let result = import_encrypted(import_dir.path(), &output_path, config2, None, None);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Decryption failed"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Decryption failed"));
     }
 
     #[test]

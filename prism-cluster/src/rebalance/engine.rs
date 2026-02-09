@@ -431,8 +431,7 @@ impl RebalanceEngine {
             if op.status == OperationStatus::Transferring {
                 // Simulate progress
                 op.progress += 0.1;
-                op.bytes_transferred =
-                    (op.total_bytes as f64 * op.progress.min(1.0)) as u64;
+                op.bytes_transferred = (op.total_bytes as f64 * op.progress.min(1.0)) as u64;
 
                 if op.progress >= 1.0 {
                     op.status = OperationStatus::Completed;
@@ -472,10 +471,7 @@ impl RebalanceEngine {
 
         if status.failed_moves > 0 {
             status.phase = RebalancePhase::Failed;
-            warn!(
-                "Rebalance completed with {} failures",
-                status.failed_moves
-            );
+            warn!("Rebalance completed with {} failures", status.failed_moves);
         } else {
             status.phase = RebalancePhase::Completed;
             info!(
@@ -571,9 +567,12 @@ impl RebalanceEngine {
                 }
 
                 // Verify the new node satisfies spread constraints
-                if let Ok(target) =
-                    find_rebalance_target(&shard, &[new_node.clone()], &all_assignments, &self.strategy)
-                {
+                if let Ok(target) = find_rebalance_target(
+                    &shard,
+                    &[new_node.clone()],
+                    &all_assignments,
+                    &self.strategy,
+                ) {
                     plan.add_operation(RebalanceOperation {
                         shard_id: shard.shard_id.clone(),
                         from_node: node_id.clone(),

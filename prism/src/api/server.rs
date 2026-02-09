@@ -180,7 +180,10 @@ impl ApiServer {
     }
 
     /// Set the template manager for index templates
-    pub fn with_templates(mut self, template_manager: Arc<crate::templates::TemplateManager>) -> Self {
+    pub fn with_templates(
+        mut self,
+        template_manager: Arc<crate::templates::TemplateManager>,
+    ) -> Self {
         self.template_manager = Some(template_manager);
         self
     }
@@ -518,10 +521,7 @@ impl ApiServer {
                 post(crate::api::routes::more_like_this),
             )
             // Multi-Collection Search API (Issue #74)
-            .route(
-                "/_msearch",
-                post(crate::api::routes::multi_search),
-            )
+            .route("/_msearch", post(crate::api::routes::multi_search))
             .route(
                 "/:collections/_search",
                 post(crate::api::routes::multi_index_search),
@@ -560,10 +560,7 @@ impl ApiServer {
                 "/:collection/_ilm/explain",
                 get(crate::api::routes::ilm_explain),
             )
-            .route(
-                "/:index/_rollover",
-                post(crate::api::routes::ilm_rollover),
-            )
+            .route("/:index/_rollover", post(crate::api::routes::ilm_rollover))
             .route(
                 "/:collection/_ilm/move/:phase",
                 post(crate::api::routes::ilm_move_phase),
@@ -573,7 +570,10 @@ impl ApiServer {
                 post(crate::api::routes::ilm_attach_policy),
             )
             // Alias management
-            .route("/_aliases", get(crate::api::routes::list_aliases).put(crate::api::routes::update_aliases))
+            .route(
+                "/_aliases",
+                get(crate::api::routes::list_aliases).put(crate::api::routes::update_aliases),
+            )
             .with_state(ilm_state);
 
         // Template state for template routes (Issue #51)

@@ -69,7 +69,10 @@ impl IlmPolicyConfig {
     pub fn to_policy(&self, name: String) -> IlmPolicy {
         let rollover = RolloverConditions {
             max_size: self.rollover_max_size.as_ref().and_then(|s| parse_size(s)),
-            max_age: self.rollover_max_age.as_ref().and_then(|s| parse_duration(s)),
+            max_age: self
+                .rollover_max_age
+                .as_ref()
+                .and_then(|s| parse_duration(s)),
             max_docs: self.rollover_max_docs,
         };
 
@@ -144,11 +147,14 @@ impl PhaseConfigEntry {
         PhaseConfig {
             min_age: parse_duration(&self.min_age).unwrap_or_default(),
             readonly: self.readonly,
-            storage: self.storage.as_ref().and_then(|s| match s.to_lowercase().as_str() {
-                "local" => Some(StorageTier::Local),
-                "s3" => Some(StorageTier::S3),
-                _ => None,
-            }),
+            storage: self
+                .storage
+                .as_ref()
+                .and_then(|s| match s.to_lowercase().as_str() {
+                    "local" => Some(StorageTier::Local),
+                    "s3" => Some(StorageTier::S3),
+                    _ => None,
+                }),
             force_merge_segments: self.force_merge_segments,
             shrink_shards: self.shrink_shards,
         }
@@ -175,7 +181,11 @@ pub fn parse_size(s: &str) -> Option<u64> {
         (s.as_str(), 1u64)
     };
 
-    num_str.trim().parse::<f64>().ok().map(|n| (n * multiplier as f64) as u64)
+    num_str
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .map(|n| (n * multiplier as f64) as u64)
 }
 
 /// Parse a duration string like "1d", "7d", "1h", "30m" to Duration
@@ -263,7 +273,10 @@ mod tests {
         assert_eq!(parse_size("500MB"), Some(500 * 1024 * 1024));
         assert_eq!(parse_size("100KB"), Some(100 * 1024));
         assert_eq!(parse_size("1024B"), Some(1024));
-        assert_eq!(parse_size("1.5GB"), Some((1.5 * 1024.0 * 1024.0 * 1024.0) as u64));
+        assert_eq!(
+            parse_size("1.5GB"),
+            Some((1.5 * 1024.0 * 1024.0 * 1024.0) as u64)
+        );
     }
 
     #[test]

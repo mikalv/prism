@@ -2,7 +2,7 @@
 
 #[cfg(feature = "provider-onnx")]
 mod _inner {
-    use crate::embedding::{EmbeddingProvider, Embedder, ModelCache, ModelConfig};
+    use crate::embedding::{Embedder, EmbeddingProvider, ModelCache, ModelConfig};
     use anyhow::Result;
     use async_trait::async_trait;
     use std::path::PathBuf;

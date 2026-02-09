@@ -35,13 +35,18 @@ backends:
 
     fs::write(schemas_dir.join("articles.yaml"), schema).expect("Failed to write schema");
 
-    let text_backend = Arc::new(TextBackend::new(&data_dir).expect("Failed to create text backend"));
-    let vector_backend = Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
+    let text_backend =
+        Arc::new(TextBackend::new(&data_dir).expect("Failed to create text backend"));
+    let vector_backend =
+        Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
     let manager = Arc::new(
         CollectionManager::new(&schemas_dir, text_backend, vector_backend)
             .expect("Failed to create collection manager"),
     );
-    manager.initialize().await.expect("Failed to initialize manager");
+    manager
+        .initialize()
+        .await
+        .expect("Failed to initialize manager");
 
     (temp, manager)
 }
@@ -90,14 +95,20 @@ async fn test_prefix_suggestion() {
         },
     ];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Query prefix "ru" using suggest (non-fuzzy mode)
     let suggestions = manager
         .suggest("articles", "title", "ru", 5, false, 2)
         .expect("Failed to get suggestions");
 
-    assert!(!suggestions.is_empty(), "Should have suggestions for prefix 'ru'");
+    assert!(
+        !suggestions.is_empty(),
+        "Should have suggestions for prefix 'ru'"
+    );
 
     // Verify all returned terms start with "ru"
     for entry in &suggestions {
@@ -111,7 +122,10 @@ async fn test_prefix_suggestion() {
     // "rust" should be most frequent (appears in 3 documents)
     let first = &suggestions[0];
     assert_eq!(first.term, "rust", "Most frequent term should be 'rust'");
-    assert!(first.doc_freq >= 3, "rust should appear in at least 3 documents");
+    assert!(
+        first.doc_freq >= 3,
+        "rust should appear in at least 3 documents"
+    );
 }
 
 #[tokio::test]
@@ -122,36 +136,39 @@ async fn test_empty_prefix_returns_top_terms() {
     let docs = vec![
         Document {
             id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("programming rust language")),
-            ]),
+            fields: HashMap::from([("title".to_string(), json!("programming rust language"))]),
         },
         Document {
             id: "doc2".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("programming python language")),
-            ]),
+            fields: HashMap::from([("title".to_string(), json!("programming python language"))]),
         },
         Document {
             id: "doc3".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("programming java language")),
-            ]),
+            fields: HashMap::from([("title".to_string(), json!("programming java language"))]),
         },
     ];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Empty prefix should return most frequent terms overall
     let suggestions = manager
         .suggest("articles", "title", "", 10, false, 2)
         .expect("Failed to get suggestions");
 
-    assert!(!suggestions.is_empty(), "Should have suggestions for empty prefix");
+    assert!(
+        !suggestions.is_empty(),
+        "Should have suggestions for empty prefix"
+    );
 
     // "programming" and "language" should appear in all 3 docs
     let terms: Vec<&str> = suggestions.iter().map(|s| s.term.as_str()).collect();
-    assert!(terms.contains(&"programming"), "Should contain 'programming'");
+    assert!(
+        terms.contains(&"programming"),
+        "Should contain 'programming'"
+    );
     assert!(terms.contains(&"language"), "Should contain 'language'");
 
     // Verify sorting by score (descending, based on doc_freq)
@@ -168,23 +185,25 @@ async fn test_no_matches() {
     let (_temp, manager) = setup_suggest_environment().await;
 
     // Index some documents
-    let docs = vec![
-        Document {
-            id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("Rust programming")),
-            ]),
-        },
-    ];
+    let docs = vec![Document {
+        id: "doc1".to_string(),
+        fields: HashMap::from([("title".to_string(), json!("Rust programming"))]),
+    }];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Query prefix that doesn't match any terms
     let suggestions = manager
         .suggest("articles", "title", "xyz", 5, false, 2)
         .expect("Failed to get suggestions");
 
-    assert!(suggestions.is_empty(), "Should have no suggestions for prefix 'xyz'");
+    assert!(
+        suggestions.is_empty(),
+        "Should have no suggestions for prefix 'xyz'"
+    );
 }
 
 #[tokio::test]
@@ -195,19 +214,18 @@ async fn test_limit_parameter() {
     let docs = vec![
         Document {
             id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("alpha beta gamma delta epsilon")),
-            ]),
+            fields: HashMap::from([("title".to_string(), json!("alpha beta gamma delta epsilon"))]),
         },
         Document {
             id: "doc2".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("alpha zeta eta theta iota")),
-            ]),
+            fields: HashMap::from([("title".to_string(), json!("alpha zeta eta theta iota"))]),
         },
     ];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Request only 2 suggestions
     let suggestions = manager
@@ -218,7 +236,10 @@ async fn test_limit_parameter() {
 
     // "alpha" should be first (appears in both docs)
     if !suggestions.is_empty() {
-        assert_eq!(suggestions[0].term, "alpha", "Most frequent term should be 'alpha'");
+        assert_eq!(
+            suggestions[0].term, "alpha",
+            "Most frequent term should be 'alpha'"
+        );
     }
 }
 
@@ -227,17 +248,18 @@ async fn test_field_specific_suggestions() {
     let (_temp, manager) = setup_suggest_environment().await;
 
     // Index documents with different terms in different fields
-    let docs = vec![
-        Document {
-            id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("Rust programming")),
-                ("tags".to_string(), json!("backend systems")),
-            ]),
-        },
-    ];
+    let docs = vec![Document {
+        id: "doc1".to_string(),
+        fields: HashMap::from([
+            ("title".to_string(), json!("Rust programming")),
+            ("tags".to_string(), json!("backend systems")),
+        ]),
+    }];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Suggestions from title field
     let title_suggestions = manager
@@ -251,19 +273,25 @@ async fn test_field_specific_suggestions() {
 
     // Title should have "rust"
     let title_terms: Vec<&str> = title_suggestions.iter().map(|s| s.term.as_str()).collect();
-    assert!(title_terms.contains(&"rust"), "Title field should contain 'rust'");
+    assert!(
+        title_terms.contains(&"rust"),
+        "Title field should contain 'rust'"
+    );
 
     // Tags should have "systems"
     let tag_terms: Vec<&str> = tags_suggestions.iter().map(|s| s.term.as_str()).collect();
-    assert!(tag_terms.contains(&"systems"), "Tags field should contain 'systems'");
+    assert!(
+        tag_terms.contains(&"systems"),
+        "Tags field should contain 'systems'"
+    );
 
     // Title shouldn't have "systems" (it's only in tags)
     let title_sys_suggestions = manager
         .suggest("articles", "title", "sy", 5, false, 2)
         .expect("Failed to get title suggestions");
     assert!(
-        title_sys_suggestions.is_empty() ||
-        !title_sys_suggestions.iter().any(|s| s.term == "systems"),
+        title_sys_suggestions.is_empty()
+            || !title_sys_suggestions.iter().any(|s| s.term == "systems"),
         "Title field should not contain 'systems'"
     );
 }
@@ -273,30 +301,35 @@ async fn test_case_sensitivity() {
     let (_temp, manager) = setup_suggest_environment().await;
 
     // Index documents - Tantivy's default tokenizer lowercases terms
-    let docs = vec![
-        Document {
-            id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("RUST Programming Language")),
-            ]),
-        },
-    ];
+    let docs = vec![Document {
+        id: "doc1".to_string(),
+        fields: HashMap::from([("title".to_string(), json!("RUST Programming Language"))]),
+    }];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Lowercase prefix should match (since terms are lowercased)
     let suggestions = manager
         .suggest("articles", "title", "rust", 5, false, 2)
         .expect("Failed to get suggestions");
 
-    assert!(!suggestions.is_empty(), "Should find 'rust' with lowercase prefix");
+    assert!(
+        !suggestions.is_empty(),
+        "Should find 'rust' with lowercase prefix"
+    );
 
     // Uppercase prefix won't match lowercased terms
     let upper_suggestions = manager
         .suggest("articles", "title", "RUST", 5, false, 2)
         .expect("Failed to get suggestions");
 
-    assert!(upper_suggestions.is_empty(), "Uppercase prefix shouldn't match lowercased terms");
+    assert!(
+        upper_suggestions.is_empty(),
+        "Uppercase prefix shouldn't match lowercased terms"
+    );
 }
 
 #[tokio::test]
@@ -304,16 +337,15 @@ async fn test_nonexistent_field() {
     let (_temp, manager) = setup_suggest_environment().await;
 
     // Index a document
-    let docs = vec![
-        Document {
-            id: "doc1".to_string(),
-            fields: HashMap::from([
-                ("title".to_string(), json!("Test document")),
-            ]),
-        },
-    ];
+    let docs = vec![Document {
+        id: "doc1".to_string(),
+        fields: HashMap::from([("title".to_string(), json!("Test document"))]),
+    }];
 
-    manager.index("articles", docs).await.expect("Failed to index documents");
+    manager
+        .index("articles", docs)
+        .await
+        .expect("Failed to index documents");
 
     // Try to get suggestions from a field that doesn't exist
     let result = manager.suggest("articles", "nonexistent_field", "test", 5, false, 2);

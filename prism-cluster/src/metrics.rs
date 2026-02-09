@@ -104,8 +104,7 @@ pub fn record_rebalance_completion(success: bool, duration: Duration) {
     )
     .increment(1);
 
-    metrics::histogram!("prism_rebalance_duration_seconds")
-        .record(duration.as_secs_f64());
+    metrics::histogram!("prism_rebalance_duration_seconds").record(duration.as_secs_f64());
 }
 
 /// Record shard transfer
@@ -120,7 +119,12 @@ pub fn record_shard_transfer(shard_id: &str, from_node: &str, to_node: &str) {
 }
 
 /// Record shard transfer completion
-pub fn record_shard_transfer_complete(shard_id: &str, success: bool, bytes: u64, duration: Duration) {
+pub fn record_shard_transfer_complete(
+    shard_id: &str,
+    success: bool,
+    bytes: u64,
+    duration: Duration,
+) {
     let status = if success { "success" } else { "failure" };
     metrics::counter!(
         "prism_shard_transfers_completed_total",
@@ -194,8 +198,7 @@ pub fn update_shard_status(shard_id: &str, state: &ShardState, role: &ReplicaRol
 
 /// Record connection pool metrics
 pub fn record_connection_pool_size(size: usize) {
-    metrics::gauge!("prism_cluster_connections_active")
-        .set(size as f64);
+    metrics::gauge!("prism_cluster_connections_active").set(size as f64);
 }
 
 /// Record connection establishment
@@ -225,8 +228,16 @@ pub fn update_cluster_state_metrics(cluster_state: &ClusterState) {
     const HEARTBEAT_TIMEOUT_SECS: u64 = 30;
 
     // Update node count gauges
-    let alive_count = snapshot.nodes.values().filter(|n| n.reachable && n.is_healthy(HEARTBEAT_TIMEOUT_SECS)).count();
-    let suspect_count = snapshot.nodes.values().filter(|n| n.reachable && !n.is_healthy(HEARTBEAT_TIMEOUT_SECS)).count();
+    let alive_count = snapshot
+        .nodes
+        .values()
+        .filter(|n| n.reachable && n.is_healthy(HEARTBEAT_TIMEOUT_SECS))
+        .count();
+    let suspect_count = snapshot
+        .nodes
+        .values()
+        .filter(|n| n.reachable && !n.is_healthy(HEARTBEAT_TIMEOUT_SECS))
+        .count();
     let dead_count = snapshot.nodes.values().filter(|n| !n.reachable).count();
 
     metrics::gauge!("prism_cluster_nodes_alive").set(alive_count as f64);
@@ -241,9 +252,21 @@ pub fn update_cluster_state_metrics(cluster_state: &ClusterState) {
     }
 
     // Update shard count gauges using assignments
-    let active_shards = snapshot.assignments.values().filter(|s| matches!(s.state, ShardState::Active)).count();
-    let relocating_shards = snapshot.assignments.values().filter(|s| matches!(s.state, ShardState::Relocating)).count();
-    let initializing_shards = snapshot.assignments.values().filter(|s| matches!(s.state, ShardState::Initializing)).count();
+    let active_shards = snapshot
+        .assignments
+        .values()
+        .filter(|s| matches!(s.state, ShardState::Active))
+        .count();
+    let relocating_shards = snapshot
+        .assignments
+        .values()
+        .filter(|s| matches!(s.state, ShardState::Relocating))
+        .count();
+    let initializing_shards = snapshot
+        .assignments
+        .values()
+        .filter(|s| matches!(s.state, ShardState::Initializing))
+        .count();
 
     metrics::gauge!("prism_cluster_shards_active").set(active_shards as f64);
     metrics::gauge!("prism_cluster_shards_relocating").set(relocating_shards as f64);
@@ -256,20 +279,15 @@ pub fn update_cluster_state_metrics(cluster_state: &ClusterState) {
 
 /// Update rebalance status metrics
 pub fn update_rebalance_status_metrics(status: &RebalanceStatus) {
-    metrics::gauge!("prism_rebalance_in_progress")
-        .set(if status.in_progress { 1.0 } else { 0.0 });
+    metrics::gauge!("prism_rebalance_in_progress").set(if status.in_progress { 1.0 } else { 0.0 });
 
-    metrics::gauge!("prism_rebalance_shards_in_transit")
-        .set(status.shards_in_transit as f64);
+    metrics::gauge!("prism_rebalance_shards_in_transit").set(status.shards_in_transit as f64);
 
-    metrics::gauge!("prism_rebalance_total_shards_to_move")
-        .set(status.total_shards_to_move as f64);
+    metrics::gauge!("prism_rebalance_total_shards_to_move").set(status.total_shards_to_move as f64);
 
-    metrics::gauge!("prism_rebalance_completed_moves")
-        .set(status.completed_moves as f64);
+    metrics::gauge!("prism_rebalance_completed_moves").set(status.completed_moves as f64);
 
-    metrics::gauge!("prism_rebalance_failed_moves")
-        .set(status.failed_moves as f64);
+    metrics::gauge!("prism_rebalance_failed_moves").set(status.failed_moves as f64);
 }
 
 /// Guard for timing RPC operations
@@ -525,7 +543,12 @@ impl FederatedQueryTimer {
     /// Record successful completion
     pub fn success(self, is_partial: bool) {
         let duration = self.start.elapsed();
-        record_federated_query(&self.collection, &self.operation, self.shard_count, duration);
+        record_federated_query(
+            &self.collection,
+            &self.operation,
+            self.shard_count,
+            duration,
+        );
 
         if is_partial {
             metrics::counter!(
@@ -540,7 +563,12 @@ impl FederatedQueryTimer {
     /// Record failure
     pub fn error(self, error_type: &str) {
         let duration = self.start.elapsed();
-        record_federated_query(&self.collection, &self.operation, self.shard_count, duration);
+        record_federated_query(
+            &self.collection,
+            &self.operation,
+            self.shard_count,
+            duration,
+        );
 
         metrics::counter!(
             "prism_federated_query_errors_total",

@@ -209,14 +209,16 @@ impl Default for NodeTopology {
 impl NodeTopology {
     /// Check if this node matches the required attributes
     pub fn matches_attributes(&self, required: &HashMap<String, String>) -> bool {
-        required.iter().all(|(k, v)| {
-            self.attributes.get(k).map(|av| av == v).unwrap_or(false)
-        })
+        required
+            .iter()
+            .all(|(k, v)| self.attributes.get(k).map(|av| av == v).unwrap_or(false))
     }
 
     /// Get storage capacity in GB from attributes (if set)
     pub fn storage_gb(&self) -> Option<u64> {
-        self.attributes.get("storage_gb").and_then(|v| v.parse().ok())
+        self.attributes
+            .get("storage_gb")
+            .and_then(|v| v.parse().ok())
     }
 
     /// Get disk type from attributes (if set)

@@ -108,7 +108,13 @@ fn filter_by_hard_constraints<'a>(
             // Must have required attributes
             if !strategy.required_attributes.is_empty() {
                 for (key, value) in &strategy.required_attributes {
-                    if !node.topology.attributes.get(key).map(|v| v == value).unwrap_or(false) {
+                    if !node
+                        .topology
+                        .attributes
+                        .get(key)
+                        .map(|v| v == value)
+                        .unwrap_or(false)
+                    {
                         return false;
                     }
                 }
@@ -313,10 +319,7 @@ pub fn score_node(
 
 /// Count shards assigned to a node
 fn count_shards_on_node(node_id: &str, assignments: &[ShardAssignment]) -> usize {
-    assignments
-        .iter()
-        .filter(|a| a.is_on_node(node_id))
-        .count()
+    assignments.iter().filter(|a| a.is_on_node(node_id)).count()
 }
 
 /// Find the best node to transfer a shard to for rebalancing
@@ -455,15 +458,18 @@ mod tests {
         };
 
         let result = place_replicas("shard-1", 3, &nodes, &[], &strategy);
-        assert!(matches!(result, Err(PlacementError::InsufficientZones { .. })));
+        assert!(matches!(
+            result,
+            Err(PlacementError::InsufficientZones { .. })
+        ));
     }
 
     #[test]
     fn test_place_replicas_balance() {
         let nodes = vec![
-            make_node("node-1", "zone-a", 5),  // Has many shards
-            make_node("node-2", "zone-b", 0),  // Empty
-            make_node("node-3", "zone-c", 2),  // Some shards
+            make_node("node-1", "zone-a", 5), // Has many shards
+            make_node("node-2", "zone-b", 0), // Empty
+            make_node("node-3", "zone-c", 2), // Some shards
         ];
 
         // Create existing assignments for the balance check

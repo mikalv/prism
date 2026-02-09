@@ -220,10 +220,7 @@ pub struct EsMSearchResponse {
 #[serde(untagged)]
 pub enum EsMSearchItem {
     Success(EsSearchResponse),
-    Error {
-        error: EsError,
-        status: u16,
-    },
+    Error { error: EsError, status: u16 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

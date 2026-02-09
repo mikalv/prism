@@ -218,11 +218,7 @@ impl FederatedSearch {
     }
 
     /// Execute a federated search across all relevant shards
-    pub async fn search(
-        &self,
-        collection: &str,
-        query: RpcQuery,
-    ) -> Result<FederatedResults> {
+    pub async fn search(&self, collection: &str, query: RpcQuery) -> Result<FederatedResults> {
         let start = Instant::now();
 
         // Get routing decision
@@ -230,7 +226,11 @@ impl FederatedSearch {
         debug!(
             "Routing query to {} shards: {:?}",
             routing.targets.len(),
-            routing.targets.iter().map(|t| &t.shard_id).collect::<Vec<_>>()
+            routing
+                .targets
+                .iter()
+                .map(|t| &t.shard_id)
+                .collect::<Vec<_>>()
         );
 
         if routing.targets.is_empty() {
@@ -245,7 +245,9 @@ impl FederatedSearch {
         }
 
         // Execute scatter-gather
-        let (shard_results, shard_status) = self.scatter_gather(collection, &query, &routing.targets).await;
+        let (shard_results, shard_status) = self
+            .scatter_gather(collection, &query, &routing.targets)
+            .await;
 
         // Check if we have enough results
         if !shard_status.has_minimum(self.config.min_successful_shards) {
@@ -262,7 +264,9 @@ impl FederatedSearch {
             .and_then(|s| MergeStrategy::from_string(s))
             .unwrap_or_else(|| self.config.default_merge_strategy.clone());
 
-        let merged = self.merger.merge(shard_results, query.limit, &merge_strategy);
+        let merged = self
+            .merger
+            .merge(shard_results, query.limit, &merge_strategy);
 
         let latency_ms = start.elapsed().as_millis() as u64;
         let is_partial = shard_status.failed > 0;
@@ -318,15 +322,13 @@ impl FederatedSearch {
         // Execute with timeout
         let results = if self.config.allow_partial_results {
             // Use timeout for partial results
-            tokio::time::timeout(timeout, async {
-                futures::future::join_all(futures).await
-            })
-            .await
-            .unwrap_or_else(|_| {
-                // Timeout - return empty results for timed-out shards
-                warn!("Federated search timed out after {}ms", timeout.as_millis());
-                Vec::new()
-            })
+            tokio::time::timeout(timeout, async { futures::future::join_all(futures).await })
+                .await
+                .unwrap_or_else(|_| {
+                    // Timeout - return empty results for timed-out shards
+                    warn!("Federated search timed out after {}ms", timeout.as_millis());
+                    Vec::new()
+                })
         } else {
             // Wait for all results
             futures::future::join_all(futures).await
@@ -357,11 +359,7 @@ impl FederatedSearch {
     }
 
     /// Execute a federated get (retrieve document by ID from any shard)
-    pub async fn get(
-        &self,
-        collection: &str,
-        id: &str,
-    ) -> Result<Option<RpcDocument>> {
+    pub async fn get(&self, collection: &str, id: &str) -> Result<Option<RpcDocument>> {
         // Route to the shard that should contain this document
         let routing = self.router.route_by_id(collection, id)?;
 
@@ -370,7 +368,10 @@ impl FederatedSearch {
                 Ok(Some(doc)) => return Ok(Some(doc)),
                 Ok(None) => continue, // Try next replica
                 Err(e) => {
-                    debug!("Get from {} failed: {}, trying next", target.node_address, e);
+                    debug!(
+                        "Get from {} failed: {}, trying next",
+                        target.node_address, e
+                    );
                     continue;
                 }
             }
@@ -380,11 +381,7 @@ impl FederatedSearch {
     }
 
     /// Execute a federated index (route documents to correct shards)
-    pub async fn index(
-        &self,
-        collection: &str,
-        docs: Vec<RpcDocument>,
-    ) -> Result<IndexStatus> {
+    pub async fn index(&self, collection: &str, docs: Vec<RpcDocument>) -> Result<IndexStatus> {
         let start = Instant::now();
 
         // Group documents by target shard
@@ -449,11 +446,7 @@ impl FederatedSearch {
     }
 
     /// Execute a federated delete
-    pub async fn delete(
-        &self,
-        collection: &str,
-        ids: Vec<String>,
-    ) -> Result<DeleteStatus> {
+    pub async fn delete(&self, collection: &str, ids: Vec<String>) -> Result<DeleteStatus> {
         let start = Instant::now();
 
         // Group IDs by target shard

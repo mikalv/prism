@@ -84,12 +84,9 @@ pub async fn create_provider(
             cache_dir,
         } => {
             let cache_path = cache_dir.as_ref().map(std::path::PathBuf::from);
-            let provider = super::onnx::OnnxProvider::new(
-                model_path.clone(),
-                model_id.clone(),
-                cache_path,
-            )
-            .await?;
+            let provider =
+                super::onnx::OnnxProvider::new(model_path.clone(), model_id.clone(), cache_path)
+                    .await?;
             Ok(Box::new(provider))
         }
     }

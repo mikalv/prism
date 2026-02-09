@@ -104,13 +104,19 @@ impl QueryRouter {
             if shard.state.can_serve_reads() {
                 // Get node address from cluster state
                 if let Some(node) = self.cluster_state.get_node(&shard.primary_node) {
-                    targets.push(ShardTarget::from_assignment(shard, node.info.address.clone()));
+                    targets.push(ShardTarget::from_assignment(
+                        shard,
+                        node.info.address.clone(),
+                    ));
                 } else {
                     // Try replicas
                     let mut found = false;
                     for replica in &shard.replica_nodes {
                         if let Some(node) = self.cluster_state.get_node(replica) {
-                            targets.push(ShardTarget::from_assignment(shard, node.info.address.clone()));
+                            targets.push(ShardTarget::from_assignment(
+                                shard,
+                                node.info.address.clone(),
+                            ));
                             found = true;
                             break;
                         }
@@ -157,13 +163,19 @@ impl QueryRouter {
 
             // Add primary
             if let Some(node) = self.cluster_state.get_node(&shard.primary_node) {
-                targets.push(ShardTarget::from_assignment(shard, node.info.address.clone()));
+                targets.push(ShardTarget::from_assignment(
+                    shard,
+                    node.info.address.clone(),
+                ));
             }
 
             // Add replicas for failover
             for replica in &shard.replica_nodes {
                 if let Some(node) = self.cluster_state.get_node(replica) {
-                    targets.push(ShardTarget::from_assignment(shard, node.info.address.clone()));
+                    targets.push(ShardTarget::from_assignment(
+                        shard,
+                        node.info.address.clone(),
+                    ));
                 }
             }
 
@@ -182,11 +194,7 @@ impl QueryRouter {
     }
 
     /// Route with custom routing key
-    pub fn route_by_key(
-        &self,
-        collection: &str,
-        routing_key: &str,
-    ) -> Result<RoutingDecision> {
+    pub fn route_by_key(&self, collection: &str, routing_key: &str) -> Result<RoutingDecision> {
         // Use the routing key instead of document ID
         self.route_by_id(collection, routing_key)
     }
@@ -210,8 +218,7 @@ impl QueryRouter {
     pub fn all_shards_available(&self, collection: &str) -> bool {
         let shards = self.cluster_state.get_collection_shards(collection);
         shards.iter().all(|s| {
-            s.state.can_serve_reads()
-                && self.cluster_state.get_node(&s.primary_node).is_some()
+            s.state.can_serve_reads() && self.cluster_state.get_node(&s.primary_node).is_some()
         })
     }
 }
@@ -254,7 +261,10 @@ mod tests {
     #[test]
     fn test_hash_to_shard() {
         // Consistent hashing
-        assert_eq!(QueryRouter::hash_to_shard("doc-1", 3), QueryRouter::hash_to_shard("doc-1", 3));
+        assert_eq!(
+            QueryRouter::hash_to_shard("doc-1", 3),
+            QueryRouter::hash_to_shard("doc-1", 3)
+        );
 
         // Different keys may go to different shards
         let shard1 = QueryRouter::hash_to_shard("doc-1", 10);

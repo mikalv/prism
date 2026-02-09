@@ -86,11 +86,10 @@ impl RolloverService {
         };
 
         // Check rollover conditions
-        let reasons = policy.rollover.check_conditions(
-            stats.size_bytes as u64,
-            stats.document_count,
-            age,
-        );
+        let reasons =
+            policy
+                .rollover
+                .check_conditions(stats.size_bytes as u64, stats.document_count, age);
 
         Ok(RolloverCheckResult {
             should_rollover: !reasons.is_empty(),
@@ -110,10 +109,7 @@ impl RolloverService {
         let mut state = self.state.write().await;
 
         // Get current write target
-        let old_collection = self
-            .alias_manager
-            .resolve_write_target(index_name)
-            .await?;
+        let old_collection = self.alias_manager.resolve_write_target(index_name).await?;
 
         // Get or create managed index entry
         let current_gen = state.latest_generation(index_name);
@@ -150,12 +146,7 @@ impl RolloverService {
         }
 
         // Create managed index entry for new collection
-        let new_managed = ManagedIndex::new(
-            &new_collection,
-            index_name,
-            &policy.name,
-            new_gen,
-        );
+        let new_managed = ManagedIndex::new(&new_collection, index_name, &policy.name, new_gen);
         state.upsert(new_managed);
 
         tracing::info!(
@@ -224,13 +215,8 @@ impl RolloverService {
         index_name: &str,
         policy: &IlmPolicy,
     ) -> Result<RolloverResult> {
-        self.execute_rollover(
-            index_name,
-            policy,
-            vec![RolloverReason::Manual],
-            true,
-        )
-        .await
+        self.execute_rollover(index_name, policy, vec![RolloverReason::Manual], true)
+            .await
     }
 
     /// Initialize a new managed index (first index for a policy)

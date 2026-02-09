@@ -332,17 +332,32 @@ mod tests {
         let mut assignment = ShardAssignment::new("test", 0, "node-1");
         assignment.replica_nodes = vec!["node-2".to_string()];
 
-        assert_eq!(assignment.role_on_node("node-1"), Some(ReplicaRole::Primary));
-        assert_eq!(assignment.role_on_node("node-2"), Some(ReplicaRole::Replica));
+        assert_eq!(
+            assignment.role_on_node("node-1"),
+            Some(ReplicaRole::Primary)
+        );
+        assert_eq!(
+            assignment.role_on_node("node-2"),
+            Some(ReplicaRole::Replica)
+        );
         assert_eq!(assignment.role_on_node("node-3"), None);
     }
 
     #[test]
     fn test_spread_level_from_string() {
-        assert_eq!(SpreadLevel::from_strategy_string("zone-aware"), SpreadLevel::Zone);
-        assert_eq!(SpreadLevel::from_strategy_string("rack-aware"), SpreadLevel::Rack);
+        assert_eq!(
+            SpreadLevel::from_strategy_string("zone-aware"),
+            SpreadLevel::Zone
+        );
+        assert_eq!(
+            SpreadLevel::from_strategy_string("rack-aware"),
+            SpreadLevel::Rack
+        );
         assert_eq!(SpreadLevel::from_strategy_string("none"), SpreadLevel::None);
-        assert_eq!(SpreadLevel::from_strategy_string("unknown"), SpreadLevel::Zone);
+        assert_eq!(
+            SpreadLevel::from_strategy_string("unknown"),
+            SpreadLevel::Zone
+        );
     }
 
     #[test]

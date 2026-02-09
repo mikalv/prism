@@ -62,10 +62,13 @@ pub async fn bulk_handler(
                     }
                 };
 
-                by_index
-                    .entry(index)
-                    .or_default()
-                    .push((doc_id, Document { id: String::new(), fields }));
+                by_index.entry(index).or_default().push((
+                    doc_id,
+                    Document {
+                        id: String::new(),
+                        fields,
+                    },
+                ));
             }
             BulkAction::Delete { index, id } => {
                 delete_by_index.entry(index).or_default().push(id);
@@ -76,9 +79,7 @@ pub async fn bulk_handler(
     // Process index/create actions
     for (index, docs) in by_index {
         // Check if collection exists (sync)
-        let collections = state
-            .manager
-            .expand_collection_patterns(&[index.clone()]);
+        let collections = state.manager.expand_collection_patterns(&[index.clone()]);
 
         if collections.is_empty() {
             // Collection doesn't exist - report errors
@@ -163,9 +164,7 @@ pub async fn bulk_handler(
 
     // Process delete actions
     for (index, ids) in delete_by_index {
-        let collections = state
-            .manager
-            .expand_collection_patterns(&[index.clone()]);
+        let collections = state.manager.expand_collection_patterns(&[index.clone()]);
 
         if collections.is_empty() {
             for id in ids {
@@ -245,8 +244,8 @@ fn parse_bulk_body(
     body: &Bytes,
     default_index: Option<&str>,
 ) -> Result<Vec<BulkAction>, EsCompatError> {
-    let text = std::str::from_utf8(body)
-        .map_err(|e| EsCompatError::InvalidRequestBody(e.to_string()))?;
+    let text =
+        std::str::from_utf8(body).map_err(|e| EsCompatError::InvalidRequestBody(e.to_string()))?;
 
     let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
 

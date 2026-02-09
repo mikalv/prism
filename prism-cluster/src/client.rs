@@ -80,13 +80,10 @@ impl ClusterClient {
         debug!("Connecting to cluster node at {}", addr);
 
         // Connect - endpoint.connect returns Result<Connecting, ConnectError>
-        let connecting = self
-            .endpoint
-            .connect(addr, "prism-cluster")
-            .map_err(|e| {
-                record_connection_failed(&addr_str, "connect_error");
-                ClusterError::Connection(format!("Failed to connect to {}: {}", addr, e))
-            })?;
+        let connecting = self.endpoint.connect(addr, "prism-cluster").map_err(|e| {
+            record_connection_failed(&addr_str, "connect_error");
+            ClusterError::Connection(format!("Failed to connect to {}: {}", addr, e))
+        })?;
 
         // Wait for connection with timeout
         let connection = tokio::time::timeout(self.config.connect_timeout(), connecting)
@@ -97,7 +94,10 @@ impl ClusterClient {
             })?
             .map_err(|e| {
                 record_connection_failed(&addr_str, "handshake_error");
-                ClusterError::Connection(format!("Connection handshake failed with {}: {}", addr, e))
+                ClusterError::Connection(format!(
+                    "Connection handshake failed with {}: {}",
+                    addr, e
+                ))
             })?;
 
         // Open bidirectional stream
@@ -140,12 +140,7 @@ impl ClusterClient {
     // ========================================
 
     /// Index documents on a remote node
-    pub async fn index(
-        &self,
-        addr: &str,
-        collection: &str,
-        docs: Vec<RpcDocument>,
-    ) -> Result<()> {
+    pub async fn index(&self, addr: &str, collection: &str, docs: Vec<RpcDocument>) -> Result<()> {
         let timer = RpcTimer::new("index", addr);
         let sock_addr = Self::parse_addr(addr)?;
         let client = self.get_client(sock_addr).await?;
@@ -192,12 +187,7 @@ impl ClusterClient {
     }
 
     /// Get document from a remote node
-    pub async fn get(
-        &self,
-        addr: &str,
-        collection: &str,
-        id: &str,
-    ) -> Result<Option<RpcDocument>> {
+    pub async fn get(&self, addr: &str, collection: &str, id: &str) -> Result<Option<RpcDocument>> {
         let timer = RpcTimer::new("get", addr);
         let sock_addr = Self::parse_addr(addr)?;
         let client = self.get_client(sock_addr).await?;
@@ -349,11 +339,7 @@ impl ClusterClient {
     }
 
     /// Apply a schema to a remote node (for schema propagation)
-    pub async fn apply_schema(
-        &self,
-        addr: &str,
-        versioned: crate::VersionedSchema,
-    ) -> Result<()> {
+    pub async fn apply_schema(&self, addr: &str, versioned: crate::VersionedSchema) -> Result<()> {
         let timer = RpcTimer::new("apply_schema", addr);
         let sock_addr = Self::parse_addr(addr)?;
         let client = self.get_client(sock_addr).await?;
@@ -391,7 +377,9 @@ impl ClusterClient {
                 } else {
                     timer.error("not_applied");
                     Err(ClusterError::Internal(
-                        response.error.unwrap_or_else(|| "Schema not applied".into()),
+                        response
+                            .error
+                            .unwrap_or_else(|| "Schema not applied".into()),
                     ))
                 }
             }
@@ -403,11 +391,7 @@ impl ClusterClient {
     }
 
     /// Get schema version from a remote node
-    pub async fn get_schema_version(
-        &self,
-        addr: &str,
-        collection: &str,
-    ) -> Result<Option<u64>> {
+    pub async fn get_schema_version(&self, addr: &str, collection: &str) -> Result<Option<u64>> {
         let timer = RpcTimer::new("get_schema_version", addr);
         let sock_addr = Self::parse_addr(addr)?;
         let client = self.get_client(sock_addr).await?;

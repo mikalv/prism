@@ -60,8 +60,8 @@ impl SchemaRegistry {
         };
 
         // Create versioned schema
-        let versioned = VersionedSchema::new(collection, version, schema, &self.node_id)
-            .with_changes(changes);
+        let versioned =
+            VersionedSchema::new(collection, version, schema, &self.node_id).with_changes(changes);
 
         // Store in current schemas
         schemas.insert(collection.to_string(), versioned.clone());
@@ -72,11 +72,7 @@ impl SchemaRegistry {
 
         // Prune old history if needed
         if collection_history.len() > self.max_history {
-            let min_version = collection_history
-                .keys()
-                .copied()
-                .min()
-                .unwrap_or(0);
+            let min_version = collection_history.keys().copied().min().unwrap_or(0);
             collection_history.remove(&min_version);
         }
 
@@ -96,11 +92,7 @@ impl SchemaRegistry {
 
     /// Get current version for a collection
     pub async fn get_version(&self, collection: &str) -> Option<SchemaVersion> {
-        self.schemas
-            .read()
-            .await
-            .get(collection)
-            .map(|s| s.version)
+        self.schemas.read().await.get(collection).map(|s| s.version)
     }
 
     /// Get a specific version from history
@@ -413,7 +405,10 @@ mod tests {
         );
 
         // Additive change - immediate
-        let v2 = registry.register("test", json!({"a": 1, "b": 2})).await.unwrap();
+        let v2 = registry
+            .register("test", json!({"a": 1, "b": 2}))
+            .await
+            .unwrap();
         assert_eq!(
             registry.determine_strategy(&v2),
             PropagationStrategy::Immediate

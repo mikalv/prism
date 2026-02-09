@@ -61,9 +61,8 @@ impl TemplateManager {
                     format!("Failed to read templates: {}", e),
                 ))
             })?;
-            serde_json::from_str(&content).map_err(|e| {
-                Error::Config(format!("Failed to parse templates: {}", e))
-            })?
+            serde_json::from_str(&content)
+                .map_err(|e| Error::Config(format!("Failed to parse templates: {}", e)))?
         } else {
             TemplateRegistry::new()
         };
@@ -116,9 +115,7 @@ impl TemplateManager {
         // Validate patterns are valid
         for pattern in &template.index_patterns {
             if pattern.is_empty() {
-                return Err(Error::Config(
-                    "Index pattern cannot be empty".to_string(),
-                ));
+                return Err(Error::Config("Index pattern cannot be empty".to_string()));
             }
         }
 
@@ -187,19 +184,23 @@ impl TemplateManager {
         };
 
         // Build vector backend config from template
-        let vector = template.schema.vector.as_ref().map(|v| VectorBackendConfig {
-            embedding_field: v.embedding_field.clone(),
-            dimension: v.dimension,
-            distance: match v.distance {
-                types::VectorDistance::Cosine => VectorDistance::Cosine,
-                types::VectorDistance::Euclidean => VectorDistance::Euclidean,
-                types::VectorDistance::DotProduct => VectorDistance::Dot,
-            },
-            hnsw_m: 16,
-            hnsw_ef_construction: 200,
-            hnsw_ef_search: 100,
-            vector_weight: 0.5,
-        });
+        let vector = template
+            .schema
+            .vector
+            .as_ref()
+            .map(|v| VectorBackendConfig {
+                embedding_field: v.embedding_field.clone(),
+                dimension: v.dimension,
+                distance: match v.distance {
+                    types::VectorDistance::Cosine => VectorDistance::Cosine,
+                    types::VectorDistance::Euclidean => VectorDistance::Euclidean,
+                    types::VectorDistance::DotProduct => VectorDistance::Dot,
+                },
+                hnsw_m: 16,
+                hnsw_ef_construction: 200,
+                hnsw_ef_search: 100,
+                vector_weight: 0.5,
+            });
 
         CollectionSchema {
             collection: collection_name.to_string(),
@@ -209,21 +210,13 @@ impl TemplateManager {
                 vector,
                 graph: None,
             },
-            indexing: template
-                .settings
-                .indexing
-                .clone()
-                .unwrap_or_default(),
+            indexing: template.settings.indexing.clone().unwrap_or_default(),
             quota: template.settings.quota.clone().unwrap_or_default(),
             embedding_generation: None,
             facets: None,
             boosting: None,
             storage: Default::default(),
-            system_fields: template
-                .settings
-                .system_fields
-                .clone()
-                .unwrap_or_default(),
+            system_fields: template.settings.system_fields.clone().unwrap_or_default(),
             hybrid: None,
             replication: None,
             ilm_policy: template.settings.ilm_policy.clone(),
@@ -243,11 +236,8 @@ impl TemplateManager {
 
         // Merge text fields
         if let Some(ref mut text_config) = schema.backends.text {
-            let existing_names: std::collections::HashSet<_> = text_config
-                .fields
-                .iter()
-                .map(|f| f.name.clone())
-                .collect();
+            let existing_names: std::collections::HashSet<_> =
+                text_config.fields.iter().map(|f| f.name.clone()).collect();
 
             for field in &template.schema.text_fields {
                 if !existing_names.contains(&field.name) {

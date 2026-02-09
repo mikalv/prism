@@ -310,7 +310,11 @@ impl UnifiedStorageConfig {
                     populate_on_read: true,
                 };
 
-                Arc::new(CachedStorage::new(&cache_config.l1_path, l2, prism_cache_config))
+                Arc::new(CachedStorage::new(
+                    &cache_config.l1_path,
+                    l2,
+                    prism_cache_config,
+                ))
             }
             #[cfg(not(feature = "storage-s3"))]
             "s3" | "cached" => {
@@ -351,7 +355,10 @@ impl UnifiedStorageConfig {
             }
             .with_min_size(compression_config.min_size);
 
-            return Ok(Arc::new(CompressedStorage::new(base_storage, prism_compression_config)));
+            return Ok(Arc::new(CompressedStorage::new(
+                base_storage,
+                prism_compression_config,
+            )));
         }
 
         Ok(base_storage)

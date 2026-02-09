@@ -28,11 +28,7 @@ pub async fn run_restore(
         }
     });
 
-    println!(
-        "Restoring from '{}' in {} format",
-        input.display(),
-        format
-    );
+    println!("Restoring from '{}' in {} format", input.display(), format);
 
     let progress = if no_progress {
         None
@@ -42,11 +38,21 @@ pub async fn run_restore(
 
     match format {
         ExportFormat::Portable => {
-            restore_portable(data_dir, &input, target_collection.as_deref(), progress.as_ref())
-                .await?;
+            restore_portable(
+                data_dir,
+                &input,
+                target_collection.as_deref(),
+                progress.as_ref(),
+            )
+            .await?;
         }
         ExportFormat::Snapshot => {
-            restore_snapshot(data_dir, &input, target_collection.as_deref(), progress.as_ref())?;
+            restore_snapshot(
+                data_dir,
+                &input,
+                target_collection.as_deref(),
+                progress.as_ref(),
+            )?;
         }
     }
 
@@ -64,12 +70,10 @@ async fn restore_portable(
 ) -> Result<()> {
     // Create backends
     let text_backend = Arc::new(
-        prism::backends::TextBackend::new(data_dir)
-            .context("Failed to create text backend")?,
+        prism::backends::TextBackend::new(data_dir).context("Failed to create text backend")?,
     );
     let vector_backend = Arc::new(
-        prism::backends::VectorBackend::new(data_dir)
-            .context("Failed to create vector backend")?,
+        prism::backends::VectorBackend::new(data_dir).context("Failed to create vector backend")?,
     );
 
     // Open input file
@@ -80,15 +84,25 @@ async fn restore_portable(
     let progress_ref: Option<&dyn prism::export::ExportProgress> =
         progress.map(|p| p as &dyn prism::export::ExportProgress);
 
-    let result = import_portable(text_backend, vector_backend, reader, target_collection, progress_ref)
-        .await?;
+    let result = import_portable(
+        text_backend,
+        vector_backend,
+        reader,
+        target_collection,
+        progress_ref,
+    )
+    .await?;
 
     println!();
     println!("Restored collection: {}", result.collection);
     println!("Documents imported: {}", result.documents_imported);
     println!(
         "Checksum verified: {}",
-        if result.checksum_valid { "yes" } else { "FAILED" }
+        if result.checksum_valid {
+            "yes"
+        } else {
+            "FAILED"
+        }
     );
 
     Ok(())

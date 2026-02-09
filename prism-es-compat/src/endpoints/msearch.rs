@@ -41,8 +41,8 @@ pub async fn msearch_handler(
 fn parse_msearch_body(
     body: &Bytes,
 ) -> Result<Vec<(MSearchHeader, EsSearchRequest)>, EsCompatError> {
-    let text = std::str::from_utf8(body)
-        .map_err(|e| EsCompatError::InvalidRequestBody(e.to_string()))?;
+    let text =
+        std::str::from_utf8(body).map_err(|e| EsCompatError::InvalidRequestBody(e.to_string()))?;
 
     let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
 

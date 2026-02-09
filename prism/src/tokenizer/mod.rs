@@ -65,26 +65,14 @@ mod tests {
 
     #[test]
     fn test_pascal_case() {
-        assert_eq!(
-            tokenize("UserService"),
-            vec!["user", "service"]
-        );
-        assert_eq!(
-            tokenize("HTTPSConnection"),
-            vec!["https", "connection"]
-        );
+        assert_eq!(tokenize("UserService"), vec!["user", "service"]);
+        assert_eq!(tokenize("HTTPSConnection"), vec!["https", "connection"]);
     }
 
     #[test]
     fn test_snake_case() {
-        assert_eq!(
-            tokenize("get_user_by_id"),
-            vec!["get", "user", "by", "id"]
-        );
-        assert_eq!(
-            tokenize("__private_var__"),
-            vec!["private", "var"]
-        );
+        assert_eq!(tokenize("get_user_by_id"), vec!["get", "user", "by", "id"]);
+        assert_eq!(tokenize("__private_var__"), vec!["private", "var"]);
     }
 
     #[test]

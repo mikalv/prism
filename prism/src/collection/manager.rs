@@ -548,7 +548,11 @@ impl CollectionManager {
 
         // Log any errors (but don't fail the entire request)
         for (collection, error) in errors {
-            tracing::warn!("Multi-search: error in collection '{}': {:?}", collection, error);
+            tracing::warn!(
+                "Multi-search: error in collection '{}': {:?}",
+                collection,
+                error
+            );
         }
 
         // Merge results using RRF
@@ -586,13 +590,15 @@ impl CollectionManager {
 
                 *scores.entry(unique_key.clone()).or_insert(0.0) += rank_score;
 
-                result_data.entry(unique_key).or_insert_with(|| MultiSearchResult {
-                    id: result.id,
-                    collection: collection.clone(),
-                    score: 0.0,
-                    fields: result.fields,
-                    highlight: result.highlight,
-                });
+                result_data
+                    .entry(unique_key)
+                    .or_insert_with(|| MultiSearchResult {
+                        id: result.id,
+                        collection: collection.clone(),
+                        score: 0.0,
+                        fields: result.fields,
+                        highlight: result.highlight,
+                    });
             }
         }
 
@@ -734,7 +740,10 @@ backends:
         assert!(!CollectionManager::glob_match("*-products", "products-us"));
 
         // Test wildcard in middle
-        assert!(CollectionManager::glob_match("logs-*-backup", "logs-2026-backup"));
+        assert!(CollectionManager::glob_match(
+            "logs-*-backup",
+            "logs-2026-backup"
+        ));
         assert!(!CollectionManager::glob_match("logs-*-backup", "logs-2026"));
 
         // Test multiple wildcards
@@ -822,7 +831,11 @@ backends:
         };
 
         let results = manager
-            .multi_search(&["products".to_string(), "articles".to_string()], query, None)
+            .multi_search(
+                &["products".to_string(), "articles".to_string()],
+                query,
+                None,
+            )
             .await?;
 
         assert_eq!(results.total, 2);

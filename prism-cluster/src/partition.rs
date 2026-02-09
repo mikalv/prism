@@ -125,15 +125,10 @@ pub enum PartitionEvent {
     },
 
     /// Quorum lost
-    QuorumLost {
-        alive_count: usize,
-        required: usize,
-    },
+    QuorumLost { alive_count: usize, required: usize },
 
     /// Quorum restored
-    QuorumRestored {
-        alive_count: usize,
-    },
+    QuorumRestored { alive_count: usize },
 
     /// Conflict detected during healing
     ConflictDetected {
@@ -198,7 +193,10 @@ impl PartitionDetector {
                     true
                 } else {
                     // Check partition behavior
-                    matches!(self.config.partition_behavior, PartitionBehavior::ServeStale)
+                    matches!(
+                        self.config.partition_behavior,
+                        PartitionBehavior::ServeStale
+                    )
                 }
             }
             PartitionState::Healing { .. } => true,
@@ -242,11 +240,19 @@ impl PartitionDetector {
         let new_state = self.calculate_state(&health);
 
         // Detect state transitions
-        if !matches!((&current_state, &new_state),
-            (PartitionState::Healthy { .. }, PartitionState::Healthy { .. }) |
-            (PartitionState::Partitioned { .. }, PartitionState::Partitioned { .. }) |
-            (PartitionState::Healing { .. }, PartitionState::Healing { .. }))
-        {
+        if !matches!(
+            (&current_state, &new_state),
+            (
+                PartitionState::Healthy { .. },
+                PartitionState::Healthy { .. }
+            ) | (
+                PartitionState::Partitioned { .. },
+                PartitionState::Partitioned { .. }
+            ) | (
+                PartitionState::Healing { .. },
+                PartitionState::Healing { .. }
+            )
+        ) {
             self.handle_state_transition(&current_state, &new_state, &health);
         }
 
@@ -300,7 +306,15 @@ impl PartitionDetector {
     ) {
         match (from, to) {
             // Healthy -> Partitioned: partition detected
-            (PartitionState::Healthy { .. }, PartitionState::Partitioned { reachable_nodes, unreachable_nodes, has_quorum, .. }) => {
+            (
+                PartitionState::Healthy { .. },
+                PartitionState::Partitioned {
+                    reachable_nodes,
+                    unreachable_nodes,
+                    has_quorum,
+                    ..
+                },
+            ) => {
                 warn!(
                     "Partition detected: {} reachable, {} unreachable, quorum: {}",
                     reachable_nodes.len(),
@@ -318,7 +332,10 @@ impl PartitionDetector {
                 });
 
                 if !has_quorum {
-                    let required = self.config.min_nodes_for_write.min_nodes(health.total_count);
+                    let required = self
+                        .config
+                        .min_nodes_for_write
+                        .min_nodes(health.total_count);
                     let _ = self.event_tx.send(PartitionEvent::QuorumLost {
                         alive_count: health.alive_count,
                         required,
@@ -327,7 +344,12 @@ impl PartitionDetector {
             }
 
             // Partitioned -> Healthy: partition healed
-            (PartitionState::Partitioned { unreachable_nodes, .. }, PartitionState::Healthy { .. }) => {
+            (
+                PartitionState::Partitioned {
+                    unreachable_nodes, ..
+                },
+                PartitionState::Healthy { .. },
+            ) => {
                 let duration_secs = self
                     .partition_start
                     .read()
@@ -356,8 +378,12 @@ impl PartitionDetector {
 
             // Quorum status changes within partitioned state
             (
-                PartitionState::Partitioned { has_quorum: false, .. },
-                PartitionState::Partitioned { has_quorum: true, .. },
+                PartitionState::Partitioned {
+                    has_quorum: false, ..
+                },
+                PartitionState::Partitioned {
+                    has_quorum: true, ..
+                },
             ) => {
                 info!("Quorum restored within partition");
                 metrics::record_partition_event("quorum_restored");
@@ -367,12 +393,19 @@ impl PartitionDetector {
             }
 
             (
-                PartitionState::Partitioned { has_quorum: true, .. },
-                PartitionState::Partitioned { has_quorum: false, .. },
+                PartitionState::Partitioned {
+                    has_quorum: true, ..
+                },
+                PartitionState::Partitioned {
+                    has_quorum: false, ..
+                },
             ) => {
                 warn!("Quorum lost within partition");
                 metrics::record_partition_event("quorum_lost");
-                let required = self.config.min_nodes_for_write.min_nodes(health.total_count);
+                let required = self
+                    .config
+                    .min_nodes_for_write
+                    .min_nodes(health.total_count);
                 let _ = self.event_tx.send(PartitionEvent::QuorumLost {
                     alive_count: health.alive_count,
                     required,
@@ -458,12 +491,12 @@ impl PartitionDetector {
         let state = self.state.read();
         match &*state {
             PartitionState::Healthy { .. } => true,
-            PartitionState::Partitioned { reachable_nodes, .. } => {
-                reachable_nodes.contains(&node_id.to_string())
-            }
-            PartitionState::Healing { reconnected_nodes, .. } => {
-                reconnected_nodes.contains(&node_id.to_string())
-            }
+            PartitionState::Partitioned {
+                reachable_nodes, ..
+            } => reachable_nodes.contains(&node_id.to_string()),
+            PartitionState::Healing {
+                reconnected_nodes, ..
+            } => reconnected_nodes.contains(&node_id.to_string()),
         }
     }
 
@@ -648,7 +681,10 @@ mod tests {
 
     #[test]
     fn test_partition_state_as_str() {
-        assert_eq!(PartitionState::Healthy { node_count: 3 }.as_str(), "healthy");
+        assert_eq!(
+            PartitionState::Healthy { node_count: 3 }.as_str(),
+            "healthy"
+        );
         assert_eq!(
             PartitionState::Partitioned {
                 reachable_nodes: vec![],
@@ -694,6 +730,9 @@ mod tests {
         assert!(config.allow_stale_reads);
         assert_eq!(config.stale_read_max_age_secs, 30);
         assert!(config.auto_healing);
-        assert_eq!(config.conflict_resolution, ConflictResolution::LastWriteWins);
+        assert_eq!(
+            config.conflict_resolution,
+            ConflictResolution::LastWriteWins
+        );
     }
 }

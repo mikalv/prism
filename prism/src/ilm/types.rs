@@ -133,12 +133,7 @@ pub struct RolloverConditions {
 
 impl RolloverConditions {
     /// Check if any rollover condition is met
-    pub fn should_rollover(
-        &self,
-        size_bytes: u64,
-        doc_count: usize,
-        age: Duration,
-    ) -> bool {
+    pub fn should_rollover(&self, size_bytes: u64, doc_count: usize, age: Duration) -> bool {
         if let Some(max_size) = self.max_size {
             if size_bytes >= max_size {
                 return true;
@@ -199,8 +194,14 @@ impl RolloverConditions {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RolloverReason {
-    MaxSize { current: u64, limit: u64 },
-    MaxDocs { current: usize, limit: usize },
+    MaxSize {
+        current: u64,
+        limit: u64,
+    },
+    MaxDocs {
+        current: usize,
+        limit: usize,
+    },
     MaxAge {
         #[serde(with = "duration_serde")]
         current: Duration,
@@ -282,7 +283,11 @@ impl IlmPolicy {
     }
 
     /// Check if a phase transition should occur based on index age
-    pub fn should_transition(&self, current_phase: Phase, age_since_rollover: Duration) -> Option<Phase> {
+    pub fn should_transition(
+        &self,
+        current_phase: Phase,
+        age_since_rollover: Duration,
+    ) -> Option<Phase> {
         // Find the next phase that should be active based on age
         for &phase in Phase::all_phases() {
             if phase.order() <= current_phase.order() {

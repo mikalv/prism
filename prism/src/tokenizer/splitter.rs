@@ -86,7 +86,11 @@ impl<'a, T: TokenStream> CodeIdentifierSplitterStream<'a, T> {
         while i < chars.len() {
             let c = chars[i];
             let prev = if i > 0 { Some(chars[i - 1]) } else { None };
-            let next = if i + 1 < chars.len() { Some(chars[i + 1]) } else { None };
+            let next = if i + 1 < chars.len() {
+                Some(chars[i + 1])
+            } else {
+                None
+            };
 
             let mut should_split = false;
 
@@ -108,7 +112,8 @@ impl<'a, T: TokenStream> CodeIdentifierSplitterStream<'a, T> {
                 if let Some(p) = prev {
                     // Transition from letter to digit or digit to letter
                     if (p.is_alphabetic() && c.is_ascii_digit())
-                        || (p.is_ascii_digit() && c.is_alphabetic()) {
+                        || (p.is_ascii_digit() && c.is_alphabetic())
+                    {
                         should_split = true;
                     }
                 }
@@ -255,18 +260,12 @@ mod tests {
 
     #[test]
     fn test_mixed() {
-        assert_eq!(
-            split("myFunc_name123"),
-            vec!["my", "Func", "name", "123"]
-        );
+        assert_eq!(split("myFunc_name123"), vec!["my", "Func", "name", "123"]);
     }
 
     #[test]
     fn test_multiple_words() {
-        assert_eq!(
-            split("hello world"),
-            vec!["hello", "world"]
-        );
+        assert_eq!(split("hello world"), vec!["hello", "world"]);
         assert_eq!(
             split("getUserById fetchData"),
             vec!["get", "User", "By", "Id", "fetch", "Data"]

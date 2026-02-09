@@ -94,9 +94,8 @@ impl EncryptionConfig {
     /// * `hex_key` - 64-character hex string (256 bits)
     /// * `key_id` - Identifier for logging
     pub fn from_hex(hex_key: &str, key_id: impl Into<String>) -> Result<Self> {
-        let bytes = hex::decode(hex_key).map_err(|e| {
-            StorageError::Encryption(format!("Invalid hex key: {}", e))
-        })?;
+        let bytes = hex::decode(hex_key)
+            .map_err(|e| StorageError::Encryption(format!("Invalid hex key: {}", e)))?;
 
         if bytes.len() != KEY_SIZE {
             return Err(StorageError::Encryption(format!(
@@ -123,10 +122,7 @@ impl EncryptionConfig {
     /// * `env_var` - Name of the environment variable containing the hex key
     pub fn from_env(env_var: &str) -> Result<Self> {
         let hex_key = std::env::var(env_var).map_err(|_| {
-            StorageError::Encryption(format!(
-                "Environment variable '{}' not set",
-                env_var
-            ))
+            StorageError::Encryption(format!("Environment variable '{}' not set", env_var))
         })?;
 
         Self::from_hex(&hex_key, format!("env:{}", env_var))
@@ -140,9 +136,9 @@ impl EncryptionConfig {
     pub fn from_base64(b64_key: &str, key_id: impl Into<String>) -> Result<Self> {
         use base64::{engine::general_purpose::STANDARD, Engine};
 
-        let bytes = STANDARD.decode(b64_key).map_err(|e| {
-            StorageError::Encryption(format!("Invalid base64 key: {}", e))
-        })?;
+        let bytes = STANDARD
+            .decode(b64_key)
+            .map_err(|e| StorageError::Encryption(format!("Invalid base64 key: {}", e)))?;
 
         if bytes.len() != KEY_SIZE {
             return Err(StorageError::Encryption(format!(
@@ -206,9 +202,8 @@ pub struct EncryptedStorage {
 impl EncryptedStorage {
     /// Create a new encrypted storage wrapper.
     pub fn new(inner: Arc<dyn SegmentStorage>, config: EncryptionConfig) -> Result<Self> {
-        let cipher = Aes256Gcm::new_from_slice(&config.key).map_err(|e| {
-            StorageError::Encryption(format!("Failed to initialize cipher: {}", e))
-        })?;
+        let cipher = Aes256Gcm::new_from_slice(&config.key)
+            .map_err(|e| StorageError::Encryption(format!("Failed to initialize cipher: {}", e)))?;
 
         Ok(Self {
             inner,
@@ -227,9 +222,10 @@ impl EncryptedStorage {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Encrypt
-        let ciphertext = self.cipher.encrypt(nonce, data).map_err(|e| {
-            StorageError::Encryption(format!("Encryption failed: {}", e))
-        })?;
+        let ciphertext = self
+            .cipher
+            .encrypt(nonce, data)
+            .map_err(|e| StorageError::Encryption(format!("Encryption failed: {}", e)))?;
 
         // Build output: magic + version + nonce + ciphertext
         let mut output = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
@@ -269,12 +265,15 @@ impl EncryptedStorage {
         let nonce = Nonce::from_slice(&data[2..HEADER_SIZE]);
 
         // Decrypt
-        let plaintext = self.cipher.decrypt(nonce, &data[HEADER_SIZE..]).map_err(|e| {
-            StorageError::Encryption(format!(
-                "Decryption failed (wrong key or corrupted data): {}",
-                e
-            ))
-        })?;
+        let plaintext = self
+            .cipher
+            .decrypt(nonce, &data[HEADER_SIZE..])
+            .map_err(|e| {
+                StorageError::Encryption(format!(
+                    "Decryption failed (wrong key or corrupted data): {}",
+                    e
+                ))
+            })?;
 
         Ok(Bytes::from(plaintext))
     }
@@ -294,11 +293,7 @@ impl std::fmt::Debug for EncryptedStorage {
 impl SegmentStorage for EncryptedStorage {
     #[instrument(skip(self, data), fields(path = %path, size = data.len(), key_id = %self.key_id))]
     async fn write(&self, path: &StoragePath, data: Bytes) -> Result<()> {
-        debug!(
-            "EncryptedStorage write: {} ({} bytes)",
-            path,
-            data.len()
-        );
+        debug!("EncryptedStorage write: {} ({} bytes)", path, data.len());
 
         let encrypted = self.encrypt(&data)?;
 

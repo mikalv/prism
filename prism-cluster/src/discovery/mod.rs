@@ -195,9 +195,7 @@ impl DiscoveryConfig {
     /// Create the appropriate discovery implementation
     pub fn create_discovery(&self) -> Result<Box<dyn NodeDiscovery>, ClusterError> {
         match self {
-            DiscoveryConfig::Static { nodes } => {
-                Ok(Box::new(StaticDiscovery::new(nodes.clone())?))
-            }
+            DiscoveryConfig::Static { nodes } => Ok(Box::new(StaticDiscovery::new(nodes.clone())?)),
             DiscoveryConfig::Dns {
                 name,
                 refresh_interval_secs,
@@ -226,7 +224,9 @@ mod tests {
     #[test]
     fn test_dns_config() {
         let config = DiscoveryConfig::dns("prism.cluster.local");
-        assert!(matches!(config, DiscoveryConfig::Dns { name, .. } if name == "prism.cluster.local"));
+        assert!(
+            matches!(config, DiscoveryConfig::Dns { name, .. } if name == "prism.cluster.local")
+        );
     }
 
     #[test]

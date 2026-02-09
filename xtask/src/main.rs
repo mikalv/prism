@@ -56,16 +56,40 @@ impl ArchiveFormat {
 /// Note: Some targets may not support all features (e.g., ONNX requires prebuilt binaries)
 const COMMON_TARGETS: &[(&str, &str, ArchiveFormat)] = &[
     // Linux glibc (dynamic)
-    ("x86_64-unknown-linux-gnu", "linux-x86_64", ArchiveFormat::TarGz),
-    ("aarch64-unknown-linux-gnu", "linux-aarch64", ArchiveFormat::TarGz),
+    (
+        "x86_64-unknown-linux-gnu",
+        "linux-x86_64",
+        ArchiveFormat::TarGz,
+    ),
+    (
+        "aarch64-unknown-linux-gnu",
+        "linux-aarch64",
+        ArchiveFormat::TarGz,
+    ),
     // Linux musl (static) - may need --features to exclude ONNX
-    ("x86_64-unknown-linux-musl", "linux-x86_64-static", ArchiveFormat::TarGz),
-    ("aarch64-unknown-linux-musl", "linux-aarch64-static", ArchiveFormat::TarGz),
+    (
+        "x86_64-unknown-linux-musl",
+        "linux-x86_64-static",
+        ArchiveFormat::TarGz,
+    ),
+    (
+        "aarch64-unknown-linux-musl",
+        "linux-aarch64-static",
+        ArchiveFormat::TarGz,
+    ),
     // macOS
     ("x86_64-apple-darwin", "darwin-x86_64", ArchiveFormat::TarGz),
-    ("aarch64-apple-darwin", "darwin-aarch64", ArchiveFormat::TarGz),
+    (
+        "aarch64-apple-darwin",
+        "darwin-aarch64",
+        ArchiveFormat::TarGz,
+    ),
     // Windows (MSVC only - GNU toolchain lacks ONNX prebuilts)
-    ("x86_64-pc-windows-msvc", "windows-x86_64", ArchiveFormat::Zip),
+    (
+        "x86_64-pc-windows-msvc",
+        "windows-x86_64",
+        ArchiveFormat::Zip,
+    ),
 ];
 
 #[derive(Parser, Clone)]
@@ -659,7 +683,10 @@ fn run_dist(args: DistArgs) -> Result<()> {
 
             if let Err(e) = build_single_dist(&target_args, &root, &version, format, Some(label)) {
                 eprintln!("   warning: failed to build for {}: {}", target, e);
-                eprintln!("   (you may need to install the target: rustup target add {})", target);
+                eprintln!(
+                    "   (you may need to install the target: rustup target add {})",
+                    target
+                );
             }
         }
         eprintln!("\n=> Build complete. Check dist/ directory.");

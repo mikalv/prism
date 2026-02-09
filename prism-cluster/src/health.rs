@@ -402,13 +402,13 @@ impl HealthChecker {
                 // This is a notification - actual rebalancing happens elsewhere
             }
             FailureAction::AlertOnly => {
-                warn!("Node {} failed - alert only mode, no automatic action", node_id);
-            }
-            FailureAction::Manual => {
                 warn!(
-                    "Node {} failed - manual intervention required",
+                    "Node {} failed - alert only mode, no automatic action",
                     node_id
                 );
+            }
+            FailureAction::Manual => {
+                warn!("Node {} failed - manual intervention required", node_id);
             }
         }
     }
@@ -471,14 +471,20 @@ mod tests {
     fn test_cluster_health_from_nodes() {
         let mut nodes = HashMap::new();
         nodes.insert("node-1".to_string(), NodeHealthInfo::default());
-        nodes.insert("node-2".to_string(), NodeHealthInfo {
-            state: HealthState::Suspect,
-            ..Default::default()
-        });
-        nodes.insert("node-3".to_string(), NodeHealthInfo {
-            state: HealthState::Dead,
-            ..Default::default()
-        });
+        nodes.insert(
+            "node-2".to_string(),
+            NodeHealthInfo {
+                state: HealthState::Suspect,
+                ..Default::default()
+            },
+        );
+        nodes.insert(
+            "node-3".to_string(),
+            NodeHealthInfo {
+                state: HealthState::Dead,
+                ..Default::default()
+            },
+        );
 
         let health = ClusterHealth::from_nodes(&nodes);
         assert_eq!(health.alive_count, 1);
@@ -493,10 +499,13 @@ mod tests {
         let mut nodes = HashMap::new();
         nodes.insert("node-1".to_string(), NodeHealthInfo::default());
         nodes.insert("node-2".to_string(), NodeHealthInfo::default());
-        nodes.insert("node-3".to_string(), NodeHealthInfo {
-            state: HealthState::Dead,
-            ..Default::default()
-        });
+        nodes.insert(
+            "node-3".to_string(),
+            NodeHealthInfo {
+                state: HealthState::Dead,
+                ..Default::default()
+            },
+        );
 
         let health = ClusterHealth::from_nodes(&nodes);
         assert!(health.quorum_available); // 2 alive out of 3 is majority
@@ -561,10 +570,16 @@ mod tests {
 
         // First miss
         checker.record_missed_heartbeat("node-1");
-        assert_eq!(checker.node_health("node-1").unwrap().state, HealthState::Alive);
+        assert_eq!(
+            checker.node_health("node-1").unwrap().state,
+            HealthState::Alive
+        );
 
         // Second miss - should transition to suspect
         checker.record_missed_heartbeat("node-1");
-        assert_eq!(checker.node_health("node-1").unwrap().state, HealthState::Suspect);
+        assert_eq!(
+            checker.node_health("node-1").unwrap().state,
+            HealthState::Suspect
+        );
     }
 }

@@ -212,9 +212,8 @@ impl CompressedStorage {
 
     #[cfg(feature = "compression-lz4")]
     fn decompress_lz4(&self, data: &[u8]) -> Result<Bytes> {
-        let decompressed = lz4_flex::decompress_size_prepended(data).map_err(|e| {
-            StorageError::Compression(format!("LZ4 decompression failed: {}", e))
-        })?;
+        let decompressed = lz4_flex::decompress_size_prepended(data)
+            .map_err(|e| StorageError::Compression(format!("LZ4 decompression failed: {}", e)))?;
         Ok(Bytes::from(decompressed))
     }
 
@@ -227,9 +226,8 @@ impl CompressedStorage {
 
     #[cfg(feature = "compression-zstd")]
     fn compress_zstd(&self, data: &[u8], level: i32) -> Result<Bytes> {
-        let compressed = zstd::encode_all(data, level).map_err(|e| {
-            StorageError::Compression(format!("Zstd compression failed: {}", e))
-        })?;
+        let compressed = zstd::encode_all(data, level)
+            .map_err(|e| StorageError::Compression(format!("Zstd compression failed: {}", e)))?;
         let mut output = Vec::with_capacity(4 + compressed.len());
         output.extend_from_slice(&[COMPRESSION_MAGIC, ALG_ZSTD, level as u8, 0]);
         output.extend_from_slice(&compressed);
@@ -245,9 +243,8 @@ impl CompressedStorage {
 
     #[cfg(feature = "compression-zstd")]
     fn decompress_zstd(&self, data: &[u8]) -> Result<Bytes> {
-        let decompressed = zstd::decode_all(data).map_err(|e| {
-            StorageError::Compression(format!("Zstd decompression failed: {}", e))
-        })?;
+        let decompressed = zstd::decode_all(data)
+            .map_err(|e| StorageError::Compression(format!("Zstd decompression failed: {}", e)))?;
         Ok(Bytes::from(decompressed))
     }
 
@@ -273,11 +270,7 @@ impl std::fmt::Debug for CompressedStorage {
 impl SegmentStorage for CompressedStorage {
     #[instrument(skip(self, data), fields(path = %path, size = data.len()))]
     async fn write(&self, path: &StoragePath, data: Bytes) -> Result<()> {
-        debug!(
-            "CompressedStorage write: {} ({} bytes)",
-            path,
-            data.len()
-        );
+        debug!("CompressedStorage write: {} ({} bytes)", path, data.len());
 
         let compressed = self.compress(&data)?;
         let compression_ratio = if data.len() > 0 {
@@ -385,9 +378,7 @@ mod tests {
     use crate::LocalStorage;
     use tempfile::TempDir;
 
-    async fn create_test_storage(
-        config: CompressionConfig,
-    ) -> (CompressedStorage, TempDir) {
+    async fn create_test_storage(config: CompressionConfig) -> (CompressedStorage, TempDir) {
         let dir = TempDir::new().unwrap();
         let inner = Arc::new(LocalStorage::new(dir.path()));
         let storage = CompressedStorage::new(inner, config);
@@ -440,10 +431,8 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "compression-lz4")]
     async fn test_small_file_not_compressed() {
-        let (storage, dir) = create_test_storage(
-            CompressionConfig::lz4().with_min_size(1000),
-        )
-        .await;
+        let (storage, dir) =
+            create_test_storage(CompressionConfig::lz4().with_min_size(1000)).await;
 
         let path = StoragePath::vector("test", "shard_0", "small.bin");
         let data = Bytes::from("tiny"); // Less than min_size
@@ -465,8 +454,7 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "compression-lz4")]
     async fn test_compression_actually_compresses() {
-        let (storage, dir) =
-            create_test_storage(CompressionConfig::lz4().with_min_size(0)).await;
+        let (storage, dir) = create_test_storage(CompressionConfig::lz4().with_min_size(0)).await;
 
         let path = StoragePath::vector("test", "shard_0", "data.bin");
         // Highly compressible data

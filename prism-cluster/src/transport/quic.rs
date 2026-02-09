@@ -50,14 +50,16 @@ impl QuicTransport {
 /// Create a QUIC server endpoint
 pub async fn make_server_endpoint(config: &ClusterConfig) -> Result<Endpoint> {
     let bind_addr = config.parse_bind_addr().map_err(|e| {
-        ClusterError::Config(format!("Invalid bind address '{}': {}", config.bind_addr, e))
+        ClusterError::Config(format!(
+            "Invalid bind address '{}': {}",
+            config.bind_addr, e
+        ))
     })?;
 
     let server_config = build_server_config(&config.tls)?;
 
-    let endpoint = Endpoint::server(server_config, bind_addr).map_err(|e| {
-        ClusterError::Transport(format!("Failed to create server endpoint: {}", e))
-    })?;
+    let endpoint = Endpoint::server(server_config, bind_addr)
+        .map_err(|e| ClusterError::Transport(format!("Failed to create server endpoint: {}", e)))?;
 
     info!("Cluster server listening on {}", bind_addr);
     Ok(endpoint)
@@ -89,8 +91,9 @@ fn build_server_config(tls_config: &ClusterTlsConfig) -> Result<ServerConfig> {
         .map_err(|e| ClusterError::Tls(format!("Failed to build server TLS config: {}", e)))?;
 
     let server_config = ServerConfig::with_crypto(Arc::new(
-        quinn::crypto::rustls::QuicServerConfig::try_from(crypto)
-            .map_err(|e| ClusterError::Tls(format!("Failed to create QUIC server config: {}", e)))?,
+        quinn::crypto::rustls::QuicServerConfig::try_from(crypto).map_err(|e| {
+            ClusterError::Tls(format!("Failed to create QUIC server config: {}", e))
+        })?,
     ));
 
     Ok(server_config)
@@ -138,8 +141,9 @@ fn build_client_config(tls_config: &ClusterTlsConfig) -> Result<ClientConfig> {
     };
 
     let client_config = ClientConfig::new(Arc::new(
-        quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
-            .map_err(|e| ClusterError::Tls(format!("Failed to create QUIC client config: {}", e)))?,
+        quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
+            ClusterError::Tls(format!("Failed to create QUIC client config: {}", e))
+        })?,
     ));
 
     Ok(client_config)

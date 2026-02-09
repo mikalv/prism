@@ -210,9 +210,7 @@ async fn main() -> Result<()> {
                 schemas_dir,
                 no_progress,
             } => {
-                let export_format = format
-                    .parse()
-                    .map_err(|e: String| anyhow::anyhow!(e))?;
+                let export_format = format.parse().map_err(|e: String| anyhow::anyhow!(e))?;
                 commands::run_export(
                     &cli.data_dir,
                     &schemas_dir,

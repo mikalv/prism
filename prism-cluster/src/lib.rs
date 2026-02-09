@@ -44,7 +44,9 @@ pub use config::{
     ClusterConfig, ClusterTlsConfig, ConflictResolution, ConsistencyConfig, FailureAction,
     HealthConfig, NodeTopology, PartitionBehavior, RebalancingConfig, WriteQuorum,
 };
-pub use discovery::{ClusterEvent, DiscoveredNode, DiscoveryConfig, DnsDiscovery, NodeDiscovery, StaticDiscovery};
+pub use discovery::{
+    ClusterEvent, DiscoveredNode, DiscoveryConfig, DnsDiscovery, NodeDiscovery, StaticDiscovery,
+};
 pub use error::ClusterError;
 pub use federation::{
     AggregatedStats, DeleteStatus, FederatedResults, FederatedSearch, FederationConfig,
@@ -52,19 +54,21 @@ pub use federation::{
     ShardFailure, ShardStatus, ShardTarget,
 };
 pub use health::{ClusterHealth, HealthChecker, HealthEvent, HealthState, NodeHealthInfo};
-pub use partition::{PartitionAwareOp, PartitionDetector, PartitionError, PartitionEvent, PartitionState};
+pub use partition::{
+    PartitionAwareOp, PartitionDetector, PartitionError, PartitionEvent, PartitionState,
+};
 pub use placement::{
     BalanceFactor, ClusterState, ClusterStateSnapshot, NodeInfo, NodeState, PlacementDecision,
     PlacementError, PlacementStrategy, ReplicaRole, ShardAssignment, ShardState, SpreadLevel,
 };
 pub use rebalance::{
-    OperationStatus, RebalanceEngine, RebalanceOperation, RebalanceOperationStatus,
-    RebalancePhase, RebalancePlan, RebalanceStatus, RebalanceTrigger,
+    OperationStatus, RebalanceEngine, RebalanceOperation, RebalanceOperationStatus, RebalancePhase,
+    RebalancePlan, RebalanceStatus, RebalanceTrigger,
 };
 pub use schema::{
     ChangeType, PropagationConfig, PropagationStatus, PropagationStrategy, SchemaChange,
-    SchemaOperationResult, SchemaPropagator, SchemaRegistry, SchemaRegistrySnapshot,
-    SchemaVersion, VersionedSchema,
+    SchemaOperationResult, SchemaPropagator, SchemaRegistry, SchemaRegistrySnapshot, SchemaVersion,
+    VersionedSchema,
 };
 pub use server::ClusterServer;
 pub use service::PrismClusterClient;

@@ -118,7 +118,10 @@ impl ExportProgress for ConsoleProgress {
         } else {
             0.0
         };
-        eprint!("\r{} [{:.1}%] {} ({}/{})", self.prefix, pct, message, current, total);
+        eprint!(
+            "\r{} [{:.1}%] {} ({}/{})",
+            self.prefix, pct, message, current, total
+        );
     }
 
     fn on_complete(&self, total: u64) {

@@ -49,8 +49,8 @@ pub async fn export_portable<W: Write>(
     let total_docs = stats.document_count as u64;
 
     // Serialize schema to YAML
-    let schema_yaml =
-        serde_yaml::to_string(schema).map_err(|e| Error::Export(format!("Schema serialization failed: {}", e)))?;
+    let schema_yaml = serde_yaml::to_string(schema)
+        .map_err(|e| Error::Export(format!("Schema serialization failed: {}", e)))?;
     let schema_b64 = BASE64.encode(schema_yaml.as_bytes());
 
     // Build metadata
@@ -103,7 +103,9 @@ pub async fn export_portable<W: Write>(
         }
     }
 
-    writer.flush().map_err(|e| Error::Export(format!("Flush failed: {}", e)))?;
+    writer
+        .flush()
+        .map_err(|e| Error::Export(format!("Flush failed: {}", e)))?;
 
     if let Some(p) = progress {
         p.on_complete(exported_count);
@@ -220,8 +222,8 @@ pub async fn import_portable<R: BufRead>(
     let schema_yaml = BASE64
         .decode(&header.schema_b64)
         .map_err(|e| Error::Import(format!("Schema decode failed: {}", e)))?;
-    let schema_str =
-        String::from_utf8(schema_yaml).map_err(|e| Error::Import(format!("Schema UTF-8 error: {}", e)))?;
+    let schema_str = String::from_utf8(schema_yaml)
+        .map_err(|e| Error::Import(format!("Schema UTF-8 error: {}", e)))?;
     let mut schema: CollectionSchema = serde_yaml::from_str(&schema_str)
         .map_err(|e| Error::Import(format!("Schema parse failed: {}", e)))?;
 

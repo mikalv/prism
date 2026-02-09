@@ -260,11 +260,7 @@ impl AliasManager {
     }
 
     /// Update the write alias to point to a new target (during rollover)
-    pub async fn update_write_target(
-        &self,
-        index_name: &str,
-        new_target: &str,
-    ) -> Result<()> {
+    pub async fn update_write_target(&self, index_name: &str, new_target: &str) -> Result<()> {
         let alias_name = format!("{}-write", index_name);
 
         let mut state = self.state.write().await;

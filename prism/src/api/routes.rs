@@ -959,8 +959,7 @@ pub async fn multi_search(
 
     match result {
         Ok(results) => {
-            metrics::histogram!("prism_msearch_duration_seconds")
-                .record(duration);
+            metrics::histogram!("prism_msearch_duration_seconds").record(duration);
             metrics::counter!("prism_msearch_total",
                 "status" => "ok",
             )
@@ -1020,16 +1019,13 @@ pub async fn multi_index_search(
         highlight: request.highlight,
     };
 
-    let result = manager
-        .multi_search(&collection_list, query, None)
-        .await;
+    let result = manager.multi_search(&collection_list, query, None).await;
 
     let duration = start.elapsed().as_secs_f64();
 
     match result {
         Ok(results) => {
-            metrics::histogram!("prism_msearch_duration_seconds")
-                .record(duration);
+            metrics::histogram!("prism_msearch_duration_seconds").record(duration);
             metrics::counter!("prism_msearch_total",
                 "status" => "ok",
             )
@@ -1112,12 +1108,10 @@ pub async fn create_ilm_policy(
     };
 
     let policy = config.to_policy(name);
-    ilm.upsert_policy(policy)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create ILM policy: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    ilm.upsert_policy(policy).await.map_err(|e| {
+        tracing::error!("Failed to create ILM policy: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(StatusCode::CREATED)
 }
@@ -1156,13 +1150,10 @@ pub async fn ilm_explain(
 ) -> Result<Json<IlmExplain>, StatusCode> {
     let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
 
-    ilm.explain(&collection)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("ILM explain error: {:?}", e);
-            StatusCode::NOT_FOUND
-        })
+    ilm.explain(&collection).await.map(Json).map_err(|e| {
+        tracing::error!("ILM explain error: {:?}", e);
+        StatusCode::NOT_FOUND
+    })
 }
 
 /// POST /:index/_rollover - Trigger manual rollover
@@ -1172,13 +1163,10 @@ pub async fn ilm_rollover(
 ) -> Result<Json<RolloverResult>, StatusCode> {
     let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
 
-    ilm.rollover(&index)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("ILM rollover error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    ilm.rollover(&index).await.map(Json).map_err(|e| {
+        tracing::error!("ILM rollover error: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 /// POST /:index/_ilm/move/:phase - Force phase transition
@@ -1301,7 +1289,10 @@ pub struct TemplateAppState {
 pub async fn list_templates(
     State(state): State<TemplateAppState>,
 ) -> Result<Json<ListTemplatesResponse>, StatusCode> {
-    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let tm = state
+        .template_manager
+        .as_ref()
+        .ok_or(StatusCode::NOT_FOUND)?;
     let templates = tm.list_templates().await;
     Ok(Json(ListTemplatesResponse { templates }))
 }
@@ -1316,7 +1307,10 @@ pub async fn get_template(
     Path(name): Path<String>,
     State(state): State<TemplateAppState>,
 ) -> Result<Json<IndexTemplate>, StatusCode> {
-    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let tm = state
+        .template_manager
+        .as_ref()
+        .ok_or(StatusCode::NOT_FOUND)?;
     let template = tm.get_template(&name).await.ok_or(StatusCode::NOT_FOUND)?;
     Ok(Json(template))
 }
@@ -1367,7 +1361,10 @@ pub async fn delete_template(
     Path(name): Path<String>,
     State(state): State<TemplateAppState>,
 ) -> Result<StatusCode, StatusCode> {
-    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let tm = state
+        .template_manager
+        .as_ref()
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     match tm.delete_template(&name).await {
         Ok(Some(_)) => Ok(StatusCode::OK),
@@ -1391,7 +1388,10 @@ pub async fn simulate_template(
     Path(index_name): Path<String>,
     State(state): State<TemplateAppState>,
 ) -> Result<Json<SimulateTemplateResponse>, StatusCode> {
-    let tm = state.template_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let tm = state
+        .template_manager
+        .as_ref()
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     match tm.find_best_match(&index_name).await {
         Some(m) => Ok(Json(SimulateTemplateResponse {

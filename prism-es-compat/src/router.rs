@@ -1,10 +1,10 @@
 //! ES-compatible API router
 
+use crate::endpoints::search::EsCompatState;
 use crate::endpoints::{
     bulk_handler, cat_indices_handler, cluster_health_handler, mapping_handler, msearch_handler,
     root_handler, search_handler,
 };
-use crate::endpoints::search::EsCompatState;
 use axum::routing::{get, post};
 use axum::Router;
 use prism::collection::CollectionManager;
@@ -47,13 +47,13 @@ pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
 }
 
 // Wrapper handlers for routes without index parameter
+use crate::error::EsCompatError;
+use crate::query::EsSearchRequest;
+use crate::response::EsBulkResponse;
+use crate::response::EsSearchResponse;
+use axum::body::Bytes;
 use axum::extract::State;
 use axum::Json;
-use crate::query::EsSearchRequest;
-use crate::response::EsSearchResponse;
-use crate::error::EsCompatError;
-use axum::body::Bytes;
-use crate::response::EsBulkResponse;
 
 async fn search_handler_no_index(
     state: State<EsCompatState>,

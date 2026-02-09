@@ -35,7 +35,9 @@ pub use alias::{AliasManager, AliasType, IndexAlias};
 pub use config::{IlmConfig, IlmPolicyConfig};
 pub use rollover::{RolloverResult, RolloverService};
 pub use transition::{TransitionAction, TransitionResult, TransitionService};
-pub use types::{IlmPolicy, IlmState, ManagedIndex, Phase, PhaseConfig, RolloverConditions, StorageTier};
+pub use types::{
+    IlmPolicy, IlmState, ManagedIndex, Phase, PhaseConfig, RolloverConditions, StorageTier,
+};
 
 use crate::collection::CollectionManager;
 use crate::{Error, Result};
@@ -43,7 +45,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{RwLock, watch};
+use tokio::sync::{watch, RwLock};
 use tokio::time::interval;
 
 /// ILM Manager - coordinates all ILM operations
@@ -107,11 +109,8 @@ impl IlmManager {
         let alias_manager = Arc::new(AliasManager::new(data_dir).await?);
 
         // Create services
-        let rollover_service = RolloverService::new(
-            manager.clone(),
-            alias_manager.clone(),
-            state.clone(),
-        );
+        let rollover_service =
+            RolloverService::new(manager.clone(), alias_manager.clone(), state.clone());
         let transition_service = TransitionService::new(manager.clone(), state.clone());
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -204,12 +203,7 @@ impl IlmManager {
                     Ok(check) if check.should_rollover => {
                         if let Err(e) = self
                             .rollover_service
-                            .execute_rollover(
-                                &index.index_name,
-                                policy,
-                                check.reasons,
-                                false,
-                            )
+                            .execute_rollover(&index.index_name, policy, check.reasons, false)
                             .await
                         {
                             tracing::error!(
@@ -342,9 +336,12 @@ impl IlmManager {
         let state = self.state.read().await;
         let policies = self.policies.read().await;
 
-        let managed = state
-            .get(collection_name)
-            .ok_or_else(|| Error::Ilm(format!("Collection '{}' not managed by ILM", collection_name)))?;
+        let managed = state.get(collection_name).ok_or_else(|| {
+            Error::Ilm(format!(
+                "Collection '{}' not managed by ILM",
+                collection_name
+            ))
+        })?;
 
         let policy = policies
             .get(&managed.policy_name)
@@ -353,9 +350,11 @@ impl IlmManager {
         // Check what would happen next
         let next_phase = policy.should_transition(managed.phase, managed.age_since_rollover());
         let next_phase_in = if let Some(ref target) = next_phase {
-            policy
-                .phase_config(*target)
-                .map(|c| c.min_age.as_secs().saturating_sub(managed.age_since_rollover().as_secs()))
+            policy.phase_config(*target).map(|c| {
+                c.min_age
+                    .as_secs()
+                    .saturating_sub(managed.age_since_rollover().as_secs())
+            })
         } else {
             None
         };
@@ -405,7 +404,12 @@ impl IlmManager {
         let state = self.state.read().await;
         let managed = state
             .get(collection_name)
-            .ok_or_else(|| Error::Ilm(format!("Collection '{}' not managed by ILM", collection_name)))?
+            .ok_or_else(|| {
+                Error::Ilm(format!(
+                    "Collection '{}' not managed by ILM",
+                    collection_name
+                ))
+            })?
             .clone();
         drop(state);
 
@@ -550,7 +554,9 @@ min_age = "7d"
         let temp = TempDir::new().unwrap();
         let (manager, config) = create_test_setup(&temp).await;
 
-        let ilm = IlmManager::new(manager, &config, temp.path()).await.unwrap();
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
 
         // Check policies loaded
         let policies = ilm.list_policies().await;
@@ -563,7 +569,9 @@ min_age = "7d"
         let temp = TempDir::new().unwrap();
         let (manager, config) = create_test_setup(&temp).await;
 
-        let ilm = IlmManager::new(manager, &config, temp.path()).await.unwrap();
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
 
         // Attach policy to a collection
         let managed = ilm.attach_policy("test", "test", "logs").await.unwrap();

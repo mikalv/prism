@@ -129,7 +129,11 @@ impl TextBackend {
                     let mut options = TextOptions::default();
                     if field_def.indexed {
                         // Select tokenizer based on field configuration
-                        let tokenizer_name = match field_def.tokenizer.as_ref().unwrap_or(&TokenizerType::Default) {
+                        let tokenizer_name = match field_def
+                            .tokenizer
+                            .as_ref()
+                            .unwrap_or(&TokenizerType::Default)
+                        {
                             TokenizerType::Default => "default",
                             TokenizerType::Code => CODE_TOKENIZER_NAME,
                             TokenizerType::Raw => "raw",
@@ -224,7 +228,9 @@ impl TextBackend {
         };
 
         // Register custom tokenizers
-        index.tokenizers().register(CODE_TOKENIZER_NAME, code_tokenizer());
+        index
+            .tokenizers()
+            .register(CODE_TOKENIZER_NAME, code_tokenizer());
 
         // Use the index's schema (may differ if opening existing index)
         let existing_schema = index.schema();
@@ -2099,7 +2105,6 @@ impl TextBackend {
             indexed_terms,
         }))
     }
-
 }
 
 #[cfg(test)]

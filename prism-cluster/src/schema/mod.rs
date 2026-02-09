@@ -91,11 +91,7 @@ impl SchemaOperationResult {
     }
 
     /// Create a partial success result
-    pub fn partial(
-        version: u64,
-        propagated_to: Vec<String>,
-        failed_nodes: Vec<String>,
-    ) -> Self {
+    pub fn partial(version: u64, propagated_to: Vec<String>, failed_nodes: Vec<String>) -> Self {
         Self {
             success: true,
             version: Some(version),
@@ -112,7 +108,10 @@ mod tests {
 
     #[test]
     fn test_propagation_strategy_default() {
-        assert_eq!(PropagationStrategy::default(), PropagationStrategy::Versioned);
+        assert_eq!(
+            PropagationStrategy::default(),
+            PropagationStrategy::Versioned
+        );
     }
 
     #[test]

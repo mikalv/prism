@@ -77,9 +77,12 @@ impl TransitionService {
     ) -> Result<TransitionCheckResult> {
         let state = self.state.read().await;
 
-        let managed = state
-            .get(collection_name)
-            .ok_or_else(|| Error::Ilm(format!("Collection '{}' not managed by ILM", collection_name)))?;
+        let managed = state.get(collection_name).ok_or_else(|| {
+            Error::Ilm(format!(
+                "Collection '{}' not managed by ILM",
+                collection_name
+            ))
+        })?;
 
         let current_phase = managed.phase;
         let age = managed.age_since_rollover();
@@ -103,9 +106,12 @@ impl TransitionService {
     ) -> Result<TransitionResult> {
         let mut state = self.state.write().await;
 
-        let managed = state
-            .get_mut(collection_name)
-            .ok_or_else(|| Error::Ilm(format!("Collection '{}' not managed by ILM", collection_name)))?;
+        let managed = state.get_mut(collection_name).ok_or_else(|| {
+            Error::Ilm(format!(
+                "Collection '{}' not managed by ILM",
+                collection_name
+            ))
+        })?;
 
         let from_phase = managed.phase;
         let mut actions = Vec::new();
@@ -380,7 +386,10 @@ backends:
         let policy = create_test_policy();
 
         // Check for transition (should not transition yet - too young)
-        let result = service.check_transition("test-000001", &policy).await.unwrap();
+        let result = service
+            .check_transition("test-000001", &policy)
+            .await
+            .unwrap();
         assert!(!result.should_transition);
         assert_eq!(result.current_phase, Phase::Hot);
     }
@@ -408,7 +417,10 @@ backends:
 
         assert_eq!(result.from_phase, Phase::Hot);
         assert_eq!(result.to_phase, Phase::Warm);
-        assert!(result.actions.iter().any(|a| matches!(a, TransitionAction::SetReadonly)));
+        assert!(result
+            .actions
+            .iter()
+            .any(|a| matches!(a, TransitionAction::SetReadonly)));
 
         // Verify state
         let s = state.read().await;

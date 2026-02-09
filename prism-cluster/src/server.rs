@@ -99,10 +99,7 @@ impl ClusterServer {
             tokio::spawn(async move {
                 match incoming.await {
                     Ok(connection) => {
-                        debug!(
-                            "Accepted connection from {}",
-                            connection.remote_address()
-                        );
+                        debug!("Accepted connection from {}", connection.remote_address());
 
                         // Accept bidirectional streams
                         loop {
@@ -364,7 +361,11 @@ impl PrismCluster for ClusterHandler {
 
         // Search source collection
         let query: prism::backends::Query = request.query.into();
-        let results = match server.manager.search(&request.source_collection, query).await {
+        let results = match server
+            .manager
+            .search(&request.source_collection, query)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 let err = ClusterError::from(e);
@@ -382,7 +383,11 @@ impl PrismCluster for ClusterHandler {
             let mut docs = Vec::new();
 
             for result in chunk {
-                match server.manager.get(&request.source_collection, &result.id).await {
+                match server
+                    .manager
+                    .get(&request.source_collection, &result.id)
+                    .await
+                {
                     Ok(Some(doc)) => docs.push(doc),
                     Ok(None) => {
                         failed_count += 1;
@@ -396,7 +401,11 @@ impl PrismCluster for ClusterHandler {
             }
 
             if !docs.is_empty() {
-                match server.manager.index(&request.target_collection, docs.clone()).await {
+                match server
+                    .manager
+                    .index(&request.target_collection, docs.clone())
+                    .await
+                {
                     Ok(_) => imported_count += docs.len(),
                     Err(e) => {
                         failed_count += docs.len();
@@ -616,7 +625,11 @@ impl PrismCluster for ClusterHandler {
         let transfer_id = uuid::Uuid::new_v4().to_string();
 
         // Record shard transfer metric
-        crate::metrics::record_shard_transfer(&request.shard_id, &request.from_node, &request.to_node);
+        crate::metrics::record_shard_transfer(
+            &request.shard_id,
+            &request.from_node,
+            &request.to_node,
+        );
 
         // Update cluster state metrics
         update_cluster_state_metrics(&server.cluster_state);
