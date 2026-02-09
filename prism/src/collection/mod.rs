@@ -1,3 +1,4 @@
+pub mod detach;
 pub mod manager;
 
 pub use manager::CollectionManager;

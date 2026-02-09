@@ -93,6 +93,24 @@ impl VectorBackend {
         })
     }
 
+    /// Remove a collection from this backend, persisting state before dropping.
+    pub async fn remove_collection(&self, name: &str) -> Result<()> {
+        let data = {
+            let mut indexes = self.indexes.write();
+            if let Some(index) = indexes.get(name) {
+                let data = serialize_vector_index(index)?;
+                indexes.remove(name);
+                Some(data)
+            } else {
+                None
+            }
+        };
+        if let Some(data) = data {
+            self.save_index(name, &data).await?;
+        }
+        Ok(())
+    }
+
     /// Set the embedding provider for automatic embedding generation
     pub fn set_embedding_provider(&self, provider: Arc<CachedEmbeddingProvider>) {
         let mut ep = self.embedding_provider.write();

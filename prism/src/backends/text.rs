@@ -80,6 +80,11 @@ impl TextBackend {
         })
     }
 
+    /// Remove a collection from this backend, dropping all in-memory state.
+    pub fn remove_collection(&self, name: &str) {
+        self.collections.write().unwrap().remove(name);
+    }
+
     /// Initialize a collection from schema.
     ///
     /// Creates or opens a Tantivy index using the unified SegmentStorage.

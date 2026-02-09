@@ -131,6 +131,40 @@ enum CollectionCommands {
         #[arg(long)]
         no_progress: bool,
     },
+
+    /// Detach a collection from a running server (snapshot + unload)
+    Detach {
+        /// Collection name
+        #[arg(short, long)]
+        name: String,
+
+        /// Output snapshot file path
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Prism API URL
+        #[arg(long, default_value = "http://localhost:3080")]
+        api_url: String,
+
+        /// Delete on-disk data after detaching
+        #[arg(long)]
+        delete_data: bool,
+    },
+
+    /// Attach a collection from a snapshot into a running server
+    Attach {
+        /// Input snapshot file path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Target collection name (overrides name in snapshot)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Prism API URL
+        #[arg(long, default_value = "http://localhost:3080")]
+        api_url: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -233,6 +267,21 @@ async fn main() -> Result<()> {
                     .map_err(|e: String| anyhow::anyhow!(e))?;
                 commands::run_restore(&cli.data_dir, input, target, export_format, no_progress)
                     .await?;
+            }
+            CollectionCommands::Detach {
+                name,
+                output,
+                api_url,
+                delete_data,
+            } => {
+                commands::run_detach(&api_url, &name, output, delete_data).await?;
+            }
+            CollectionCommands::Attach {
+                input,
+                target,
+                api_url,
+            } => {
+                commands::run_attach(&api_url, input, target).await?;
             }
         },
 

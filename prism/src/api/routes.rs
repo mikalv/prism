@@ -1624,3 +1624,66 @@ pub async fn generate_encryption_key() -> Json<GenerateKeyResponse> {
         algorithm: "AES-256-GCM".to_string(),
     })
 }
+
+// ============================================================================
+// Detach/Attach API (Issue #57) - Live collection detach and re-attach
+// ============================================================================
+
+use crate::collection::detach::{
+    attach_collection, detach_collection, AttachResult, AttachSource, DetachDestination,
+    DetachResult,
+};
+
+#[derive(Deserialize)]
+pub struct DetachRequest {
+    pub destination: DetachDestination,
+    #[serde(default)]
+    pub delete_data: bool,
+}
+
+/// POST /_admin/collections/:name/detach
+pub async fn collection_detach(
+    State(state): State<ExportAppState>,
+    Path(name): Path<String>,
+    Json(request): Json<DetachRequest>,
+) -> Result<Json<DetachResult>, (StatusCode, String)> {
+    match detach_collection(
+        &state.manager,
+        &state.data_dir,
+        &name,
+        &request.destination,
+        request.delete_data,
+        None,
+    )
+    .await
+    {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct AttachRequest {
+    pub source: AttachSource,
+    #[serde(default)]
+    pub target_collection: Option<String>,
+}
+
+/// POST /_admin/collections/attach
+pub async fn collection_attach(
+    State(state): State<ExportAppState>,
+    Json(request): Json<AttachRequest>,
+) -> Result<Json<AttachResult>, (StatusCode, String)> {
+    match attach_collection(
+        &state.manager,
+        &state.data_dir,
+        &request.source,
+        request.target_collection.as_deref(),
+        None,
+    )
+    .await
+    {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}

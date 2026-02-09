@@ -617,6 +617,14 @@ impl ApiServer {
                     "/_admin/encryption/generate-key",
                     post(crate::api::routes::generate_encryption_key),
                 )
+                .route(
+                    "/_admin/collections/:name/detach",
+                    post(crate::api::routes::collection_detach),
+                )
+                .route(
+                    "/_admin/collections/attach",
+                    post(crate::api::routes::collection_attach),
+                )
                 .with_state(export_state)
         } else {
             Router::new()

@@ -4,13 +4,14 @@ use crate::backends::{
 };
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
 pub struct CollectionManager {
-    schemas: HashMap<String, CollectionSchema>,
-    per_collection_backends: HashMap<String, Arc<dyn SearchBackend>>,
+    schemas: RwLock<HashMap<String, CollectionSchema>>,
+    per_collection_backends: RwLock<HashMap<String, Arc<dyn SearchBackend>>>,
     text_backend: Arc<TextBackend>,
     vector_backend: Arc<VectorBackend>,
 }
@@ -42,48 +43,58 @@ impl CollectionManager {
 
         let mut per_collection_backends = HashMap::new();
         for (name, schema) in &schemas {
-            // Decide which backend to use per collection
-            let use_text = schema.backends.text.is_some();
-            let use_vector = schema.backends.vector.is_some();
-
-            if use_text && use_vector {
-                let vw = schema
-                    .backends
-                    .vector
-                    .as_ref()
-                    .map(|v| v.vector_weight)
-                    .unwrap_or(0.5);
-                if !(0.0..=1.0).contains(&vw) {
-                    return Err(Error::Schema(format!(
-                        "vector_weight must be between 0.0 and 1.0 for collection {}",
-                        name
-                    )));
-                }
-                let hybrid =
-                    HybridSearchCoordinator::new(text_backend.clone(), vector_backend.clone(), vw);
-                per_collection_backends
-                    .insert(name.clone(), Arc::new(hybrid) as Arc<dyn SearchBackend>);
-            } else if use_text {
-                per_collection_backends
-                    .insert(name.clone(), text_backend.clone() as Arc<dyn SearchBackend>);
-            } else if use_vector {
-                per_collection_backends.insert(
-                    name.clone(),
-                    vector_backend.clone() as Arc<dyn SearchBackend>,
-                );
+            let backend =
+                Self::build_backend_for_schema(schema, &text_backend, &vector_backend)?;
+            if let Some(b) = backend {
+                per_collection_backends.insert(name.clone(), b);
             }
         }
 
         Ok(Self {
-            schemas,
-            per_collection_backends,
+            schemas: RwLock::new(schemas),
+            per_collection_backends: RwLock::new(per_collection_backends),
             text_backend: text_backend.clone(),
             vector_backend: vector_backend.clone(),
         })
     }
 
+    /// Build the appropriate SearchBackend for a given schema.
+    fn build_backend_for_schema(
+        schema: &CollectionSchema,
+        text_backend: &Arc<TextBackend>,
+        vector_backend: &Arc<VectorBackend>,
+    ) -> Result<Option<Arc<dyn SearchBackend>>> {
+        let use_text = schema.backends.text.is_some();
+        let use_vector = schema.backends.vector.is_some();
+
+        if use_text && use_vector {
+            let vw = schema
+                .backends
+                .vector
+                .as_ref()
+                .map(|v| v.vector_weight)
+                .unwrap_or(0.5);
+            if !(0.0..=1.0).contains(&vw) {
+                return Err(Error::Schema(format!(
+                    "vector_weight must be between 0.0 and 1.0 for collection {}",
+                    schema.collection
+                )));
+            }
+            let hybrid =
+                HybridSearchCoordinator::new(text_backend.clone(), vector_backend.clone(), vw);
+            Ok(Some(Arc::new(hybrid) as Arc<dyn SearchBackend>))
+        } else if use_text {
+            Ok(Some(text_backend.clone() as Arc<dyn SearchBackend>))
+        } else if use_vector {
+            Ok(Some(vector_backend.clone() as Arc<dyn SearchBackend>))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn initialize(&self) -> Result<()> {
-        for (name, schema) in &self.schemas {
+        let schemas = self.schemas.read().clone();
+        for (name, schema) in &schemas {
             // Storage is configured at backend construction time via SegmentStorage.
             // Initialize just sets up the collection schema/indexes.
             if schema.backends.text.is_some() {
@@ -95,24 +106,33 @@ impl CollectionManager {
         }
 
         // Update collections count gauge
-        metrics::gauge!("prism_collections_count").set(self.schemas.len() as f64);
+        metrics::gauge!("prism_collections_count").set(schemas.len() as f64);
 
         Ok(())
     }
 
     pub async fn index(&self, collection: &str, docs: Vec<Document>) -> Result<()> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+        let (has_backend, has_text) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            let has_text = schema.backends.text.is_some();
+            let backends = self.per_collection_backends.read();
+            let has_backend = backends.contains_key(collection);
+            (has_backend, has_text)
+        };
 
-        if let Some(backend) = self.per_collection_backends.get(collection) {
-            backend.index(collection, docs).await?;
-            return Ok(());
+        if has_backend {
+            let backend = self.per_collection_backends.read().get(collection).cloned();
+            if let Some(backend) = backend {
+                backend.index(collection, docs).await?;
+                return Ok(());
+            }
         }
 
         // Fallback: try text backend
-        if schema.backends.text.is_some() {
+        if has_text {
             self.text_backend.index(collection, docs).await?;
         }
 
@@ -120,16 +140,22 @@ impl CollectionManager {
     }
 
     pub async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+        let (backend, has_text) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            let has_text = schema.backends.text.is_some();
+            let backends = self.per_collection_backends.read();
+            let backend = backends.get(collection).cloned();
+            (backend, has_text)
+        };
 
-        if let Some(backend) = self.per_collection_backends.get(collection) {
+        if let Some(backend) = backend {
             return backend.search(collection, query).await;
         }
 
-        if schema.backends.text.is_some() {
+        if has_text {
             return self.text_backend.search(collection, query).await;
         }
 
@@ -144,18 +170,24 @@ impl CollectionManager {
         query: &Query,
         aggregations: Vec<crate::aggregations::AggregationRequest>,
     ) -> Result<SearchResultsWithAggs> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+        let (backend, has_text) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            let has_text = schema.backends.text.is_some();
+            let backends = self.per_collection_backends.read();
+            let backend = backends.get(collection).cloned();
+            (backend, has_text)
+        };
 
-        if let Some(backend) = self.per_collection_backends.get(collection) {
+        if let Some(backend) = backend {
             return backend
                 .search_with_aggs(collection, query, aggregations)
                 .await;
         }
 
-        if schema.backends.text.is_some() {
+        if has_text {
             return self
                 .text_backend
                 .search_with_aggs(collection, query, aggregations)
@@ -168,16 +200,22 @@ impl CollectionManager {
     }
 
     pub async fn get(&self, collection: &str, id: &str) -> Result<Option<Document>> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+        let (backend, has_text) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            let has_text = schema.backends.text.is_some();
+            let backends = self.per_collection_backends.read();
+            let backend = backends.get(collection).cloned();
+            (backend, has_text)
+        };
 
-        if let Some(backend) = self.per_collection_backends.get(collection) {
+        if let Some(backend) = backend {
             return backend.get(collection, id).await;
         }
 
-        if schema.backends.text.is_some() {
+        if has_text {
             return self.text_backend.get(collection, id).await;
         }
 
@@ -185,17 +223,23 @@ impl CollectionManager {
     }
 
     pub async fn delete(&self, collection: &str, ids: Vec<String>) -> Result<()> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+        let (backend, has_text) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            let has_text = schema.backends.text.is_some();
+            let backends = self.per_collection_backends.read();
+            let backend = backends.get(collection).cloned();
+            (backend, has_text)
+        };
 
-        if let Some(backend) = self.per_collection_backends.get(collection) {
+        if let Some(backend) = backend {
             backend.delete(collection, ids).await?;
             return Ok(());
         }
 
-        if schema.backends.text.is_some() {
+        if has_text {
             self.text_backend.delete(collection, ids).await?;
         }
 
@@ -203,16 +247,22 @@ impl CollectionManager {
     }
 
     pub async fn stats(&self, collection: &str) -> Result<BackendStats> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+        let (backend, has_text) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            let has_text = schema.backends.text.is_some();
+            let backends = self.per_collection_backends.read();
+            let backend = backends.get(collection).cloned();
+            (backend, has_text)
+        };
 
-        if let Some(backend) = self.per_collection_backends.get(collection) {
+        if let Some(backend) = backend {
             return backend.stats(collection).await;
         }
 
-        if schema.backends.text.is_some() {
+        if has_text {
             return self.text_backend.stats(collection).await;
         }
 
@@ -222,17 +272,18 @@ impl CollectionManager {
     }
 
     pub fn list_collections(&self) -> Vec<String> {
-        self.schemas.keys().cloned().collect()
+        self.schemas.read().keys().cloned().collect()
     }
 
-    pub fn get_schema(&self, collection: &str) -> Option<&CollectionSchema> {
-        self.schemas.get(collection)
+    pub fn get_schema(&self, collection: &str) -> Option<CollectionSchema> {
+        self.schemas.read().get(collection).cloned()
     }
 
     /// Run schema linting at runtime and return map collection -> issues
     pub fn lint_schemas(&self) -> std::collections::HashMap<String, Vec<String>> {
+        let schemas = self.schemas.read();
         let mut map = std::collections::HashMap::new();
-        for (name, schema) in &self.schemas {
+        for (name, schema) in schemas.iter() {
             let issues = crate::schema::loader::SchemaLoader::lint_schema(schema);
             if !issues.is_empty() {
                 map.insert(name.clone(), issues);
@@ -250,6 +301,89 @@ impl CollectionManager {
     /// Get embedding cache statistics (if cache is enabled)
     pub async fn cache_stats(&self) -> Option<crate::cache::EmbeddingCacheStats> {
         self.vector_backend.embedding_cache_stats().await
+    }
+
+    // ========================================================================
+    // Runtime collection management (Issue #57)
+    // ========================================================================
+
+    /// Remove a collection from the running server.
+    ///
+    /// Unloads the collection from all in-memory structures (schemas, backends,
+    /// text index, vector index). Does NOT delete data from disk.
+    pub async fn remove_collection(&self, name: &str) -> Result<()> {
+        // Verify collection exists
+        {
+            let schemas = self.schemas.read();
+            if !schemas.contains_key(name) {
+                return Err(Error::CollectionNotFound(name.to_string()));
+            }
+        }
+
+        // Remove from backends first (may need async for vector persist)
+        self.text_backend.remove_collection(name);
+        self.vector_backend.remove_collection(name).await?;
+
+        // Remove from manager maps
+        self.per_collection_backends.write().remove(name);
+        self.schemas.write().remove(name);
+
+        // Update gauge
+        metrics::gauge!("prism_collections_count").set(self.schemas.read().len() as f64);
+
+        tracing::info!("Collection '{}' removed from running server", name);
+        Ok(())
+    }
+
+    /// Add a collection to the running server from a schema.
+    ///
+    /// Lints the schema, creates backend routing, and initializes indexes.
+    pub async fn add_collection(&self, schema: CollectionSchema) -> Result<()> {
+        let name = schema.collection.clone();
+
+        // Lint the schema
+        let issues = SchemaLoader::lint_schema(&schema);
+        if !issues.is_empty() {
+            return Err(Error::Schema(format!(
+                "Schema lint errors for '{}': {}",
+                name,
+                issues.join("; ")
+            )));
+        }
+
+        // Build backend
+        let backend =
+            Self::build_backend_for_schema(&schema, &self.text_backend, &self.vector_backend)?;
+
+        // Initialize backend indexes
+        if schema.backends.text.is_some() {
+            self.text_backend.initialize(&name, &schema).await?;
+        }
+        if schema.backends.vector.is_some() {
+            self.vector_backend.initialize(&name, &schema).await?;
+        }
+
+        // Insert into manager maps
+        if let Some(b) = backend {
+            self.per_collection_backends.write().insert(name.clone(), b);
+        }
+        self.schemas.write().insert(name.clone(), schema);
+
+        // Update gauge
+        metrics::gauge!("prism_collections_count").set(self.schemas.read().len() as f64);
+
+        tracing::info!("Collection '{}' added to running server", name);
+        Ok(())
+    }
+
+    /// Get a reference to the text backend (for use by detach/attach operations).
+    pub fn text_backend(&self) -> &Arc<TextBackend> {
+        &self.text_backend
+    }
+
+    /// Get a reference to the vector backend (for use by detach/attach operations).
+    pub fn vector_backend(&self) -> &Arc<VectorBackend> {
+        &self.vector_backend
     }
 
     /// Perform hybrid search combining text and vector search results.
@@ -272,13 +406,16 @@ impl CollectionManager {
         text_weight: Option<f32>,
         vector_weight: Option<f32>,
     ) -> Result<SearchResults> {
-        let schema = self
-            .schemas
-            .get(collection)
-            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
-
-        let has_text = schema.backends.text.is_some();
-        let has_vector = schema.backends.vector.is_some();
+        let (has_text, has_vector) = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            (
+                schema.backends.text.is_some(),
+                schema.backends.vector.is_some(),
+            )
+        };
 
         // Text-only search
         if !has_vector || vector.is_none() {
@@ -440,8 +577,9 @@ impl CollectionManager {
     /// Expand collection patterns to matching collection names.
     /// Supports wildcards like "logs-2026-*" or "products-*".
     pub fn expand_collection_patterns(&self, patterns: &[String]) -> Vec<String> {
+        let schemas = self.schemas.read();
         let mut result = Vec::new();
-        let all_collections: Vec<&String> = self.schemas.keys().collect();
+        let all_collections: Vec<&String> = schemas.keys().collect();
 
         for pattern in patterns {
             if pattern.contains('*') {
@@ -451,7 +589,7 @@ impl CollectionManager {
                         result.push((*collection).clone());
                     }
                 }
-            } else if self.schemas.contains_key(pattern) && !result.contains(pattern) {
+            } else if schemas.contains_key(pattern) && !result.contains(pattern) {
                 result.push(pattern.clone());
             }
         }

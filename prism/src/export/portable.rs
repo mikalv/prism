@@ -49,7 +49,7 @@ pub async fn export_portable<W: Write>(
     let total_docs = stats.document_count as u64;
 
     // Serialize schema to YAML
-    let schema_yaml = serde_yaml::to_string(schema)
+    let schema_yaml = serde_yaml::to_string(&schema)
         .map_err(|e| Error::Export(format!("Schema serialization failed: {}", e)))?;
     let schema_b64 = BASE64.encode(schema_yaml.as_bytes());
 
@@ -85,7 +85,7 @@ pub async fn export_portable<W: Write>(
     let mut exported_count = 0u64;
 
     // Iterate all documents using text backend's searcher
-    let docs = iterate_all_documents(manager, collection, schema).await?;
+    let docs = iterate_all_documents(manager, collection, &schema).await?;
 
     for doc in docs {
         let doc_json = serde_json::to_string(&doc)

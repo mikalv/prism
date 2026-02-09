@@ -89,6 +89,55 @@ Vector Backend:
   HNSW layers: 4
 ```
 
+### collection detach
+
+Detach a collection from a running server (snapshot + unload).
+
+```bash
+prism collection detach --name <NAME> --output <FILE> [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --name <NAME>` | required | Collection name |
+| `-o, --output <FILE>` | required | Output snapshot path |
+| `--api-url <URL>` | `http://localhost:3080` | Prism API URL |
+| `--delete-data` | false | Delete on-disk data after detaching |
+
+Examples:
+
+```bash
+# Detach and keep data on disk
+prism collection detach -n logs-2025 -o /backups/logs-2025.tar.zst
+
+# Detach and delete data
+prism collection detach -n logs-2025 -o /backups/logs-2025.tar.zst --delete-data
+```
+
+### collection attach
+
+Attach a collection from a snapshot into a running server.
+
+```bash
+prism collection attach --input <FILE> [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-i, --input <FILE>` | required | Input snapshot path |
+| `-t, --target <NAME>` | from snapshot | Override collection name |
+| `--api-url <URL>` | `http://localhost:3080` | Prism API URL |
+
+Examples:
+
+```bash
+# Attach from snapshot
+prism collection attach -i /backups/logs-2025.tar.zst
+
+# Attach with a different name
+prism collection attach -i /backups/logs-2025.tar.zst -t logs-restored
+```
+
 ---
 
 ## document

@@ -284,6 +284,117 @@ sha256sum backup.prism.jsonl
 
 ---
 
+## Live Detach & Attach
+
+Detach and attach allow you to safely snapshot and unload a collection from a running server, then re-attach it later — all without restarting. This is useful for data lifecycle management, archiving old indices, and moving collections between servers.
+
+### How It Works
+
+**Detach** creates a snapshot archive and then unloads the collection from the running server. Optionally deletes the on-disk data.
+
+**Attach** imports a snapshot archive to disk and hot-loads the collection into the running server.
+
+!!! warning "Safe ordering"
+    Detach always exports the snapshot **before** unloading. If the export fails, the collection remains loaded and untouched.
+
+### CLI Detach/Attach
+
+```bash
+# Detach: snapshot + unload from running server
+prism collection detach --name logs-2025 --output /backups/logs-2025.tar.zst
+
+# Detach and delete on-disk data
+prism collection detach --name logs-2025 --output /backups/logs-2025.tar.zst --delete-data
+
+# Attach: import snapshot + hot-load into running server
+prism collection attach --input /backups/logs-2025.tar.zst
+
+# Attach with a different collection name
+prism collection attach --input /backups/logs-2025.tar.zst --target logs-restored
+
+# Custom API URL
+prism collection detach --name logs-2025 --output /backups/logs-2025.tar.zst \
+  --api-url http://prism.internal:3080
+```
+
+### API Detach/Attach
+
+```bash
+# Detach a collection
+curl -X POST http://localhost:3080/_admin/collections/logs-2025/detach \
+  -H "Content-Type: application/json" \
+  -d '{
+    "destination": {"type": "file", "path": "/backups/logs-2025.tar.zst"},
+    "delete_data": false
+  }'
+```
+
+Response:
+
+```json
+{
+  "collection": "logs-2025",
+  "destination": {"type": "file", "path": "/backups/logs-2025.tar.zst"},
+  "metadata": { "version": "1.0", "collection": "logs-2025", ... },
+  "data_deleted": false
+}
+```
+
+```bash
+# Attach a collection
+curl -X POST http://localhost:3080/_admin/collections/attach \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": {"type": "file", "path": "/backups/logs-2025.tar.zst"},
+    "target_collection": null
+  }'
+```
+
+Response:
+
+```json
+{
+  "collection": "logs-2025",
+  "source": {"type": "file", "path": "/backups/logs-2025.tar.zst"},
+  "files_extracted": 42,
+  "bytes_extracted": 104857600
+}
+```
+
+### Use Cases
+
+**Archive old data:**
+
+```bash
+# Monthly log rotation — detach last month, keep snapshot
+prism collection detach --name logs-2025-01 \
+  --output /archive/logs-2025-01.tar.zst --delete-data
+```
+
+**Move collection between servers:**
+
+```bash
+# Source server
+prism collection detach --name products \
+  --output /tmp/products.tar.zst --api-url http://source:3080
+
+scp /tmp/products.tar.zst target-server:/tmp/
+
+# Target server
+prism collection attach --input /tmp/products.tar.zst \
+  --api-url http://target:3080
+```
+
+**Emergency unload (free memory):**
+
+```bash
+# Unload a large collection to free memory, keep data on disk
+prism collection detach --name big-index \
+  --output /backups/big-index.tar.zst
+```
+
+---
+
 ## See Also
 
 - [Encryption Guide](encryption.md) — Encrypted export/import

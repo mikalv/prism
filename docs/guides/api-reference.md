@@ -576,6 +576,97 @@ Get server information.
 
 ---
 
+## Live Detach & Attach
+
+### POST /_admin/collections/:name/detach
+
+Detach a collection: create a snapshot and unload it from the running server.
+
+**Request:**
+
+```json
+{
+  "destination": {
+    "type": "file",
+    "path": "/backups/my-collection.tar.zst"
+  },
+  "delete_data": false
+}
+```
+
+| Field | Type | Default | Required |
+|-------|------|---------|----------|
+| `destination` | object | — | Yes |
+| `destination.type` | string | — | Yes (`"file"`) |
+| `destination.path` | string | — | Yes |
+| `delete_data` | boolean | `false` | No |
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "my-collection",
+  "destination": {"type": "file", "path": "/backups/my-collection.tar.zst"},
+  "metadata": {
+    "version": "1.0",
+    "collection": "my-collection",
+    "prism_version": "0.5.0",
+    "exported_at": "2026-02-09T22:00:00Z",
+    "document_count": 0,
+    "size_bytes": 104857600,
+    "checksum": null,
+    "backends": {"text": true, "vector": true, "graph": false}
+  },
+  "data_deleted": false
+}
+```
+
+**Errors:**
+- `404` — Collection not found
+- `500` — Export or unload error
+
+---
+
+### POST /_admin/collections/attach
+
+Attach a collection from a snapshot into the running server.
+
+**Request:**
+
+```json
+{
+  "source": {
+    "type": "file",
+    "path": "/backups/my-collection.tar.zst"
+  },
+  "target_collection": null
+}
+```
+
+| Field | Type | Default | Required |
+|-------|------|---------|----------|
+| `source` | object | — | Yes |
+| `source.type` | string | — | Yes (`"file"`) |
+| `source.path` | string | — | Yes |
+| `target_collection` | string | from snapshot | No |
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "my-collection",
+  "source": {"type": "file", "path": "/backups/my-collection.tar.zst"},
+  "files_extracted": 42,
+  "bytes_extracted": 104857600
+}
+```
+
+**Errors:**
+- `409` — Collection already exists
+- `500` — Import or load error
+
+---
+
 ## Error responses
 
 All error responses use standard HTTP status codes:

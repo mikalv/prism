@@ -95,6 +95,8 @@ nav:
     - More Like This: guides/more-like-this.md
     - Ranking: guides/ranking.md
     - Collections: guides/collections.md
+    - Export & Import: guides/export-import.md
+    - Encryption: guides/encryption.md
 
 extra:
   social:
