@@ -1,60 +1,68 @@
 # Prism
 
-**High-performance hybrid search engine for AI/RAG applications.**
+**High-performance hybrid search engine for AI/RAG applications and as a lightweight Elasticsearch replacement.**
 
-Prism combines vector search (HNSW) with full-text search (Tantivy) to deliver fast, accurate semantic search with optional keyword filtering.
+Prism combines vector search (HNSW) with full-text search (Tantivy) to deliver fast, accurate semantic search with optional keyword filtering. Built in Rust for performance and reliability, it serves as a modern alternative to Elasticsearch for applications that need powerful search without the operational complexity.
 
 ## Features
 
 - **Hybrid Search** - Combine vector similarity and text relevance with configurable fusion strategies (RRF, weighted)
+- **Elasticsearch Compatible** - Drop-in replacement for common ES operations with familiar query DSL
+- **Embedded Web UI** - Built-in search interface at `/ui` with collection selector
 - **Embedding Cache** - SQLite-backed cache eliminates redundant API calls to embedding providers
 - **Multiple Providers** - Ollama (local), OpenAI-compatible APIs, ONNX (local inference)
 - **Lucene-compatible DSL** - Familiar query syntax with field targeting, ranges, and boolean operators
 - **Collection Schemas** - Define index configuration, field types, and embedding behavior per collection
+- **Index Lifecycle Management** - Automatic rollover, phase transitions (hot→warm→cold→delete)
 - **Async-First** - Built on tokio for high throughput concurrent operations
+- **Single Binary** - No JVM, no cluster coordination required for single-node deployments
 
 ## Quick Start
 
-### Running Frontend + Backend
+### Running the Server
 
-Start both services with the dev script:
+```bash
+cargo run -p prism-server
+```
+
+This starts Prism on `http://localhost:3080` with:
+- **REST API** - Full search and indexing API
+- **Web UI** - Built-in search interface at `/ui`
+- **Health check** - Server status at `/health`
+
+Open http://localhost:3080/ui to search through your collections.
+
+### Configuration
+
+Prism can be configured via command-line arguments or environment variables:
+
+```bash
+# Command-line
+prism-server --host 0.0.0.0 --port 8080 --data-dir /var/lib/prism
+
+# Environment variables
+PRISM_HOST=0.0.0.0 PRISM_PORT=8080 PRISM_DATA_DIR=/var/lib/prism prism-server
+```
+
+| Variable | CLI Flag | Default | Description |
+|----------|----------|---------|-------------|
+| `PRISM_CONFIG_PATH` | `--config` | `prism.toml` | Configuration file path |
+| `PRISM_HOST` | `--host` | `127.0.0.1` | Bind address |
+| `PRISM_PORT` | `--port` | `3080` | Listen port |
+| `PRISM_DATA_DIR` | `--data-dir` | `data` | Data directory |
+| `PRISM_SCHEMAS_DIR` | `--schemas-dir` | `schemas` | Schema definitions |
+| `PRISM_LOG_DIR` | `--log-dir` | - | Log files directory |
+| `PRISM_CACHE_DIR` | `--cache-dir` | - | Embedding cache directory |
+
+### Development Mode
+
+For UI development with hot-reload:
 
 ```bash
 ./dev.sh
 ```
 
-This starts:
-- **Backend** (prism-server) on `http://localhost:3080`
-- **Frontend** (websearch-ui) on `http://localhost:5173`
-
-Open http://localhost:5173 to search through your Prism collections.
-
-#### Manual Setup
-
-Run services separately:
-
-```bash
-# Backend
-cd prism-server
-cargo run
-
-# Frontend (new terminal)
-cd websearch-ui
-npm install
-npm run dev
-```
-
-#### Environment Variables
-
-websearch-ui uses these environment variables (create in `websearch-ui/.env.development`):
-
-- `VITE_API_URL`: Backend API URL (default: `http://localhost:3080`)
-
-#### Troubleshooting
-
-- **Port conflicts**: Edit `prism-server/src/main.rs` to change default port
-- **CORS errors**: Check `websearch-ui/.env.development` has correct `VITE_API_URL`
-- **No results**: Ensure you have indexed documents in a collection
+This starts the backend on `:3080` and Vite dev server on `:5173`.
 
 ### Using Prism as a Library
 
@@ -125,6 +133,43 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 ```
+
+## Elasticsearch Compatibility
+
+Prism provides an Elasticsearch-compatible API layer at `/_elastic/*` for easy migration:
+
+```bash
+# Index a document
+curl -X POST "localhost:3080/_elastic/myindex/_doc/1" -H "Content-Type: application/json" -d '{
+  "title": "Hello World",
+  "content": "This is a test document"
+}'
+
+# Search
+curl -X POST "localhost:3080/_elastic/myindex/_search" -H "Content-Type: application/json" -d '{
+  "query": {
+    "match": {
+      "content": "test"
+    }
+  }
+}'
+
+# Multi-search
+curl -X POST "localhost:3080/_elastic/_msearch" -H "Content-Type: application/json" -d '
+{"index": "myindex"}
+{"query": {"match_all": {}}}
+'
+```
+
+**Why Prism over Elasticsearch?**
+
+| | Prism | Elasticsearch |
+|---|-------|---------------|
+| **Deployment** | Single binary, no JVM | JVM + cluster coordination |
+| **Memory** | ~50MB baseline | 1GB+ heap required |
+| **Vector Search** | Native HNSW | Plugin required (8.x+) |
+| **Hybrid Search** | Built-in fusion | Manual scripting |
+| **Embeddings** | Automatic generation | External pipeline |
 
 ## Architecture
 
@@ -275,8 +320,14 @@ prism = { version = "0.3", features = ["full"] }
 | Crate | Description |
 |-------|-------------|
 | `prism` | Core library with backends, embedding, and search |
-| `prism-server` | HTTP server with REST API |
+| `prism-server` | HTTP server with REST API and embedded web UI |
 | `prism-cli` | Command-line interface |
+| `prism-core` | Core types and traits |
+| `prism-storage` | Storage abstractions (local, S3) |
+| `prism-cluster` | Distributed clustering support |
+| `prism-es-compat` | Elasticsearch compatibility layer |
+| `prism-ui` | Embedded web UI assets |
+| `prism-importer` | Bulk data import utilities |
 
 ## Performance
 
