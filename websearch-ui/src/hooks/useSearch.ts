@@ -1,13 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import type { SearchState, LoadingPhase, Intent, SearchResult, AnswerModel } from '@/lib/types'
-import { classifyIntent } from '@/lib/intent'
-import { search } from '@/lib/api'
-
-const LOADING_PHASES: { key: LoadingPhase; duration: number }[] = [
-  { key: 'understanding', duration: 300 },
-  { key: 'searching', duration: 1000 },
-  { key: 'synthesizing', duration: 200 },
-]
+import type { SearchState, SearchResult } from '@/lib/types'
+import { search as apiSearch } from '@/lib/api'
 
 const initialState: SearchState = {
   view: 'home',
@@ -41,48 +34,33 @@ export function useSearch() {
     const url = new URL(window.location.href)
     const q = url.searchParams.get('q')
     if (q) {
-      search(q)
+      doSearch(q)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const search = useCallback(async (query: string) => {
+  const doSearch = useCallback(async (query: string) => {
     if (!query.trim()) return
-
-    const intent = classifyIntent(query)
 
     setState((s) => ({
       ...s,
       view: 'loading',
       query,
-      intent,
-      phase: 'understanding',
+      intent: 'search',
+      phase: 'searching',
       results: null,
       discussions: null,
       answer: null,
     }))
 
-    // Progress through loading phases
-    let phaseIndex = 0
-    const phaseInterval = setInterval(() => {
-      phaseIndex++
-      if (phaseIndex < LOADING_PHASES.length) {
-        setState((s) => ({
-          ...s,
-          phase: LOADING_PHASES[phaseIndex].key,
-        }))
-      }
-    }, LOADING_PHASES[phaseIndex].duration)
-
     try {
-      const data = await search(query, 10)
+      const data = await apiSearch(query, 20)
 
-      clearInterval(phaseInterval)
-
-      const mappedResults: SearchResult[] = data.results.map(r => ({
+      const mappedResults: SearchResult[] = data.results.map((r) => ({
         id: r.id,
-        title: r.title || 'Untitled',
+        title: r.title || r.id,
         url: r.url || '#',
-        displayDomain: r.url ? new URL(r.url).hostname : 'unknown',
+        displayDomain: r.url ? new URL(r.url).hostname : '',
         snippet: r.snippet || '',
         score: r.score,
       }))
@@ -96,27 +74,27 @@ export function useSearch() {
         answer: null,
       }))
     } catch (error) {
-      clearInterval(phaseInterval)
       console.error('Search failed:', error)
-      setState(initialState)
+      setState((s) => ({
+        ...s,
+        view: 'results',
+        phase: null,
+        results: [],
+        discussions: [],
+        answer: null,
+      }))
     }
-  }, [])
-
-  const setIntentOverride = useCallback((override: Intent | null) => {
-    setState((s) => ({ ...s, intentOverride: override }))
   }, [])
 
   const reset = useCallback(() => {
     setState(initialState)
   }, [])
 
-  const effectiveIntent = state.intentOverride ?? state.intent
-
   return {
     ...state,
-    effectiveIntent,
-    search,
-    setIntentOverride,
+    effectiveIntent: 'search' as const,
+    search: doSearch,
+    setIntentOverride: () => {},
     reset,
   }
 }

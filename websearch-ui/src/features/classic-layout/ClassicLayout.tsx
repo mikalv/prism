@@ -19,12 +19,8 @@ export function ClassicLayout({ search }: ClassicLayoutProps) {
       {search.view === 'results' && (
         <SearchPage
           query={search.query}
-          effectiveIntent={search.effectiveIntent}
           results={search.results}
-          discussions={search.discussions}
-          answer={search.answer}
           onNewSearch={search.search}
-          setIntentOverride={search.setIntentOverride}
         />
       )}
     </div>

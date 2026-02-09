@@ -36,10 +36,10 @@ export function SearchHero({ onSearch }: SearchHeroProps) {
   return (
     <div className="flex flex-col items-center gap-6">
       <h1 className="text-4xl md:text-5xl font-bold text-[var(--text-primary)]">
-        What do you want to know?
+        Prism Search
       </h1>
       <p className="text-lg text-[var(--text-secondary)]">
-        Search the web and get AI-powered answers
+        Fast hybrid search across your collections
       </p>
       <div className="w-full max-w-2xl">
         <Input
@@ -48,7 +48,7 @@ export function SearchHero({ onSearch }: SearchHeroProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask anything..."
+          placeholder="Search..."
           leftIcon={<Search className="w-5 h-5" />}
         />
       </div>
