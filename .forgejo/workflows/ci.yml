@@ -56,10 +56,8 @@ jobs:
 
       - uses: https://data.forgejo.org/actions/checkout@v4
 
-      - name: Add targets
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          rustup target add aarch64-unknown-linux-musl
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
 
       - name: Build x86_64-musl
         run: cargo build --release --target x86_64-unknown-linux-musl -p prism-server -p prism-cli
@@ -88,13 +86,9 @@ jobs:
           source $HOME/.cargo/env
           cargo build --release -p prism-server -p prism-cli
 
-      - name: Upload macOS aarch64
-        uses: https://data.forgejo.org/actions/upload-artifact@v4
-        with:
-          name: prism-darwin-aarch64
-          path: |
-            target/release/prism-server
-            target/release/prism
+      - name: Show build output
+        run: ls -la target/release/prism*
+      # Note: artifact upload not supported on this runner
 
   build-windows:
     name: Build Windows
@@ -113,10 +107,6 @@ jobs:
           $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
           cargo build --release -p prism-server -p prism-cli
 
-      - name: Upload Windows x86_64
-        uses: https://data.forgejo.org/actions/upload-artifact@v4
-        with:
-          name: prism-windows-x86_64
-          path: |
-            target/release/prism-server.exe
-            target/release/prism.exe
+      - name: Show build output
+        run: Get-ChildItem target\release\prism*
+      # Note: artifact upload not supported on this runner

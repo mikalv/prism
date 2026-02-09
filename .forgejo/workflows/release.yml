@@ -13,22 +13,20 @@ jobs:
     runs-on: rust-1.93-bookworm
     steps:
       - name: Install system dependencies
-        run: apt-get update && apt-get install -y git nodejs npm musl-tools musl-dev gcc-aarch64-linux-gnu
+        run: apt-get update && apt-get install -y git nodejs npm musl-tools musl-dev
 
       - uses: https://data.forgejo.org/actions/checkout@v4
 
-      - name: Add targets
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          rustup target add aarch64-unknown-linux-gnu
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
 
       - name: Build x86_64-musl (static)
         run: cargo build --release --target x86_64-unknown-linux-musl -p prism-server -p prism-cli -p prism-importer
 
-      - name: Create x86_64 dist
+      - name: Create dist
         run: cargo xtask dist --target x86_64-unknown-linux-musl
 
-      - name: Upload x86_64-musl
+      - name: Upload artifact
         uses: https://data.forgejo.org/actions/upload-artifact@v4
         with:
           name: dist-linux-x86_64-static
@@ -43,7 +41,6 @@ jobs:
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Build aarch64
         run: |
@@ -55,11 +52,21 @@ jobs:
           source $HOME/.cargo/env
           cargo xtask dist
 
-      - name: Upload macOS
-        uses: https://data.forgejo.org/actions/upload-artifact@v4
-        with:
-          name: dist-darwin-aarch64
-          path: dist/*.tar.gz
+      - name: Upload via scp
+        env:
+          ARTIFACT_SSH_KEY: ${{ secrets.ARTIFACT_SSH_KEY }}
+          ARTIFACT_HOST: ${{ secrets.ARTIFACT_HOST }}
+        run: |
+          if [ -n "$ARTIFACT_SSH_KEY" ] && [ -n "$ARTIFACT_HOST" ]; then
+            mkdir -p ~/.ssh
+            echo "$ARTIFACT_SSH_KEY" > ~/.ssh/artifact_key
+            chmod 600 ~/.ssh/artifact_key
+            scp -o StrictHostKeyChecking=no -i ~/.ssh/artifact_key dist/*.tar.gz "$ARTIFACT_HOST"
+            rm ~/.ssh/artifact_key
+          else
+            echo "Artifact upload skipped - ARTIFACT_SSH_KEY or ARTIFACT_HOST not configured"
+            ls -la dist/
+          fi
 
   build-windows:
     name: Build Windows
@@ -83,15 +90,25 @@ jobs:
           $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
           cargo xtask dist --format zip
 
-      - name: Upload Windows
-        uses: https://data.forgejo.org/actions/upload-artifact@v4
-        with:
-          name: dist-windows-x86_64
-          path: dist/*.zip
+      - name: Upload via scp
+        env:
+          ARTIFACT_SSH_KEY: ${{ secrets.ARTIFACT_SSH_KEY }}
+          ARTIFACT_HOST: ${{ secrets.ARTIFACT_HOST }}
+        run: |
+          if ($env:ARTIFACT_SSH_KEY -and $env:ARTIFACT_HOST) {
+            $keyPath = "$env:USERPROFILE\.ssh\artifact_key"
+            New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
+            $env:ARTIFACT_SSH_KEY | Out-File -FilePath $keyPath -Encoding ASCII
+            scp -o StrictHostKeyChecking=no -i $keyPath dist\*.zip $env:ARTIFACT_HOST
+            Remove-Item $keyPath
+          } else {
+            Write-Host "Artifact upload skipped - secrets not configured"
+            Get-ChildItem dist\
+          }
 
   create-release:
     name: Create Release
-    needs: [build-linux, build-macos, build-windows]
+    needs: [build-linux]  # Only Linux can upload artifacts for now
     runs-on: rust-1.93-bookworm
     steps:
       - name: Install system dependencies
@@ -99,19 +116,19 @@ jobs:
 
       - uses: https://data.forgejo.org/actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download Linux artifact
         uses: https://data.forgejo.org/actions/download-artifact@v4
         with:
+          name: dist-linux-x86_64-static
           path: artifacts
-          merge-multiple: true
 
       - name: List artifacts
-        run: find artifacts -type f
+        run: ls -la artifacts/
 
       - name: Create checksums
         run: |
           cd artifacts
-          sha256sum *.tar.gz *.zip 2>/dev/null > SHA256SUMS.txt || true
+          sha256sum *.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create release
@@ -128,9 +145,14 @@ jobs:
 
             | Platform | Architecture | File |
             |----------|--------------|------|
-            | Linux | x86_64 (static) | `prism-${{ github.ref_name }}-linux-x86_64-static.tar.gz` |
-            | macOS | aarch64 (Apple Silicon) | `prism-${{ github.ref_name }}-darwin-aarch64.tar.gz` |
-            | Windows | x86_64 | `prism-${{ github.ref_name }}-windows-x86_64.zip` |
+            | Linux | x86_64 (static/musl) | `prism-*-linux-x86_64-static.tar.gz` |
+
+            ### Build from Source
+
+            ```bash
+            # macOS / Windows / other platforms
+            cargo build --release -p prism-server -p prism-cli
+            ```
 
             ### Checksums
 
