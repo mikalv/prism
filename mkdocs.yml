@@ -5,24 +5,20 @@ repo_url: https://github.com/mikalv/prism
 repo_name: mikalv/prism
 
 theme:
-  name: semantic
-  logo:
-    icon: 'python'
-  sidebar: true
-  search: true
-  #  palette:
-  #    - scheme: default
-  #      primary: indigo
-  #      accent: indigo
-  #      toggle:
-  #        icon: material/brightness-7
-  #        name: Switch to dark mode
-  #    - scheme: slate
-  #      primary: indigo
-  #      accent: indigo
-  #      toggle:
-  #        icon: material/brightness-4
-  #        name: Switch to light mode
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.instant
     - navigation.tracking
@@ -40,9 +36,6 @@ plugins:
   - search
   - mermaid2
   - badges
-  - pygments:
-      light: dracula
-      dark: github-dark
   - llmstxt:
       sections:
         Usage documentation:
