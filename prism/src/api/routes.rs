@@ -381,6 +381,25 @@ pub async fn health() -> StatusCode {
     StatusCode::OK
 }
 
+/// Root endpoint response
+#[derive(Serialize)]
+pub struct RootResponse {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub status: &'static str,
+    pub tagline: &'static str,
+}
+
+/// GET /
+pub async fn root() -> Json<RootResponse> {
+    Json(RootResponse {
+        name: "prism",
+        version: env!("CARGO_PKG_VERSION"),
+        status: "ok",
+        tagline: "You Know, for Search",
+    })
+}
+
 // ============================================================================
 // Collection Metadata API (Issue #21)
 // ============================================================================

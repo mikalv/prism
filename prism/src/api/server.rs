@@ -488,6 +488,7 @@ impl ApiServer {
                 get(crate::api::routes::list_collections),
             )
             .route("/admin/lint-schemas", get(crate::api::routes::lint_schemas))
+            .route("/", get(crate::api::routes::root))
             .route("/health", get(crate::api::routes::health))
             // Stats API (Issue #22)
             .route("/stats/cache", get(crate::api::routes::get_cache_stats))
