@@ -50,6 +50,7 @@ async fn test_hybrid_merge_behaviour() {
         system_fields: Default::default(),
         hybrid: None,
         replication: None,
+        reranking: None,
         ilm_policy: None,
     };
 

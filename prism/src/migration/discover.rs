@@ -100,6 +100,7 @@ impl SchemaDiscoverer {
             system_fields: Default::default(),
             hybrid: None,
             replication: None,
+            reranking: None,
             ilm_policy: None,
         })
     }

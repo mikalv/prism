@@ -39,6 +39,10 @@ pub struct CollectionSchema {
     #[serde(default)]
     pub replication: Option<ReplicationConfig>,
 
+    /// Two-phase reranking configuration
+    #[serde(default)]
+    pub reranking: Option<RerankingConfig>,
+
     /// ILM policy name for index lifecycle management
     #[serde(default)]
     pub ilm_policy: Option<String>,
@@ -480,6 +484,92 @@ impl ReplicationConfig {
     }
 }
 
+/// Configuration for two-phase reranking in collection schema.
+///
+/// Two-phase ranking retrieves a large candidate set (Phase 1) and then
+/// re-ranks the top candidates with a more expensive model (Phase 2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankingConfig {
+    /// Type of reranker to use
+    #[serde(rename = "type")]
+    pub reranker_type: RerankerType,
+
+    /// Number of candidates to retrieve in Phase 1 (default: 100)
+    #[serde(default = "default_candidates")]
+    pub candidates: usize,
+
+    /// Fields to extract text from for reranking
+    #[serde(default)]
+    pub text_fields: Vec<String>,
+
+    /// Cross-encoder specific configuration
+    #[serde(default)]
+    pub cross_encoder: Option<CrossEncoderSchemaConfig>,
+
+    /// Score function expression (e.g., "_score * popularity * 0.01")
+    #[serde(default)]
+    pub score_function: Option<String>,
+}
+
+fn default_candidates() -> usize {
+    100
+}
+
+/// Type of reranker
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RerankerType {
+    CrossEncoder,
+    ScoreFunction,
+}
+
+/// Cross-encoder model configuration in schema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrossEncoderSchemaConfig {
+    /// HuggingFace model ID (default: "cross-encoder/ms-marco-MiniLM-L-6-v2")
+    #[serde(default = "default_cross_encoder_model")]
+    pub model_id: String,
+
+    /// Optional local model path override
+    #[serde(default)]
+    pub model_path: Option<String>,
+
+    /// Maximum input sequence length (default: 512)
+    #[serde(default = "default_max_length")]
+    pub max_length: usize,
+}
+
+fn default_cross_encoder_model() -> String {
+    "cross-encoder/ms-marco-MiniLM-L-6-v2".to_string()
+}
+
+fn default_max_length() -> usize {
+    512
+}
+
+impl RerankingConfig {
+    /// Validate the reranking configuration
+    pub fn validate(&self) -> Result<(), String> {
+        if self.candidates == 0 {
+            return Err("reranking.candidates must be > 0".to_string());
+        }
+        match self.reranker_type {
+            RerankerType::ScoreFunction => {
+                if self.score_function.is_none() || self.score_function.as_deref() == Some("") {
+                    return Err(
+                        "reranking.score_function must be set when type is score_function"
+                            .to_string(),
+                    );
+                }
+            }
+            RerankerType::CrossEncoder => {
+                // cross_encoder config is optional (defaults are fine)
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -759,5 +849,125 @@ backends:
         // Valid config
         config.placement_strategy = "zone-aware".to_string();
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_reranking_config_cross_encoder() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+        stored: true
+reranking:
+  type: cross_encoder
+  candidates: 50
+  text_fields:
+    - content
+  cross_encoder:
+    model_id: cross-encoder/ms-marco-MiniLM-L-6-v2
+    max_length: 256
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let reranking = schema.reranking.unwrap();
+
+        assert_eq!(reranking.reranker_type, RerankerType::CrossEncoder);
+        assert_eq!(reranking.candidates, 50);
+        assert_eq!(reranking.text_fields, vec!["content".to_string()]);
+
+        let ce = reranking.cross_encoder.as_ref().unwrap();
+        assert_eq!(ce.model_id, "cross-encoder/ms-marco-MiniLM-L-6-v2");
+        assert_eq!(ce.max_length, 256);
+
+        assert!(reranking.validate().is_ok());
+    }
+
+    #[test]
+    fn test_reranking_config_score_function() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+reranking:
+  type: score_function
+  candidates: 200
+  score_function: "_score * popularity * 0.01"
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let reranking = schema.reranking.unwrap();
+
+        assert_eq!(reranking.reranker_type, RerankerType::ScoreFunction);
+        assert_eq!(reranking.candidates, 200);
+        assert_eq!(
+            reranking.score_function.as_deref(),
+            Some("_score * popularity * 0.01")
+        );
+        assert!(reranking.validate().is_ok());
+    }
+
+    #[test]
+    fn test_reranking_config_defaults() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+reranking:
+  type: cross_encoder
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        let reranking = schema.reranking.unwrap();
+
+        assert_eq!(reranking.candidates, 100); // default
+        assert!(reranking.text_fields.is_empty()); // default
+        assert!(reranking.cross_encoder.is_none()); // not specified, uses defaults at runtime
+    }
+
+    #[test]
+    fn test_reranking_config_validation_errors() {
+        // score_function type requires score_function expression
+        let config = RerankingConfig {
+            reranker_type: RerankerType::ScoreFunction,
+            candidates: 100,
+            text_fields: vec![],
+            cross_encoder: None,
+            score_function: None,
+        };
+        assert!(config.validate().is_err());
+
+        // candidates = 0 is invalid
+        let config = RerankingConfig {
+            reranker_type: RerankerType::CrossEncoder,
+            candidates: 0,
+            text_fields: vec![],
+            cross_encoder: None,
+            score_function: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_no_reranking_by_default() {
+        let yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        indexed: true
+"#;
+        let schema: CollectionSchema = serde_yaml::from_str(yaml).unwrap();
+        assert!(schema.reranking.is_none());
     }
 }

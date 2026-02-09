@@ -140,7 +140,7 @@ pub async fn context(
     let mut context_items = Vec::new();
 
     // Search observations
-    if let Ok(results) = manager.search("observations", query.clone()).await {
+    if let Ok(results) = manager.search("observations", query.clone(), None).await {
         for r in results.results {
             let content = r
                 .fields
@@ -172,7 +172,7 @@ pub async fn context(
         highlight: None,
     };
 
-    if let Ok(results) = manager.search("memories", query2).await {
+    if let Ok(results) = manager.search("memories", query2, None).await {
         for r in results.results {
             let content = r
                 .fields
@@ -234,7 +234,7 @@ pub async fn search(
 
     // Search both collections
     for collection in ["observations", "memories"] {
-        if let Ok(results) = manager.search(collection, query.clone()).await {
+        if let Ok(results) = manager.search(collection, query.clone(), None).await {
             for r in results.results {
                 let content = r
                     .fields

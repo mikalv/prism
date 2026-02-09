@@ -102,7 +102,7 @@ boosting:
     };
 
     let results = manager
-        .search("articles", query)
+        .search("articles", query, None)
         .await
         .expect("Failed to search");
 
@@ -182,7 +182,7 @@ boosting:
     };
 
     let results = manager
-        .search("articles", query)
+        .search("articles", query, None)
         .await
         .expect("Failed to search");
 
@@ -275,7 +275,7 @@ boosting:
     };
 
     let results = manager
-        .search("articles", query)
+        .search("articles", query, None)
         .await
         .expect("Failed to search");
 
@@ -361,7 +361,7 @@ boosting:
     };
 
     let results = manager
-        .search("articles", query)
+        .search("articles", query, None)
         .await
         .expect("Failed to search");
 
@@ -417,7 +417,7 @@ backends:
     };
 
     let results = manager
-        .search("articles", query)
+        .search("articles", query, None)
         .await
         .expect("Failed to search");
 

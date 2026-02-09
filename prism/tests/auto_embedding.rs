@@ -34,6 +34,7 @@ async fn test_index_with_embedding_field() {
         system_fields: Default::default(),
         hybrid: None,
         replication: None,
+        reranking: None,
         ilm_policy: None,
     };
     backend

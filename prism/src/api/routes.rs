@@ -1,6 +1,7 @@
 use crate::api::server::AppState;
 use crate::backends::{Document, HighlightConfig, Query, SearchResult, SearchResults};
 use crate::collection::CollectionManager;
+use crate::ranking::reranker::{RerankOptions, RerankRequest};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -33,6 +34,9 @@ pub struct SearchRequest {
     /// Optional highlight configuration
     #[serde(default)]
     pub highlight: Option<HighlightConfig>,
+    /// Optional reranking override for this request
+    #[serde(default)]
+    pub rerank: Option<RerankRequest>,
 }
 
 fn default_limit() -> usize {
@@ -123,7 +127,13 @@ pub async fn search(
         highlight: request.highlight,
     };
 
-    let result = manager.search(&collection, query).await;
+    let rerank_override = request.rerank.as_ref().map(|r| RerankOptions {
+        enabled: r.enabled,
+        candidates: r.candidates.unwrap_or(100),
+        text_fields: r.text_fields.clone().unwrap_or_default(),
+    });
+
+    let result = manager.search(&collection, query, rerank_override.as_ref()).await;
 
     let duration = start.elapsed().as_secs_f64();
 
@@ -182,7 +192,7 @@ pub async fn simple_search(
     };
 
     let results = manager
-        .search(default_collection, query)
+        .search(default_collection, query, None)
         .await
         .map_err(|e| {
             tracing::error!("Simple search error: {:?}", e);

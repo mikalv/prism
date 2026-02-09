@@ -201,7 +201,7 @@ impl PrismCluster for ClusterHandler {
         let timer = RpcHandlerTimer::new("search");
         let server = self.server.read().await;
         let query: prism::backends::Query = query.into();
-        match server.manager.search(&collection, query).await {
+        match server.manager.search(&collection, query, None).await {
             Ok(results) => {
                 timer.success();
                 Ok(RpcSearchResults::from(results))
@@ -295,7 +295,7 @@ impl PrismCluster for ClusterHandler {
 
         // Execute search to find matching documents
         let query: prism::backends::Query = request.query.into();
-        let results = match server.manager.search(&request.collection, query).await {
+        let results = match server.manager.search(&request.collection, query, None).await {
             Ok(r) => r,
             Err(e) => {
                 let err = ClusterError::from(e);
@@ -363,7 +363,7 @@ impl PrismCluster for ClusterHandler {
         let query: prism::backends::Query = request.query.into();
         let results = match server
             .manager
-            .search(&request.source_collection, query)
+            .search(&request.source_collection, query, None)
             .await
         {
             Ok(r) => r,

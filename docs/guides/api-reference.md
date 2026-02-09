@@ -44,6 +44,11 @@ Full-featured search endpoint.
     "post_tag": "</b>",
     "fragment_size": 150,
     "number_of_fragments": 3
+  },
+  "rerank": {
+    "enabled": true,
+    "candidates": 50,
+    "text_fields": ["title", "content"]
   }
 }
 ```
@@ -59,6 +64,17 @@ Full-featured search endpoint.
 | `text_weight` | float | 0.5 | No |
 | `vector_weight` | float | 0.5 | No |
 | `highlight` | object | null | No |
+| `rerank` | object | null | No |
+
+#### Rerank options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `rerank.enabled` | bool | `true` | Enable/disable reranking |
+| `rerank.candidates` | integer | 100 | Phase 1 candidate count |
+| `rerank.text_fields` | string[] | schema default | Fields to extract text from |
+
+When `rerank` is provided, Phase 1 retrieves `candidates` documents, then Phase 2 re-ranks them with the collection's configured re-ranker. See [Ranking & Boosting](ranking.md#two-phase-ranking-re-ranking) for details.
 
 **Response:** `200 OK`
 

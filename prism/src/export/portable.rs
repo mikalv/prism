@@ -149,7 +149,7 @@ async fn iterate_all_documents(
         highlight: None,
     };
 
-    let results = manager.search(collection, query).await?;
+    let results = manager.search(collection, query, None).await?;
 
     // Get vectors if vector backend is enabled
     let has_vector = schema.backends.vector.is_some();

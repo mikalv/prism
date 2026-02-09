@@ -5,14 +5,20 @@
 //! - Recency decay: boost newer documents over older ones
 //! - Popularity boost: multiply scores by document-level boost values
 
+pub mod cross_encoder;
 pub mod decay;
+pub mod reranker;
+pub mod score_function;
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
+pub use cross_encoder::CrossEncoderReranker;
 pub use decay::{
     compute_decay, compute_decay_from_micros, parse_duration, DecayConfig, DecayFunction,
 };
+pub use reranker::{extract_text_from_result, Reranker, RerankOptions, RerankRequest};
+pub use score_function::ScoreFunctionReranker;
 
 use crate::schema::BoostingConfig;
 

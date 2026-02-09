@@ -138,6 +138,17 @@ hybrid:
 storage:
   backend: local
   data_dir: "./data/articles"
+
+# Two-phase reranking
+reranking:
+  type: cross_encoder
+  candidates: 100
+  text_fields:
+    - title
+    - content
+  cross_encoder:
+    model_id: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    max_length: 512
 ```
 
 ---
@@ -405,6 +416,48 @@ hybrid:
 | `rrf_k` | `60` | RRF ranking constant |
 | `text_weight` | `0.5` | Text score weight (for `weighted`) |
 | `vector_weight` | `0.5` | Vector score weight (for `weighted`) |
+
+---
+
+## Reranking (Two-Phase)
+
+Configure a second-phase re-ranker to improve result quality. Phase 1 retrieves candidates cheaply (BM25/vector), Phase 2 re-scores them with an expensive model.
+
+### Cross-encoder
+
+```yaml
+reranking:
+  type: cross_encoder
+  candidates: 100
+  text_fields:
+    - title
+    - content
+  cross_encoder:
+    model_id: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    max_length: 512
+```
+
+### Score function
+
+```yaml
+reranking:
+  type: score_function
+  score_function: "_score * popularity * 0.01"
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `type` | required | `cross_encoder` or `score_function` |
+| `candidates` | `100` | Number of Phase 1 candidates |
+| `text_fields` | `[]` | Fields to extract for re-ranking |
+| `cross_encoder.model_id` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | HuggingFace model ID |
+| `cross_encoder.model_path` | auto-download | Local path to ONNX model |
+| `cross_encoder.max_length` | `512` | Max token length |
+| `score_function` | none | Arithmetic expression using `_score`, field names, `+`, `-`, `*`, `/`, `log()` |
+
+See [Ranking & Boosting](../guides/ranking.md#two-phase-ranking-re-ranking) for usage examples.
 
 ---
 

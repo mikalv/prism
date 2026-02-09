@@ -68,6 +68,11 @@ impl SchemaLoader {
                 issues.push("text.fields should have at least one field defined".to_string());
             }
         }
+        if let Some(reranking) = &schema.reranking {
+            if let Err(e) = reranking.validate() {
+                issues.push(format!("reranking: {}", e));
+            }
+        }
         issues
     }
 

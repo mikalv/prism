@@ -115,7 +115,7 @@ async fn test_search_with_facets() {
         highlight: None,
     };
 
-    let results = manager.search("logs", query).await.expect("Search failed");
+    let results = manager.search("logs", query, None).await.expect("Search failed");
 
     // Should find 2 error documents
     assert_eq!(results.total, 2, "Expected 2 error documents");
@@ -160,7 +160,7 @@ async fn test_search_pagination() {
         highlight: None,
     };
 
-    let results1 = manager.search("logs", query1).await.expect("Search failed");
+    let results1 = manager.search("logs", query1, None).await.expect("Search failed");
     assert_eq!(
         results1.results.len(),
         5,
@@ -179,7 +179,7 @@ async fn test_search_pagination() {
         highlight: None,
     };
 
-    let results2 = manager.search("logs", query2).await.expect("Search failed");
+    let results2 = manager.search("logs", query2, None).await.expect("Search failed");
     assert_eq!(
         results2.results.len(),
         5,
@@ -241,6 +241,6 @@ async fn test_collection_not_found() {
         highlight: None,
     };
 
-    let result = manager.search("nonexistent", query).await;
+    let result = manager.search("nonexistent", query, None).await;
     assert!(result.is_err(), "Should error on nonexistent collection");
 }

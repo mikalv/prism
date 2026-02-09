@@ -273,3 +273,119 @@ adjusted = (5.0 * 0.707 * 1.5) + (200 * 0.01)
          = 5.30 + 2.0
          = 7.30
 ```
+
+## Two-Phase Ranking (Re-ranking)
+
+For complex ranking models that are too slow to run on the full corpus, Prism supports two-phase ranking:
+
+1. **Phase 1** — Cheap retrieval (BM25/vector) fetches a large candidate set
+2. **Phase 2** — An expensive re-ranker scores only the top candidates
+
+This is configured at the schema level and can be overridden per-request.
+
+### Schema configuration
+
+Add a `reranking` section to your collection schema:
+
+```yaml
+reranking:
+  type: cross_encoder
+  candidates: 100
+  text_fields:
+    - title
+    - content
+  cross_encoder:
+    model_id: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    max_length: 512
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `type` | required | `cross_encoder` or `score_function` |
+| `candidates` | `100` | Number of Phase 1 candidates to retrieve |
+| `text_fields` | `[]` | Document fields to extract text from for re-ranking |
+
+### Cross-encoder re-ranking
+
+Cross-encoder models score (query, document) pairs using a transformer model. They produce more accurate relevance scores than BM25 or bi-encoder similarity, but are too slow for full corpus search.
+
+```yaml
+reranking:
+  type: cross_encoder
+  candidates: 100
+  text_fields:
+    - title
+    - content
+  cross_encoder:
+    model_id: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    max_length: 512
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `model_id` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | HuggingFace model ID |
+| `model_path` | auto-downloaded | Local path to model files |
+| `max_length` | `512` | Maximum token length for input pairs |
+
+The model is auto-downloaded from HuggingFace on first use. Requires the `provider-onnx` feature.
+
+### Score function re-ranking
+
+Score functions let you re-rank using arithmetic expressions that reference the original score and document fields:
+
+```yaml
+reranking:
+  type: score_function
+  score_function: "_score * popularity * 0.01"
+```
+
+Supported operations:
+- `_score` — the original search score
+- Field names — any numeric field in the document
+- Arithmetic: `+`, `-`, `*`, `/`
+- `log(x)` — natural logarithm
+- Parentheses for grouping
+
+Examples:
+```
+_score * 2                          # Double all scores
+_score + log(likes + 1)            # Boost by engagement
+_score * (1 + popularity * 0.001)  # Mild popularity boost
+```
+
+### Per-request override
+
+Override reranking at search time via the `rerank` field:
+
+```json
+{
+  "query": "machine learning",
+  "rerank": {
+    "enabled": true,
+    "candidates": 50,
+    "text_fields": ["title", "content"]
+  }
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `true` | Enable/disable reranking for this request |
+| `candidates` | schema default | Override Phase 1 candidate count |
+| `text_fields` | schema default | Override text fields for re-ranking |
+
+Set `"enabled": false` to skip reranking for a specific request even when the collection has it configured.
+
+### How it works
+
+```
+Query → Phase 1: Retrieve `candidates` docs (BM25/vector)
+      → Phase 2: Re-rank with expensive model
+      → Return top `limit` results
+```
+
+1. The search limit is temporarily expanded to `candidates` (default 100)
+2. Phase 1 retrieves candidates using the configured backends (text, vector, or hybrid)
+3. Phase 2 scores each candidate with the re-ranker
+4. Results are re-sorted by the new scores and truncated to the original `limit`
+5. If re-ranking fails, original results are returned (graceful degradation)

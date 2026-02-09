@@ -2,6 +2,7 @@ use crate::backends::{
     BackendStats, Document, HybridSearchCoordinator, Query, SearchBackend, SearchResults,
     SearchResultsWithAggs, TextBackend, VectorBackend,
 };
+use crate::ranking::reranker::{Reranker, RerankOptions};
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use parking_lot::RwLock;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 pub struct CollectionManager {
     schemas: RwLock<HashMap<String, CollectionSchema>>,
     per_collection_backends: RwLock<HashMap<String, Arc<dyn SearchBackend>>>,
+    per_collection_rerankers: RwLock<HashMap<String, Arc<dyn Reranker>>>,
     text_backend: Arc<TextBackend>,
     vector_backend: Arc<VectorBackend>,
 }
@@ -42,17 +44,22 @@ impl CollectionManager {
         }
 
         let mut per_collection_backends = HashMap::new();
+        let mut per_collection_rerankers = HashMap::new();
         for (name, schema) in &schemas {
             let backend =
                 Self::build_backend_for_schema(schema, &text_backend, &vector_backend)?;
             if let Some(b) = backend {
                 per_collection_backends.insert(name.clone(), b);
             }
+            if let Some(reranker) = Self::build_reranker_for_schema(schema) {
+                per_collection_rerankers.insert(name.clone(), reranker);
+            }
         }
 
         Ok(Self {
             schemas: RwLock::new(schemas),
             per_collection_backends: RwLock::new(per_collection_backends),
+            per_collection_rerankers: RwLock::new(per_collection_rerankers),
             text_backend: text_backend.clone(),
             vector_backend: vector_backend.clone(),
         })
@@ -92,6 +99,133 @@ impl CollectionManager {
         }
     }
 
+    /// Build a reranker from schema configuration. Returns None if no reranking is configured.
+    fn build_reranker_for_schema(schema: &CollectionSchema) -> Option<Arc<dyn Reranker>> {
+        let config = schema.reranking.as_ref()?;
+
+        match config.reranker_type {
+            crate::schema::RerankerType::ScoreFunction => {
+                let expr = config.score_function.as_deref().unwrap_or("_score");
+                match crate::ranking::ScoreFunctionReranker::new(expr) {
+                    Ok(r) => {
+                        tracing::info!(
+                            "Built ScoreFunctionReranker for '{}': {}",
+                            schema.collection,
+                            expr
+                        );
+                        Some(Arc::new(r))
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to build ScoreFunctionReranker for '{}': {}",
+                            schema.collection,
+                            e
+                        );
+                        None
+                    }
+                }
+            }
+            crate::schema::RerankerType::CrossEncoder => {
+                // CrossEncoder requires async construction (model download).
+                // Return None here; the reranker will be built in initialize_rerankers()
+                // or add_collection().
+                tracing::info!(
+                    "CrossEncoder reranker for '{}' deferred to async initialization",
+                    schema.collection,
+                );
+                None
+            }
+        }
+    }
+
+    /// Initialize cross-encoder rerankers asynchronously (called from initialize())
+    async fn initialize_rerankers(&self) {
+        let schemas = self.schemas.read().clone();
+        for (name, schema) in &schemas {
+            if let Some(config) = &schema.reranking {
+                if config.reranker_type == crate::schema::RerankerType::CrossEncoder {
+                    let ce_config = config.cross_encoder.as_ref();
+                    let model_id = ce_config
+                        .map(|c| c.model_id.as_str())
+                        .unwrap_or("cross-encoder/ms-marco-MiniLM-L-6-v2");
+                    let max_length = ce_config.map(|c| c.max_length).unwrap_or(512);
+
+                    match crate::ranking::CrossEncoderReranker::new(model_id, max_length).await {
+                        Ok(reranker) => {
+                            tracing::info!(
+                                "Initialized CrossEncoder reranker for '{}' (model: {})",
+                                name,
+                                model_id
+                            );
+                            self.per_collection_rerankers
+                                .write()
+                                .insert(name.clone(), Arc::new(reranker));
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to initialize CrossEncoder reranker for '{}': {}. \
+                                 Searches will proceed without reranking.",
+                                name,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Resolve reranking configuration by merging schema defaults with per-request override.
+    fn resolve_rerank_config(
+        schema: &CollectionSchema,
+        override_opts: Option<&RerankOptions>,
+    ) -> Option<ResolvedRerankConfig> {
+        // If there's an explicit override that disables reranking, return None
+        if let Some(opts) = override_opts {
+            if !opts.enabled {
+                return None;
+            }
+        }
+
+        // Check schema config
+        let schema_config = schema.reranking.as_ref();
+
+        // If no schema config and no override enabling it, no reranking
+        if schema_config.is_none() && override_opts.is_none() {
+            return None;
+        }
+
+        // If override exists with enabled=true but no schema config, use override defaults
+        let candidates = override_opts
+            .map(|o| o.candidates)
+            .or_else(|| schema_config.map(|c| c.candidates))
+            .unwrap_or(100);
+
+        let text_fields = override_opts
+            .and_then(|o| {
+                if o.text_fields.is_empty() {
+                    None
+                } else {
+                    Some(o.text_fields.clone())
+                }
+            })
+            .or_else(|| {
+                schema_config.and_then(|c| {
+                    if c.text_fields.is_empty() {
+                        None
+                    } else {
+                        Some(c.text_fields.clone())
+                    }
+                })
+            })
+            .unwrap_or_default();
+
+        Some(ResolvedRerankConfig {
+            candidates,
+            text_fields,
+        })
+    }
+
     pub async fn initialize(&self) -> Result<()> {
         let schemas = self.schemas.read().clone();
         for (name, schema) in &schemas {
@@ -104,6 +238,9 @@ impl CollectionManager {
                 self.vector_backend.initialize(name, schema).await?;
             }
         }
+
+        // Initialize async rerankers (cross-encoders)
+        self.initialize_rerankers().await;
 
         // Update collections count gauge
         metrics::gauge!("prism_collections_count").set(schemas.len() as f64);
@@ -139,29 +276,96 @@ impl CollectionManager {
         Ok(())
     }
 
-    pub async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
-        let (backend, has_text) = {
+    pub async fn search(
+        &self,
+        collection: &str,
+        query: Query,
+        rerank_override: Option<&RerankOptions>,
+    ) -> Result<SearchResults> {
+        let (backend, has_text, schema) = {
             let schemas = self.schemas.read();
             let schema = schemas
                 .get(collection)
-                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?
+                .clone();
             let has_text = schema.backends.text.is_some();
             let backends = self.per_collection_backends.read();
             let backend = backends.get(collection).cloned();
-            (backend, has_text)
+            (backend, has_text, schema)
         };
 
-        if let Some(backend) = backend {
-            return backend.search(collection, query).await;
+        // Resolve reranking config
+        let rerank_config = Self::resolve_rerank_config(&schema, rerank_override);
+        let reranker = if rerank_config.is_some() {
+            self.per_collection_rerankers.read().get(collection).cloned()
+        } else {
+            None
+        };
+
+        // Phase 1: Retrieve candidates
+        let original_limit = query.limit;
+        let query_string_for_rerank = query.query_string.clone();
+        let mut phase1_query = query;
+        if let (Some(ref config), Some(_)) = (&rerank_config, &reranker) {
+            // Expand limit to retrieve more candidates for reranking
+            phase1_query.limit = config.candidates.max(original_limit);
         }
 
-        if has_text {
-            return self.text_backend.search(collection, query).await;
+        let mut results = if let Some(backend) = backend {
+            backend.search(collection, phase1_query).await?
+        } else if has_text {
+            self.text_backend.search(collection, phase1_query).await?
+        } else {
+            return Err(Error::Backend(
+                "No backend available for collection".to_string(),
+            ));
+        };
+
+        // Phase 2: Rerank if configured
+        if let (Some(config), Some(reranker)) = (rerank_config, reranker) {
+            match reranker
+                .rerank_results(
+                    &query_string_for_rerank,
+                    &results.results,
+                    &config.text_fields,
+                )
+                .await
+            {
+                Ok(new_scores) => {
+                    // Apply new scores
+                    for (result, &score) in results.results.iter_mut().zip(new_scores.iter()) {
+                        result.score = score;
+                    }
+                    // Re-sort by new scores (highest first)
+                    results.results.sort_by(|a, b| {
+                        b.score
+                            .partial_cmp(&a.score)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    // Truncate back to original limit
+                    results.results.truncate(original_limit);
+
+                    tracing::debug!(
+                        "Reranked {} candidates down to {} results for collection '{}' using {}",
+                        results.total,
+                        original_limit,
+                        collection,
+                        reranker.name()
+                    );
+                }
+                Err(e) => {
+                    // Graceful degradation: log warning and return original results
+                    tracing::warn!(
+                        "Reranking failed for collection '{}': {}. Returning original results.",
+                        collection,
+                        e
+                    );
+                    results.results.truncate(original_limit);
+                }
+            }
         }
 
-        Err(Error::Backend(
-            "No backend available for collection".to_string(),
-        ))
+        Ok(results)
     }
 
     pub async fn search_with_aggs(
@@ -326,6 +530,7 @@ impl CollectionManager {
 
         // Remove from manager maps
         self.per_collection_backends.write().remove(name);
+        self.per_collection_rerankers.write().remove(name);
         self.schemas.write().remove(name);
 
         // Update gauge
@@ -366,6 +571,36 @@ impl CollectionManager {
         // Insert into manager maps
         if let Some(b) = backend {
             self.per_collection_backends.write().insert(name.clone(), b);
+        }
+        // Build reranker if configured
+        if let Some(reranker) = Self::build_reranker_for_schema(&schema) {
+            self.per_collection_rerankers
+                .write()
+                .insert(name.clone(), reranker);
+        }
+        // Build async rerankers (cross-encoders)
+        if let Some(config) = &schema.reranking {
+            if config.reranker_type == crate::schema::RerankerType::CrossEncoder {
+                let ce_config = config.cross_encoder.as_ref();
+                let model_id = ce_config
+                    .map(|c| c.model_id.as_str())
+                    .unwrap_or("cross-encoder/ms-marco-MiniLM-L-6-v2");
+                let max_length = ce_config.map(|c| c.max_length).unwrap_or(512);
+                match crate::ranking::CrossEncoderReranker::new(model_id, max_length).await {
+                    Ok(reranker) => {
+                        self.per_collection_rerankers
+                            .write()
+                            .insert(name.clone(), Arc::new(reranker));
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to initialize CrossEncoder reranker for '{}': {}",
+                            name,
+                            e
+                        );
+                    }
+                }
+            }
         }
         self.schemas.write().insert(name.clone(), schema);
 
@@ -659,7 +894,7 @@ impl CollectionManager {
                 let q = query.clone();
                 let col = collection.clone();
                 async move {
-                    let result = self.search(&col, q).await;
+                    let result = self.search(&col, q, None).await;
                     (col, result)
                 }
             })
@@ -766,6 +1001,12 @@ impl CollectionManager {
     }
 }
 
+/// Resolved reranking configuration after merging schema + request overrides
+struct ResolvedRerankConfig {
+    candidates: usize,
+    text_fields: Vec<String>,
+}
+
 /// Result from multi-collection search with collection source info
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MultiSearchResult {
@@ -855,7 +1096,7 @@ backends:
             highlight: None,
         };
 
-        let results = manager.search("articles", query).await?;
+        let results = manager.search("articles", query, None).await?;
         assert!(results.total > 0);
 
         Ok(())

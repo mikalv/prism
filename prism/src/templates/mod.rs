@@ -219,6 +219,7 @@ impl TemplateManager {
             system_fields: template.settings.system_fields.clone().unwrap_or_default(),
             hybrid: None,
             replication: None,
+            reranking: None,
             ilm_policy: template.settings.ilm_policy.clone(),
         }
     }
@@ -365,6 +366,7 @@ mod tests {
             system_fields: Default::default(),
             hybrid: None,
             replication: None,
+            reranking: None,
             ilm_policy: None,
         };
 

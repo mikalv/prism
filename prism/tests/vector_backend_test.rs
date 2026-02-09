@@ -35,6 +35,7 @@ async fn test_initialize_collection() {
         system_fields: Default::default(),
         hybrid: None,
         replication: None,
+        reranking: None,
         ilm_policy: None,
     };
 
@@ -78,6 +79,7 @@ async fn test_index_and_search() {
         system_fields: Default::default(),
         hybrid: None,
         replication: None,
+        reranking: None,
         ilm_policy: None,
     };
 

@@ -151,7 +151,7 @@ impl McpTool for SearchTool {
             highlight: None,
         };
 
-        let results = ctx.manager.search(collection, query).await?;
+        let results = ctx.manager.search(collection, query, None).await?;
 
         Ok(json!({
             "results": results.results,

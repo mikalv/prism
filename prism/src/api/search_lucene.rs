@@ -176,7 +176,7 @@ pub async fn search_lucene(
         highlight: None,
     };
 
-    let search_results = match manager.search(&req.collection, query).await {
+    let search_results = match manager.search(&req.collection, query, None).await {
         Ok(results) => results,
         Err(crate::Error::CollectionNotFound(_)) => {
             tracing::warn!(collection = %req.collection, "Collection not found during search");
