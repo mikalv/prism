@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { SearchState, SearchResult } from '@/lib/types'
-import { search as apiSearch } from '@/lib/api'
+import { search as apiSearch, searchCollection } from '@/lib/api'
 
 const initialState: SearchState = {
   view: 'home',
@@ -15,32 +15,42 @@ const initialState: SearchState = {
 
 export function useSearch() {
   const [state, setState] = useState<SearchState>(initialState)
+  const [collection, setCollection] = useState<string | undefined>(undefined)
 
   // Update URL when query changes
   useEffect(() => {
     if (state.view === 'results' && state.query) {
       const url = new URL(window.location.href)
       url.searchParams.set('q', state.query)
+      if (collection) {
+        url.searchParams.set('c', collection)
+      } else {
+        url.searchParams.delete('c')
+      }
       window.history.replaceState({}, '', url.toString())
     } else if (state.view === 'home') {
       const url = new URL(window.location.href)
       url.searchParams.delete('q')
+      url.searchParams.delete('c')
       window.history.replaceState({}, '', url.toString())
     }
-  }, [state.view, state.query])
+  }, [state.view, state.query, collection])
 
   // Check URL on mount for initial query
   useEffect(() => {
     const url = new URL(window.location.href)
     const q = url.searchParams.get('q')
+    const c = url.searchParams.get('c') || undefined
     if (q) {
-      doSearch(q)
+      doSearch(q, c)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const doSearch = useCallback(async (query: string) => {
+  const doSearch = useCallback(async (query: string, col?: string) => {
     if (!query.trim()) return
+
+    setCollection(col)
 
     setState((s) => ({
       ...s,
@@ -54,7 +64,10 @@ export function useSearch() {
     }))
 
     try {
-      const data = await apiSearch(query, 20)
+      // Use collection-specific search if collection is selected
+      const data = col
+        ? await searchCollection(col, query, 20)
+        : await apiSearch(query, 20)
 
       const mappedResults: SearchResult[] = data.results.map((r) => ({
         id: r.id,
@@ -88,10 +101,12 @@ export function useSearch() {
 
   const reset = useCallback(() => {
     setState(initialState)
+    setCollection(undefined)
   }, [])
 
   return {
     ...state,
+    collection,
     effectiveIntent: 'search' as const,
     search: doSearch,
     setIntentOverride: () => {},
