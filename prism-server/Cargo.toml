@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Prism search server binary"
 
 [features]
-default = []
+default = ["ui"]
 provider-onnx = ["prism/provider-onnx"]
 provider-onnx-real = ["prism/provider-onnx-real"]
 all-providers = ["prism/all-providers"]

@@ -303,7 +303,8 @@ async fn main() -> Result<()> {
     }
 
     // Build extension router with optional features
-    let _extension_router: axum::Router<()> = axum::Router::new();
+    #[allow(unused_mut)]
+    let mut extension_router: axum::Router<()> = axum::Router::new();
 
     // Add UI routes if enabled
     #[cfg(feature = "ui")]
