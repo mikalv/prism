@@ -85,7 +85,10 @@ pub async fn make_client_endpoint(config: &ClusterConfig) -> Result<Endpoint> {
 fn build_server_config(tls_config: &ClusterTlsConfig) -> Result<ServerConfig> {
     let (certs, key) = load_certs_and_key(tls_config)?;
 
-    let crypto = rustls::ServerConfig::builder()
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let crypto = rustls::ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|e| ClusterError::Tls(format!("Failed to set protocol versions: {}", e)))?
         .with_no_client_auth()
         .with_single_cert(certs, key)
         .map_err(|e| ClusterError::Tls(format!("Failed to build server TLS config: {}", e)))?;
@@ -101,11 +104,14 @@ fn build_server_config(tls_config: &ClusterTlsConfig) -> Result<ServerConfig> {
 
 /// Build rustls ClientConfig for QUIC
 fn build_client_config(tls_config: &ClusterTlsConfig) -> Result<ClientConfig> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
     let crypto = if tls_config.skip_verify {
         // WARNING: This is insecure and should only be used for development
         tracing::warn!("Cluster TLS verification disabled - INSECURE");
 
-        rustls::ClientConfig::builder()
+        rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| ClusterError::Tls(format!("Failed to set protocol versions: {}", e)))?
             .dangerous()
             .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
             .with_no_client_auth()
@@ -135,7 +141,9 @@ fn build_client_config(tls_config: &ClusterTlsConfig) -> Result<ClientConfig> {
             }
         }
 
-        rustls::ClientConfig::builder()
+        rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|e| ClusterError::Tls(format!("Failed to set protocol versions: {}", e)))?
             .with_root_certificates(roots)
             .with_no_client_auth()
     };

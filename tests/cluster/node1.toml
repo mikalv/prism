@@ -1,0 +1,28 @@
+# Prism Node 1 - Cluster test configuration
+
+[server]
+bind_addr = "0.0.0.0:3000"
+
+[storage]
+data_dir = "/data"
+schemas_dir = "/schemas"
+
+[observability]
+log_level = "info"
+log_format = "text"
+metrics_enabled = true
+
+[cluster]
+enabled = true
+node_id = "node-1"
+bind_addr = "0.0.0.0:9080"
+seed_nodes = ["prism-node2:9080", "prism-node3:9080"]
+connect_timeout_ms = 5000
+request_timeout_ms = 30000
+
+[cluster.tls]
+enabled = true
+cert_path = "/conf/tls/node-cert.pem"
+key_path = "/conf/tls/node-key.pem"
+ca_cert_path = "/conf/tls/ca-cert.pem"
+skip_verify = false

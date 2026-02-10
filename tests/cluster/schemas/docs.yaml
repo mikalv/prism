@@ -1,0 +1,17 @@
+collection: docs
+description: Test collection for cluster integration tests
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+        stored: true
+      - name: body
+        type: text
+        indexed: true
+        stored: true
+      - name: category
+        type: text
+        indexed: true
+        stored: true

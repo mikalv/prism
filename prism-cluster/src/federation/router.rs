@@ -224,7 +224,7 @@ mod tests {
     use super::*;
     use crate::config::NodeTopology;
     use crate::placement::NodeInfo;
-    use std::collections::HashMap;
+    use crate::ShardState;
 
     fn setup_test_state() -> Arc<ClusterState> {
         let state = Arc::new(ClusterState::new());

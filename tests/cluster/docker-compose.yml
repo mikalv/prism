@@ -1,0 +1,70 @@
+# Docker Compose for 3-node Prism cluster integration test.
+#
+# Usage:
+#   cd tests/cluster
+#   ./generate-certs.sh
+#   docker compose up --build -d
+#   ./test-cluster.sh
+#   docker compose down -v
+
+services:
+  prism-node1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        FEATURES: cluster
+    container_name: prism-node1
+    hostname: prism-node1
+    command: ["--host", "0.0.0.0", "--port", "3000", "--schemas-dir", "/schemas"]
+    volumes:
+      - ./node1.toml:/data/prism.toml:ro
+      - ./schemas:/schemas:ro
+      - ./conf/tls:/conf/tls:ro
+    ports:
+      - "3081:3000"       # HTTP API
+      - "9081:9080/udp"   # Cluster QUIC (UDP)
+    networks:
+      - cluster-net
+
+  prism-node2:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        FEATURES: cluster
+    container_name: prism-node2
+    hostname: prism-node2
+    command: ["--host", "0.0.0.0", "--port", "3000", "--schemas-dir", "/schemas"]
+    volumes:
+      - ./node2.toml:/data/prism.toml:ro
+      - ./schemas:/schemas:ro
+      - ./conf/tls:/conf/tls:ro
+    ports:
+      - "3082:3000"
+      - "9082:9080/udp"
+    networks:
+      - cluster-net
+
+  prism-node3:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        FEATURES: cluster
+    container_name: prism-node3
+    hostname: prism-node3
+    command: ["--host", "0.0.0.0", "--port", "3000", "--schemas-dir", "/schemas"]
+    volumes:
+      - ./node3.toml:/data/prism.toml:ro
+      - ./schemas:/schemas:ro
+      - ./conf/tls:/conf/tls:ro
+    ports:
+      - "3083:3000"
+      - "9083:9080/udp"
+    networks:
+      - cluster-net
+
+networks:
+  cluster-net:
+    driver: bridge

@@ -629,6 +629,7 @@ mod tests {
     use super::*;
     use crate::config::HealthConfig;
     use crate::placement::ClusterState;
+    use crate::WriteQuorum;
 
     fn make_detector() -> (Arc<HealthChecker>, PartitionDetector) {
         let health_config = HealthConfig::default();

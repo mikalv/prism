@@ -1,0 +1,2 @@
+# Generated TLS certificates (re-generate with ./generate-certs.sh)
+conf/tls/

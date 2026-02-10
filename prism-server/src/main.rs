@@ -277,7 +277,6 @@ async fn main() -> Result<()> {
             seed_nodes: config.cluster.seed_nodes.clone(),
             connect_timeout_ms: config.cluster.connect_timeout_ms,
             request_timeout_ms: config.cluster.request_timeout_ms,
-            max_connections: 10,
             tls: prism_cluster::ClusterTlsConfig {
                 enabled: config.cluster.tls.enabled,
                 cert_path: config.cluster.tls.cert_path.clone(),
@@ -285,6 +284,7 @@ async fn main() -> Result<()> {
                 ca_cert_path: config.cluster.tls.ca_cert_path.clone(),
                 skip_verify: config.cluster.tls.skip_verify,
             },
+            ..Default::default()
         };
 
         let cluster_manager = server.manager();
