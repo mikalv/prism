@@ -94,6 +94,9 @@ hex = "0.4"
 # Encryption
 aes-gcm = "0.10"
 
+# Bitmap data structures
+roaring = "0.10"
+
 # RPC and cluster communication
 tarpc = { version = "0.35", features = ["tokio1", "serde-transport"] }
 quinn = "0.11"

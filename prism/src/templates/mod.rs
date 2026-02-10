@@ -200,6 +200,9 @@ impl TemplateManager {
                 hnsw_ef_construction: 200,
                 hnsw_ef_search: 100,
                 vector_weight: 0.5,
+                num_shards: 1,
+                shard_oversample: 2.5,
+                compaction: Default::default(),
             });
 
         CollectionSchema {
@@ -274,6 +277,9 @@ impl TemplateManager {
                     hnsw_ef_construction: 200,
                     hnsw_ef_search: 100,
                     vector_weight: 0.5,
+                    num_shards: 1,
+                    shard_oversample: 2.5,
+                    compaction: Default::default(),
                 });
             }
         }

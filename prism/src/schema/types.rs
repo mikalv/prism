@@ -128,10 +128,55 @@ pub struct VectorBackendConfig {
     pub hnsw_ef_search: usize,
     #[serde(default = "default_vector_weight")]
     pub vector_weight: f32,
+    /// Number of local vector shards (default: 1 for backward compat)
+    #[serde(default = "default_num_shards")]
+    pub num_shards: usize,
+    /// Over-fetch multiplier per shard for recall (default: 2.5)
+    #[serde(default = "default_shard_oversample")]
+    pub shard_oversample: f32,
+    /// Segment compaction configuration
+    #[serde(default)]
+    pub compaction: VectorCompactionConfig,
 }
 
 fn default_vector_weight() -> f32 {
     0.5
+}
+
+fn default_num_shards() -> usize {
+    1
+}
+
+fn default_shard_oversample() -> f32 {
+    2.5
+}
+
+/// Configuration for vector segment compaction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VectorCompactionConfig {
+    /// Minimum number of sealed segments before compaction triggers (default: 3)
+    #[serde(default = "default_min_segments")]
+    pub min_segments: usize,
+    /// Delete ratio threshold to trigger compaction (default: 0.2)
+    #[serde(default = "default_delete_ratio")]
+    pub delete_ratio_threshold: f32,
+}
+
+impl Default for VectorCompactionConfig {
+    fn default() -> Self {
+        Self {
+            min_segments: default_min_segments(),
+            delete_ratio_threshold: default_delete_ratio(),
+        }
+    }
+}
+
+fn default_min_segments() -> usize {
+    3
+}
+
+fn default_delete_ratio() -> f32 {
+    0.2
 }
 
 fn default_distance() -> VectorDistance {
