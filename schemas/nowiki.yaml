@@ -1,0 +1,28 @@
+collection: nowiki
+description: "Norwegian Wikipedia articles"
+
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        stored: true
+        indexed: true
+      - name: content
+        type: text
+        stored: true
+        indexed: true
+      - name: timestamp
+        type: string
+        stored: true
+        indexed: false
+
+boosting:
+  field_weights:
+    title: 3.0
+    content: 1.0
+
+reranking:
+  type: score_function
+  candidates: 100
+  score_function: "_score * 1.5"

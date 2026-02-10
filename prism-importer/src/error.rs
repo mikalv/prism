@@ -26,6 +26,9 @@ pub enum ImportError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("XML parse error: {0}")]
+    XmlParse(String),
+
     #[error("{0}")]
     Other(String),
 }

@@ -24,6 +24,9 @@ async-stream = { workspace = true }
 futures = { workspace = true }
 url = "2"
 indicatif = "0.17"
+quick-xml = "0.37"
+bzip2 = "0.5"
+regex = "1"
 anyhow = { workspace = true }
 base64 = { workspace = true }
 serde_yaml = { workspace = true }

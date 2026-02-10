@@ -2,6 +2,7 @@
 //!
 //! Supported sources:
 //! - Elasticsearch 7.x/8.x
+//! - Wikipedia XML dumps
 
 pub mod error;
 pub mod progress;
@@ -11,4 +12,4 @@ pub mod sources;
 pub use error::{ImportError, Result};
 pub use progress::ImportProgress;
 pub use schema::{SourceField, SourceFieldType, SourceSchema};
-pub use sources::{AuthMethod, ElasticsearchSource, ImportSource};
+pub use sources::{AuthMethod, ElasticsearchSource, ImportSource, WikipediaSource};
