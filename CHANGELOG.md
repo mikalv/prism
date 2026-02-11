@@ -2,6 +2,55 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.0] - 2026-02-11
+
+### Highlights
+
+AST-aware code search, advanced ranking, HNSW sharding, web UI, cluster fixes.
+
+### Code Search
+
+- **Tree-sitter AST Code Tokenizer** ([#70](https://github.com/mikalv/prism/issues/70)) — 16 languages, identifier splitting
+- Code search documentation and schema reference
+
+### Ranking & Search Quality
+
+- **Advanced Hybrid Ranking** ([#56](https://github.com/mikalv/prism/issues/56)) — score normalization, per-query controls
+- **Two-Phase Ranking** ([#52](https://github.com/mikalv/prism/issues/52)) — pluggable re-rankers
+
+### Vector & Storage
+
+- **HNSW Index Sharding** ([#40](https://github.com/mikalv/prism/issues/40)) — segments, compaction, bitmap tombstones
+
+### Server & API
+
+- Live Collection Detach/Attach ([#57](https://github.com/mikalv/prism/issues/57))
+- Embedded Web UI at `/ui` (enabled by default)
+- Collection selector dropdown, search-only mode
+- Root endpoint with version/status
+- `PRISM_LOG_DIR`, `PRISM_CACHE_DIR` env vars
+
+### Cluster
+
+- Federated search fix — QUIC with Json serde, stream-per-call
+- 3-node Docker Compose integration test
+
+### Importer
+
+- Wikipedia XML dump source
+
+### Documentation
+
+- Code Search guide
+- Clustering & Federation guide
+- Updated README
+
+### Breaking Changes
+
+None — backwards compatible with v0.5.0.
+
+---
+
 ## [0.5.0] - 2026-02-07
 
 ### Highlights

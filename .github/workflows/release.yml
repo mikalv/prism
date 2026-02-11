@@ -1,71 +1,189 @@
-# .github/workflows/release.yml
-  name: Release
+name: Release
 
-  on:
-    push:
-      tags: ['v*']
+on:
+  push:
+    tags: ['v*']
 
-  jobs:
-    build:
-      strategy:
-        matrix:
-          include:
-            # Linux (glibc)
-            - target: x86_64-unknown-linux-gnu
-              os: ubuntu-latest
-              label: linux-x86_64
-            - target: aarch64-unknown-linux-gnu
-              os: ubuntu-latest
-              label: linux-aarch64
-              use-cross: true
+permissions:
+  contents: write
+  packages: write
 
-            # Linux (musl/static)
-            - target: x86_64-unknown-linux-musl
-              os: ubuntu-latest
-              label: linux-x86_64-static
-              use-cross: true
-            - target: aarch64-unknown-linux-musl
-              os: ubuntu-latest
-              label: linux-aarch64-static
-              use-cross: true
+env:
+  CARGO_TERM_COLOR: always
 
-            # macOS
-            - target: x86_64-apple-darwin
-              os: macos-latest
-              label: darwin-x86_64
-            - target: aarch64-apple-darwin
-              os: macos-latest
-              label: darwin-aarch64
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Linux (glibc)
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            label: linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            label: linux-aarch64
+            use-cross: true
 
-            # Windows
-            - target: x86_64-pc-windows-msvc
-              os: windows-latest
-              label: windows-x86_64
+          # Linux (musl/static)
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            label: linux-x86_64-static
+            use-cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            label: linux-aarch64-static
+            use-cross: true
 
-      runs-on: ${{ matrix.os }}
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            label: darwin-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            label: darwin-aarch64
 
-      steps:
-        - uses: actions/checkout@v4
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            label: windows-x86_64
 
-        - name: Install Rust
-          uses: dtolnay/rust-toolchain@stable
-          with:
-            targets: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
 
-        - name: Install cross
-          if: matrix.use-cross
-          run: cargo install cross
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Build (cross)
-          if: matrix.use-cross
-          run: cross build --release --target ${{ matrix.target }}
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-        - name: Build (native)
-          if: "!matrix.use-cross"
-          run: cargo build --release --target ${{ matrix.target }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
-        - name: Upload artifact
-          uses: actions/upload-artifact@v4
-          with:
-            name: binary-${{ matrix.target }}
-            path: target/${{ matrix.target }}/release/prism*
+      - name: Install cross
+        if: matrix.use-cross
+        run: cargo install cross
+
+      - name: Build (cross)
+        if: matrix.use-cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (native)
+        if: "!matrix.use-cross"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          archive="prism-${tag}-${{ matrix.label }}.tar.gz"
+          staging="prism-${tag}-${{ matrix.label }}"
+          mkdir -p "${staging}"
+          cp target/${{ matrix.target }}/release/prism-server "${staging}/"
+          cp target/${{ matrix.target }}/release/prism "${staging}/"
+          cp target/${{ matrix.target }}/release/prism-import "${staging}/"
+          tar czf "${archive}" "${staging}"
+          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $archive = "prism-${tag}-${{ matrix.label }}.zip"
+          $staging = "prism-${tag}-${{ matrix.label }}"
+          New-Item -ItemType Directory -Path $staging -Force
+          Copy-Item "target/${{ matrix.target }}/release/prism-server.exe" $staging/
+          Copy-Item "target/${{ matrix.target }}/release/prism.exe" $staging/
+          Copy-Item "target/${{ matrix.target }}/release/prism-import.exe" $staging/
+          Compress-Archive -Path $staging -DestinationPath $archive
+          echo "ARCHIVE=$archive" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.label }}
+          path: ${{ env.ARCHIVE }}
+
+  extract-changelog:
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.extract.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog for tag
+        id: extract
+        run: |
+          # Strip leading 'v' from tag to get version number
+          version="${GITHUB_REF_NAME#v}"
+          # Extract section between ## [version] and next ## [
+          changelog=$(awk "/^## \\[${version}\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          # Write multiline output
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            echo "${changelog}"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: [build, extract-changelog]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: archive-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Prism ${{ github.ref_name }}"
+          body: ${{ needs.extract-changelog.outputs.changelog }}
+          files: |
+            prism-*.tar.gz
+            prism-*.zip
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
