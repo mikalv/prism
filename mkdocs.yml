@@ -98,6 +98,7 @@ nav:
     - Highlighting: guides/highlighting.md
     - Suggestions: guides/suggestions.md
     - More Like This: guides/more-like-this.md
+    - Code Search: guides/code-search.md
     - Ranking: guides/ranking.md
     - Collections: guides/collections.md
     - Export & Import: guides/export-import.md

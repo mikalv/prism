@@ -172,6 +172,46 @@ reranking:
 |--------|---------|-------------|
 | `stored` | `true` | Store original value for retrieval |
 | `indexed` | `true` | Index for searching/filtering |
+| `tokenizer` | `default` | Tokenizer for `text` fields (see below) |
+| `tokenizer_options` | none | Additional tokenizer settings (tree-sitter only) |
+
+### Tokenizers
+
+The `tokenizer` option controls how `text` fields are tokenized for indexing and search.
+
+| Tokenizer | Description | Use Case |
+|-----------|-------------|----------|
+| `default` | Standard text tokenizer (whitespace + punctuation) | Natural language text |
+| `code` | Regex-based identifier splitting (camelCase, snake_case) | Source code |
+| `raw` | No tokenization (whole value as single token) | Exact-match text |
+| `code-treesitter` | AST-aware code tokenizer using tree-sitter | Source code (requires `tokenizer-treesitter` feature) |
+
+Example:
+
+```yaml
+fields:
+  - name: source
+    type: text
+    stored: true
+    indexed: true
+    tokenizer: code-treesitter
+    tokenizer_options:
+      language: rust
+      index_comments: true
+      index_strings: false
+```
+
+### Tree-Sitter Tokenizer Options
+
+When using `tokenizer: code-treesitter`, the `tokenizer_options` object supports:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `language` | string | auto-detect | Language name (e.g. `rust`, `python`, `go`, `javascript`) |
+| `index_comments` | bool | `true` | Include comment text in the index |
+| `index_strings` | bool | `true` | Include string literal content in the index |
+
+See the [Code Search guide](../guides/code-search.md) for supported languages and usage examples.
 
 ---
 
