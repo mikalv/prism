@@ -116,6 +116,45 @@ enabled = false
 
 See [Security](security.md) for API keys, RBAC, and audit logging.
 
+### Cluster Settings
+
+Requires the `cluster` feature flag at build time.
+
+```toml
+[cluster]
+enabled = true
+node_id = "node-1"
+bind_addr = "0.0.0.0:9080"
+advertise_addr = "prism-node1:9080"
+seed_nodes = ["prism-node2:9080", "prism-node3:9080"]
+connect_timeout_ms = 5000
+request_timeout_ms = 30000
+
+[cluster.tls]
+enabled = true
+cert_path = "/conf/tls/node-cert.pem"
+key_path = "/conf/tls/node-key.pem"
+ca_cert_path = "/conf/tls/ca-cert.pem"
+skip_verify = false
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | `false` | Enable cluster mode |
+| `node_id` | random UUID | Unique node identifier |
+| `bind_addr` | `0.0.0.0:9080` | QUIC RPC bind address (UDP) |
+| `advertise_addr` | same as `bind_addr` | Reachable address advertised to peers |
+| `seed_nodes` | `[]` | Other cluster nodes to connect to |
+| `connect_timeout_ms` | `5000` | QUIC connection timeout |
+| `request_timeout_ms` | `30000` | RPC request timeout |
+| `tls.enabled` | `true` | Enable TLS for inter-node traffic |
+| `tls.cert_path` | `./conf/tls/cluster-cert.pem` | Node certificate (PEM) |
+| `tls.key_path` | `./conf/tls/cluster-key.pem` | Node private key (PEM) |
+| `tls.ca_cert_path` | — | CA certificate for peer verification |
+| `tls.skip_verify` | `false` | Skip peer verification (dev only) |
+
+See [Clustering & Federation](../guides/clustering.md) for the full guide.
+
 ## Environment Variables
 
 Prism supports configuration via environment variables. These override CLI flags and config file settings.

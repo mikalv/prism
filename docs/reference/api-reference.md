@@ -576,6 +576,85 @@ Get server information.
 
 ---
 
+## Cluster (Federation)
+
+Available when built with the `cluster` feature and `[cluster] enabled = true`.
+
+### POST /cluster/collections/:collection/search
+
+Federated search across all shards in the cluster.
+
+**Request:**
+
+```json
+{
+  "query": "distributed search",
+  "limit": 10
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "results": [
+    { "id": "doc1", "score": 1.756, "fields": { ... }, "highlight": null }
+  ],
+  "total": 3,
+  "latency_ms": 46,
+  "is_partial": false,
+  "shard_status": { "total": 3, "successful": 3, "failed": 0 }
+}
+```
+
+`is_partial` is `true` when some shards failed but partial results are returned.
+
+---
+
+### POST /cluster/collections/:collection/documents
+
+Federated index — routes documents to the correct shard by ID hash.
+
+**Request:**
+
+```json
+{
+  "documents": [
+    { "id": "doc1", "fields": { "title": "hello", "body": "world" } }
+  ]
+}
+```
+
+**Response:** `201 Created`
+
+```json
+{
+  "total_docs": 1,
+  "successful_docs": 1,
+  "failed_docs": 0,
+  "latency_ms": 32
+}
+```
+
+---
+
+### GET /cluster/health
+
+Returns cluster status.
+
+**Response:** `200 OK`
+
+```json
+{
+  "status": "ok",
+  "message": "cluster operational"
+}
+```
+
+See [Clustering & Federation](../guides/clustering.md) for the full guide.
+
+---
+
 ## Error responses
 
 All error responses use standard HTTP status codes:

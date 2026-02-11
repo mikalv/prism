@@ -89,6 +89,7 @@ nav:
     - Search: guides/search.md
     - Vector Search: guides/vector-search.md
     - Hybrid Search: guides/hybrid-search.md
+    - Clustering & Federation: guides/clustering.md
     - Aggregations: guides/aggregations.md
     - Highlighting: guides/highlighting.md
     - Suggestions: guides/suggestions.md
