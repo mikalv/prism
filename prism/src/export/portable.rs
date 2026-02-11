@@ -147,6 +147,10 @@ async fn iterate_all_documents(
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager.search(collection, query, None).await?;

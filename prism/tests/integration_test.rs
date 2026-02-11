@@ -113,6 +113,10 @@ async fn test_search_with_facets() {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager.search("logs", query, None).await.expect("Search failed");
@@ -158,6 +162,10 @@ async fn test_search_pagination() {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results1 = manager.search("logs", query1, None).await.expect("Search failed");
@@ -177,6 +185,10 @@ async fn test_search_pagination() {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results2 = manager.search("logs", query2, None).await.expect("Search failed");
@@ -239,6 +251,10 @@ async fn test_collection_not_found() {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let result = manager.search("nonexistent", query, None).await;

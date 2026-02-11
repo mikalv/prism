@@ -19,6 +19,14 @@ pub struct RpcQuery {
     pub text_weight: Option<f32>,
     pub vector_weight: Option<f32>,
     pub highlight: Option<RpcHighlightConfig>,
+    #[serde(default)]
+    pub rrf_k: Option<usize>,
+    #[serde(default)]
+    pub min_score: Option<f32>,
+    #[serde(default)]
+    pub score_function: Option<String>,
+    #[serde(default)]
+    pub skip_ranking: bool,
 }
 
 impl From<prism::backends::Query> for RpcQuery {
@@ -32,6 +40,10 @@ impl From<prism::backends::Query> for RpcQuery {
             text_weight: q.text_weight,
             vector_weight: q.vector_weight,
             highlight: q.highlight.map(RpcHighlightConfig::from),
+            rrf_k: q.rrf_k,
+            min_score: q.min_score,
+            score_function: q.score_function,
+            skip_ranking: q.skip_ranking,
         }
     }
 }
@@ -47,6 +59,10 @@ impl From<RpcQuery> for prism::backends::Query {
             text_weight: q.text_weight,
             vector_weight: q.vector_weight,
             highlight: q.highlight.map(prism::backends::HighlightConfig::from),
+            rrf_k: q.rrf_k,
+            min_score: q.min_score,
+            score_function: q.score_function,
+            skip_ranking: q.skip_ranking,
         }
     }
 }

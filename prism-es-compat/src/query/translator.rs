@@ -40,6 +40,10 @@ impl QueryTranslator {
             text_weight: None,
             vector_weight: None,
             highlight,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         Ok((query, aggregations))

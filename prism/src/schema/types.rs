@@ -63,12 +63,12 @@ pub struct TextBackendConfig {
     pub fields: Vec<TextField>,
 
     /// BM25 k1 parameter for term saturation (default: 1.2)
-    /// Higher values increase the impact of term frequency
+    /// NOTE: Reserved for forward compatibility. Tantivy 0.22 hardcodes k1=1.2.
     #[serde(default)]
     pub bm25_k1: Option<f32>,
 
     /// BM25 b parameter for document length normalization (default: 0.75)
-    /// 0 = no length normalization, 1 = full normalization
+    /// NOTE: Reserved for forward compatibility. Tantivy 0.22 hardcodes b=0.75.
     #[serde(default)]
     pub bm25_b: Option<f32>,
 }
@@ -395,6 +395,19 @@ fn default_indexed_at_enabled() -> bool {
     true
 }
 
+/// Score normalization strategy for hybrid search weighted merge
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ScoreNormalization {
+    /// No normalization (raw scores)
+    None,
+    /// Divide by max score in each result set (current default behavior)
+    #[default]
+    MaxNorm,
+    /// Metric-aware: cosine vector scores used as-is, BM25 divided by max
+    MetricAware,
+}
+
 /// Configuration for hybrid search defaults
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HybridConfig {
@@ -413,6 +426,10 @@ pub struct HybridConfig {
     /// Default vector weight for weighted merge (default: 0.5)
     #[serde(default = "default_vector_weight_hybrid")]
     pub vector_weight: f32,
+
+    /// Score normalization strategy for weighted merge (default: max_norm)
+    #[serde(default)]
+    pub normalization: ScoreNormalization,
 }
 
 impl Default for HybridConfig {
@@ -422,6 +439,7 @@ impl Default for HybridConfig {
             rrf_k: 60,
             text_weight: 0.5,
             vector_weight: 0.5,
+            normalization: ScoreNormalization::default(),
         }
     }
 }

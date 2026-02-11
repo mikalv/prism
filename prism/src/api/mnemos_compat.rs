@@ -135,6 +135,10 @@ pub async fn context(
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let mut context_items = Vec::new();
@@ -170,6 +174,10 @@ pub async fn context(
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     if let Ok(results) = manager.search("memories", query2, None).await {
@@ -228,6 +236,10 @@ pub async fn search(
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let mut all_results = Vec::new();

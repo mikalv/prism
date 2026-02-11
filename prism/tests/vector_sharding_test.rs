@@ -68,6 +68,10 @@ fn make_query(vec: Vec<f32>, limit: usize) -> Query {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     }
 }
 

@@ -285,6 +285,10 @@ impl VectorBackend {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         self.search(collection, query).await
@@ -759,6 +763,10 @@ mod tests {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
         let results = backend.search("test", query).await.unwrap();
         assert!(!results.results.is_empty());
@@ -849,6 +857,10 @@ mod tests {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
         let results = backend.search("test", query).await.unwrap();
         assert_eq!(results.results.len(), 1);

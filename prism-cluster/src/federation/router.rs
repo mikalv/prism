@@ -283,6 +283,10 @@ mod tests {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         let decision = router.route("products", &query).unwrap();
@@ -324,6 +328,10 @@ mod tests {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         let decision = router.route("products", &query).unwrap();

@@ -174,6 +174,10 @@ pub async fn search_lucene(
         text_weight: req.text_weight,
         vector_weight: req.vector_weight,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let search_results = match manager.search(&req.collection, query, None).await {

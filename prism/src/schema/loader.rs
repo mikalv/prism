@@ -67,6 +67,22 @@ impl SchemaLoader {
             if t.fields.is_empty() {
                 issues.push("text.fields should have at least one field defined".to_string());
             }
+            if let Some(k1) = t.bm25_k1 {
+                if (k1 - 1.2).abs() > f32::EPSILON {
+                    issues.push(format!(
+                        "text.bm25_k1 is set to {} but Tantivy 0.22 hardcodes k1=1.2; this value is ignored",
+                        k1
+                    ));
+                }
+            }
+            if let Some(b) = t.bm25_b {
+                if (b - 0.75).abs() > f32::EPSILON {
+                    issues.push(format!(
+                        "text.bm25_b is set to {} but Tantivy 0.22 hardcodes b=0.75; this value is ignored",
+                        b
+                    ));
+                }
+            }
         }
         if let Some(reranking) = &schema.reranking {
             if let Err(e) = reranking.validate() {

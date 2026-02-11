@@ -99,6 +99,10 @@ boosting:
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager
@@ -179,6 +183,10 @@ boosting:
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager
@@ -272,6 +280,10 @@ boosting:
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager
@@ -358,6 +370,10 @@ boosting:
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager
@@ -414,6 +430,10 @@ backends:
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager

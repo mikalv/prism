@@ -32,7 +32,7 @@ impl ScoreFunctionReranker {
     }
 
     /// Evaluate the expression for a single document
-    fn evaluate(
+    pub fn evaluate(
         &self,
         score: f32,
         fields: &std::collections::HashMap<String, serde_json::Value>,

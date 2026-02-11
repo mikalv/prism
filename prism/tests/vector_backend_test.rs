@@ -127,6 +127,10 @@ async fn test_index_and_search() {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
     let results = SearchBackend::search(&backend, "test2", query)
         .await

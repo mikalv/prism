@@ -23,6 +23,15 @@ pub struct Query {
     pub vector_weight: Option<f32>,
     /// Optional highlight configuration for search results
     pub highlight: Option<HighlightConfig>,
+    /// Override RRF k parameter for this query
+    pub rrf_k: Option<usize>,
+    /// Minimum score threshold — results below this are filtered out
+    pub min_score: Option<f32>,
+    /// Ad-hoc score expression (e.g., "_score * 2")
+    pub score_function: Option<String>,
+    /// Skip ranking adjustments (used when hybrid coordinator calls text backend
+    /// to avoid double-application of boosting)
+    pub skip_ranking: bool,
 }
 
 /// Configuration for search result highlighting

@@ -149,6 +149,10 @@ impl McpTool for SearchTool {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         let results = ctx.manager.search(collection, query, None).await?;

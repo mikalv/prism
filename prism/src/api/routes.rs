@@ -2,6 +2,7 @@ use crate::api::server::AppState;
 use crate::backends::{Document, HighlightConfig, Query, SearchResult, SearchResults};
 use crate::collection::CollectionManager;
 use crate::ranking::reranker::{RerankOptions, RerankRequest};
+use crate::ranking::score_function::ScoreFunctionReranker;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -37,6 +38,15 @@ pub struct SearchRequest {
     /// Optional reranking override for this request
     #[serde(default)]
     pub rerank: Option<RerankRequest>,
+    /// Override RRF k parameter for hybrid search
+    #[serde(default)]
+    pub rrf_k: Option<usize>,
+    /// Minimum score threshold — results below this are filtered out
+    #[serde(default)]
+    pub min_score: Option<f32>,
+    /// Ad-hoc score expression (e.g., "_score * 2")
+    #[serde(default)]
+    pub score_function: Option<String>,
 }
 
 fn default_limit() -> usize {
@@ -125,6 +135,10 @@ pub async fn search(
         text_weight: request.text_weight,
         vector_weight: request.vector_weight,
         highlight: request.highlight,
+        rrf_k: request.rrf_k,
+        min_score: None, // applied post-search
+        score_function: None, // applied post-search
+        skip_ranking: false,
     };
 
     let rerank_override = request.rerank.as_ref().map(|r| RerankOptions {
@@ -138,7 +152,27 @@ pub async fn search(
     let duration = start.elapsed().as_secs_f64();
 
     match result {
-        Ok(results) => {
+        Ok(mut results) => {
+            // Apply ad-hoc score function
+            if let Some(ref expr) = request.score_function {
+                if let Ok(reranker) = ScoreFunctionReranker::new(expr) {
+                    for result in results.results.iter_mut() {
+                        result.score = reranker.evaluate(result.score, &result.fields);
+                    }
+                    results.results.sort_by(|a, b| {
+                        b.score
+                            .partial_cmp(&a.score)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                }
+            }
+
+            // Apply minimum score filter
+            if let Some(min) = request.min_score {
+                results.results.retain(|r| r.score >= min);
+                results.total = results.results.len();
+            }
+
             metrics::histogram!("prism_search_duration_seconds",
                 "collection" => collection.clone(),
                 "search_type" => "text",
@@ -189,6 +223,10 @@ pub async fn simple_search(
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let results = manager
@@ -619,6 +657,10 @@ pub async fn aggregate(
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     // Use search_with_aggs to run aggregations in the text backend
@@ -978,6 +1020,10 @@ pub async fn multi_search(
         text_weight: None,
         vector_weight: None,
         highlight: request.highlight,
+        rrf_k: request.rrf_k,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let result = manager
@@ -1046,6 +1092,10 @@ pub async fn multi_index_search(
         text_weight: request.text_weight,
         vector_weight: request.vector_weight,
         highlight: request.highlight,
+        rrf_k: request.rrf_k,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
 
     let result = manager.multi_search(&collection_list, query, None).await;

@@ -95,6 +95,10 @@ async fn test_hybrid_merge_behaviour() {
         text_weight: None,
         vector_weight: None,
         highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: false,
     };
     let res = hybrid.search("col", q).await.unwrap();
 

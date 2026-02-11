@@ -457,6 +457,10 @@ fn cluster_routes(
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         match fed.search(&collection, rpc_query).await {

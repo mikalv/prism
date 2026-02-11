@@ -87,8 +87,22 @@ impl CollectionManager {
                     schema.collection
                 )));
             }
-            let hybrid =
-                HybridSearchCoordinator::new(text_backend.clone(), vector_backend.clone(), vw);
+            let distance_metric = schema
+                .backends
+                .vector
+                .as_ref()
+                .map(|v| v.distance.clone());
+            let hybrid = if let Some(config) = &schema.hybrid {
+                HybridSearchCoordinator::with_config(
+                    text_backend.clone(),
+                    vector_backend.clone(),
+                    vw,
+                    config,
+                    distance_metric,
+                )
+            } else {
+                HybridSearchCoordinator::new(text_backend.clone(), vector_backend.clone(), vw)
+            };
             Ok(Some(Arc::new(hybrid) as Arc<dyn SearchBackend>))
         } else if use_text {
             Ok(Some(text_backend.clone() as Arc<dyn SearchBackend>))
@@ -663,6 +677,10 @@ impl CollectionManager {
                 text_weight: None,
                 vector_weight: None,
                 highlight: None,
+                rrf_k: None,
+                min_score: None,
+                score_function: None,
+                skip_ranking: false,
             };
             return self.text_backend.search(collection, query).await;
         }
@@ -679,6 +697,10 @@ impl CollectionManager {
                 text_weight: None,
                 vector_weight: None,
                 highlight: None,
+                rrf_k: None,
+                min_score: None,
+                score_function: None,
+                skip_ranking: false,
             };
             return self.vector_backend.search(collection, query).await;
         }
@@ -695,6 +717,10 @@ impl CollectionManager {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: true,
         };
 
         let vec_query_obj = Query {
@@ -706,6 +732,10 @@ impl CollectionManager {
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         // Run searches in parallel
@@ -1094,6 +1124,10 @@ backends:
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         let results = manager.search("articles", query, None).await?;
@@ -1207,6 +1241,10 @@ backends:
             text_weight: None,
             vector_weight: None,
             highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
         };
 
         let results = manager

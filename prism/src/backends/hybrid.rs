@@ -1,6 +1,7 @@
 use crate::backends::r#trait::{
     BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults,
 };
+use crate::schema::types::{HybridConfig, ScoreNormalization, VectorDistance};
 use crate::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -13,6 +14,16 @@ pub struct HybridSearchCoordinator {
     pub vector_backend: Arc<dyn SearchBackend>,
     /// Weight for vector scores in [0.0, 1.0]
     pub vector_weight: f32,
+    /// Default merge strategy: "rrf" or "weighted"
+    pub default_strategy: String,
+    /// RRF k parameter (default: 60)
+    pub rrf_k: usize,
+    /// Default text weight for weighted merge
+    pub text_weight: f32,
+    /// Score normalization strategy for weighted merge
+    pub normalization: ScoreNormalization,
+    /// Vector distance metric (for metric-aware normalization)
+    pub distance_metric: Option<VectorDistance>,
 }
 
 impl HybridSearchCoordinator {
@@ -25,6 +36,31 @@ impl HybridSearchCoordinator {
             text_backend,
             vector_backend,
             vector_weight,
+            default_strategy: "rrf".to_string(),
+            rrf_k: 60,
+            text_weight: 1.0 - vector_weight,
+            normalization: ScoreNormalization::default(),
+            distance_metric: None,
+        }
+    }
+
+    /// Create a new coordinator with schema-level HybridConfig defaults.
+    pub fn with_config(
+        text_backend: Arc<dyn SearchBackend>,
+        vector_backend: Arc<dyn SearchBackend>,
+        vector_weight: f32,
+        config: &HybridConfig,
+        distance_metric: Option<VectorDistance>,
+    ) -> Self {
+        Self {
+            text_backend,
+            vector_backend,
+            vector_weight,
+            default_strategy: config.default_strategy.clone(),
+            rrf_k: config.rrf_k,
+            text_weight: config.text_weight,
+            normalization: config.normalization.clone(),
+            distance_metric,
         }
     }
 
@@ -36,16 +72,19 @@ impl HybridSearchCoordinator {
         limit: usize,
     ) -> SearchResults {
         // Default to weighted merge using the instance's vector_weight
-        Self::merge_weighted_public(
+        Self::merge_weighted_with_normalization(
             text,
             vector,
             1.0 - self.vector_weight,
             self.vector_weight,
             limit,
+            &self.normalization,
+            self.distance_metric.as_ref(),
         )
     }
 
     /// Public weighted merge helper for testing and reuse.
+    /// Uses MaxNorm normalization by default.
     pub fn merge_weighted_public(
         text: SearchResults,
         vector: SearchResults,
@@ -53,11 +92,32 @@ impl HybridSearchCoordinator {
         vector_weight: f32,
         limit: usize,
     ) -> SearchResults {
+        Self::merge_weighted_with_normalization(
+            text,
+            vector,
+            text_weight,
+            vector_weight,
+            limit,
+            &ScoreNormalization::MaxNorm,
+            None,
+        )
+    }
+
+    /// Weighted merge with configurable normalization strategy.
+    pub fn merge_weighted_with_normalization(
+        text: SearchResults,
+        vector: SearchResults,
+        text_weight: f32,
+        vector_weight: f32,
+        limit: usize,
+        normalization: &ScoreNormalization,
+        distance_metric: Option<&VectorDistance>,
+    ) -> SearchResults {
         use std::collections::HashMap;
 
         let mut combined: HashMap<String, SearchResult> = HashMap::new();
 
-        // Normalize scores to [0,1] by dividing by max if available
+        // Compute max scores for normalization
         let text_max = text
             .results
             .iter()
@@ -70,10 +130,16 @@ impl HybridSearchCoordinator {
             .fold(f32::NAN, f32::max);
 
         for r in text.results {
-            let norm = if text_max.is_nan() || text_max == 0.0 {
-                r.score
-            } else {
-                r.score / text_max
+            let norm = match normalization {
+                ScoreNormalization::None => r.score,
+                ScoreNormalization::MaxNorm | ScoreNormalization::MetricAware => {
+                    // BM25 scores are unbounded positive — always divide by max
+                    if text_max.is_nan() || text_max == 0.0 {
+                        r.score
+                    } else {
+                        r.score / text_max
+                    }
+                }
             };
             combined.insert(
                 r.id.clone(),
@@ -87,10 +153,41 @@ impl HybridSearchCoordinator {
         }
 
         for r in vector.results {
-            let norm = if vec_max.is_nan() || vec_max == 0.0 {
-                r.score
-            } else {
-                r.score / vec_max
+            let norm = match normalization {
+                ScoreNormalization::None => r.score,
+                ScoreNormalization::MaxNorm => {
+                    if vec_max.is_nan() || vec_max == 0.0 {
+                        r.score
+                    } else {
+                        r.score / vec_max
+                    }
+                }
+                ScoreNormalization::MetricAware => {
+                    // Metric-aware: behavior depends on distance metric
+                    match distance_metric {
+                        Some(VectorDistance::Cosine) => {
+                            // Cosine similarity scores are in [0, 1], use as-is
+                            r.score
+                        }
+                        Some(VectorDistance::Euclidean) => {
+                            // 1 - L2_dist can go negative; clamp then divide by max
+                            let clamped = r.score.max(0.0);
+                            if vec_max.is_nan() || vec_max <= 0.0 {
+                                clamped
+                            } else {
+                                clamped / vec_max
+                            }
+                        }
+                        Some(VectorDistance::Dot) | None => {
+                            // Dot product is unbounded; divide by max
+                            if vec_max.is_nan() || vec_max == 0.0 {
+                                r.score
+                            } else {
+                                r.score / vec_max
+                            }
+                        }
+                    }
+                }
             };
             combined
                 .entry(r.id.clone())
@@ -204,6 +301,10 @@ impl SearchBackend for HybridSearchCoordinator {
                 text_weight: None,
                 vector_weight: None,
                 highlight: None,
+                rrf_k: None,
+                min_score: None,
+                score_function: None,
+                skip_ranking: true, // Skip ranking in sub-queries; apply after merge
             };
             let text_q = Query {
                 query_string: "".to_string(),
@@ -214,6 +315,10 @@ impl SearchBackend for HybridSearchCoordinator {
                 text_weight: None,
                 vector_weight: None,
                 highlight: query.highlight.clone(),
+                rrf_k: None,
+                min_score: None,
+                score_function: None,
+                skip_ranking: true,
             };
             let t = self.text_backend.search(collection, text_q);
             let v = self.vector_backend.search(collection, vec_q);
@@ -229,6 +334,10 @@ impl SearchBackend for HybridSearchCoordinator {
                 text_weight: query.text_weight,
                 vector_weight: query.vector_weight,
                 highlight: query.highlight.clone(),
+                rrf_k: query.rrf_k,
+                min_score: query.min_score,
+                score_function: query.score_function.clone(),
+                skip_ranking: query.skip_ranking,
             };
             let t = self.text_backend.search(collection, text_q).await?;
             return Ok(t);
@@ -237,16 +346,29 @@ impl SearchBackend for HybridSearchCoordinator {
         let tres = tres?;
         let vres = vres?;
 
-        // Decide merge strategy based on query hints
-        let merged = match query.merge_strategy.as_deref() {
-            Some("weighted") => {
-                let text_w = query.text_weight.unwrap_or(1.0 - self.vector_weight);
+        // Decide merge strategy: per-query override > schema default
+        let strategy = query
+            .merge_strategy
+            .as_deref()
+            .unwrap_or(&self.default_strategy);
+
+        let merged = match strategy {
+            "weighted" => {
+                let text_w = query.text_weight.unwrap_or(self.text_weight);
                 let vector_w = query.vector_weight.unwrap_or(self.vector_weight);
-                Self::merge_weighted_public(tres, vres, text_w, vector_w, query.limit)
+                Self::merge_weighted_with_normalization(
+                    tres,
+                    vres,
+                    text_w,
+                    vector_w,
+                    query.limit,
+                    &self.normalization,
+                    self.distance_metric.as_ref(),
+                )
             }
             _ => {
-                // Default to RRF with k=60
-                let k = 60usize;
+                // RRF: per-query rrf_k > schema default
+                let k = query.rrf_k.unwrap_or(self.rrf_k);
                 Self::merge_rrf_public(tres, vres, k, query.limit)
             }
         };
