@@ -2620,6 +2620,8 @@ dependencies = [
  "prism-cluster",
  "prism-es-compat",
  "prism-ui",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3989,6 +3991,7 @@ dependencies = [
  "futures-sink",
  "pin-project",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

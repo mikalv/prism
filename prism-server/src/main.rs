@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use std::path::Path;
+use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug, Clone)]
@@ -267,13 +268,18 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Start cluster RPC server if enabled
+    // Build extension router with optional features
+    #[allow(unused_mut)]
+    let mut extension_router: axum::Router<()> = axum::Router::new();
+
+    // Start cluster RPC server and federated search if enabled
     #[cfg(feature = "cluster")]
     if config.cluster.enabled {
         let cluster_config = prism_cluster::ClusterConfig {
             enabled: config.cluster.enabled,
             node_id: config.cluster.node_id.clone(),
             bind_addr: config.cluster.bind_addr.clone(),
+            advertise_addr: config.cluster.advertise_addr.clone(),
             seed_nodes: config.cluster.seed_nodes.clone(),
             connect_timeout_ms: config.cluster.connect_timeout_ms,
             request_timeout_ms: config.cluster.request_timeout_ms,
@@ -287,6 +293,78 @@ async fn main() -> Result<()> {
             ..Default::default()
         };
 
+        // 1. Create shared cluster state
+        let cluster_state = Arc::new(prism_cluster::ClusterState::new());
+
+        // 2. Register self node
+        let self_node_id = cluster_config.node_id.clone();
+        let self_addr = cluster_config.advertise_address().to_string();
+        cluster_state.register_node(prism_cluster::NodeInfo {
+            node_id: self_node_id.clone(),
+            address: self_addr.clone(),
+            topology: prism_cluster::NodeTopology::default(),
+            healthy: true,
+            shard_count: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            index_size_bytes: 0,
+        });
+
+        // 3. Register seed nodes (use address as node_id until we discover their real ID)
+        let mut all_node_ids = vec![self_node_id.clone()];
+        for seed in &cluster_config.seed_nodes {
+            let seed_id = seed.clone();
+            cluster_state.register_node(prism_cluster::NodeInfo {
+                node_id: seed_id.clone(),
+                address: seed.clone(),
+                topology: prism_cluster::NodeTopology::default(),
+                healthy: true,
+                shard_count: 0,
+                disk_used_bytes: 0,
+                disk_total_bytes: 0,
+                index_size_bytes: 0,
+            });
+            all_node_ids.push(seed_id);
+        }
+
+        // 4. Auto-assign 1 shard per node per collection
+        let collections = server.manager().list_collections();
+        for collection in &collections {
+            for (i, node_id) in all_node_ids.iter().enumerate() {
+                let mut assignment =
+                    prism_cluster::ShardAssignment::new(collection, i as u32, node_id);
+                assignment.state = prism_cluster::ShardState::Active;
+                cluster_state.assign_shard(assignment);
+            }
+        }
+
+        tracing::info!(
+            "Cluster initialized: {} nodes, {} collections, {} total shards",
+            all_node_ids.len(),
+            collections.len(),
+            all_node_ids.len() * collections.len()
+        );
+
+        // 5. Create ClusterClient
+        let cluster_client = match prism_cluster::ClusterClient::new(cluster_config.clone()).await {
+            Ok(c) => Arc::new(c),
+            Err(e) => {
+                tracing::error!("Failed to create cluster client: {}", e);
+                return Err(anyhow::anyhow!("Cluster client init failed: {}", e));
+            }
+        };
+
+        // 6. Create FederatedSearch
+        let federation = Arc::new(prism_cluster::FederatedSearch::new(
+            cluster_client,
+            Arc::clone(&cluster_state),
+            prism_cluster::FederationConfig::default(),
+        ));
+
+        // 7. Build cluster routes
+        extension_router = extension_router.merge(cluster_routes(federation));
+
+        // 8. Start ClusterServer with shared state
         let cluster_manager = server.manager();
         tracing::info!(
             "Starting cluster RPC server on {} (node_id: {})",
@@ -295,16 +373,16 @@ async fn main() -> Result<()> {
         );
 
         tokio::spawn(async move {
-            let cluster_server = prism_cluster::ClusterServer::new(cluster_config, cluster_manager);
+            let cluster_server = prism_cluster::ClusterServer::with_state(
+                cluster_config,
+                cluster_manager,
+                cluster_state,
+            );
             if let Err(e) = cluster_server.serve().await {
                 tracing::error!("Cluster server error: {}", e);
             }
         });
     }
-
-    // Build extension router with optional features
-    #[allow(unused_mut)]
-    let mut extension_router: axum::Router<()> = axum::Router::new();
 
     // Add UI routes if enabled
     #[cfg(feature = "ui")]
@@ -328,17 +406,146 @@ async fn main() -> Result<()> {
     }
 
     // Serve with extensions if any are enabled
-    #[cfg(any(feature = "ui", feature = "es-compat"))]
+    #[cfg(any(feature = "ui", feature = "es-compat", feature = "cluster"))]
     {
         server
             .serve_with_extension(&addr, tls, extension_router)
             .await?;
     }
 
-    #[cfg(not(any(feature = "ui", feature = "es-compat")))]
+    #[cfg(not(any(feature = "ui", feature = "es-compat", feature = "cluster")))]
     {
         server.serve(&addr, tls).await?;
     }
 
     Ok(())
+}
+
+/// Build cluster federation routes
+#[cfg(feature = "cluster")]
+fn cluster_routes(
+    federation: Arc<prism_cluster::FederatedSearch>,
+) -> axum::Router<()> {
+    use axum::extract::{Path, State};
+    use axum::routing::{get, post};
+    use axum::Json;
+
+    async fn federated_search(
+        Path(collection): Path<String>,
+        State(fed): State<Arc<prism_cluster::FederatedSearch>>,
+        Json(body): Json<serde_json::Value>,
+    ) -> axum::response::Response {
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+
+        let query_string = body
+            .get("query")
+            .and_then(|v| v.as_str())
+            .unwrap_or("*")
+            .to_string();
+        let limit = body
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as usize;
+
+        let rpc_query = prism_cluster::RpcQuery {
+            query_string,
+            fields: vec![],
+            limit,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+        };
+
+        match fed.search(&collection, rpc_query).await {
+            Ok(results) => {
+                let response = serde_json::json!({
+                    "results": results.results,
+                    "total": results.total,
+                    "latency_ms": results.latency_ms,
+                    "is_partial": results.is_partial,
+                    "shard_status": {
+                        "total": results.shard_status.total,
+                        "successful": results.shard_status.successful,
+                        "failed": results.shard_status.failed,
+                    }
+                });
+                (StatusCode::OK, Json(response)).into_response()
+            }
+            Err(e) => {
+                let response = serde_json::json!({
+                    "error": e.to_string()
+                });
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            }
+        }
+    }
+
+    async fn federated_index(
+        Path(collection): Path<String>,
+        State(fed): State<Arc<prism_cluster::FederatedSearch>>,
+        Json(body): Json<serde_json::Value>,
+    ) -> axum::response::Response {
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+
+        let docs: Vec<prism_cluster::RpcDocument> = match body.get("documents") {
+            Some(docs_val) => match serde_json::from_value(docs_val.clone()) {
+                Ok(d) => d,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": e.to_string()})),
+                    )
+                        .into_response()
+                }
+            },
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "missing 'documents' field"})),
+                )
+                    .into_response()
+            }
+        };
+
+        match fed.index(&collection, docs).await {
+            Ok(status) => {
+                let response = serde_json::json!({
+                    "total_docs": status.total_docs,
+                    "successful_docs": status.successful_docs,
+                    "failed_docs": status.failed_docs,
+                    "latency_ms": status.latency_ms,
+                });
+                (StatusCode::CREATED, Json(response)).into_response()
+            }
+            Err(e) => {
+                let response = serde_json::json!({"error": e.to_string()});
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            }
+        }
+    }
+
+    async fn cluster_health(
+        State(_fed): State<Arc<prism_cluster::FederatedSearch>>,
+    ) -> Json<serde_json::Value> {
+        Json(serde_json::json!({
+            "status": "ok",
+            "federated": true,
+        }))
+    }
+
+    axum::Router::new()
+        .route(
+            "/cluster/collections/:collection/search",
+            post(federated_search),
+        )
+        .route(
+            "/cluster/collections/:collection/documents",
+            post(federated_index),
+        )
+        .route("/cluster/health", get(cluster_health))
+        .with_state(federation)
 }

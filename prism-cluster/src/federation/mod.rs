@@ -339,10 +339,18 @@ impl FederatedSearch {
         for (shard_id, node_addr, result) in results {
             match result {
                 Ok(search_results) => {
+                    debug!(
+                        "Shard {} ({}) returned {} results (total={})",
+                        shard_id,
+                        node_addr,
+                        search_results.results.len(),
+                        search_results.total
+                    );
                     shard_status.record_success();
                     shard_results.push(search_results);
                 }
                 Err(e) => {
+                    warn!("Shard {} ({}) failed: {}", shard_id, node_addr, e);
                     let is_timeout = matches!(e, ClusterError::Timeout(_));
                     shard_status.record_failure(ShardFailure {
                         shard_id,

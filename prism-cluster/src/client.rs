@@ -1,6 +1,10 @@
-//! Cluster RPC client with connection pooling
+//! Cluster RPC client with QUIC connection pooling
 //!
-//! Provides a client for connecting to remote Prism nodes.
+//! Pools QUIC connections to remote nodes. Each RPC call opens a fresh
+//! bidirectional stream on the pooled connection, creates a one-shot
+//! tarpc client, executes the call, and tears down the stream.
+//! This matches QUIC's design: connections are expensive (TLS handshake),
+//! streams are cheap (single frame to open).
 
 use crate::config::ClusterConfig;
 use crate::error::{ClusterError, Result};
@@ -17,16 +21,16 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tarpc::client::Config as TarpcConfig;
 use tarpc::context;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
-/// Connection pool entry
+/// Pooled QUIC connection (long-lived, multiplexed)
 struct PooledConnection {
-    client: PrismClusterClient,
+    connection: quinn::Connection,
     #[allow(dead_code)]
     created_at: std::time::Instant,
 }
 
-/// Cluster RPC client with connection pooling
+/// Cluster RPC client with QUIC connection pooling
 pub struct ClusterClient {
     config: ClusterConfig,
     endpoint: quinn::Endpoint,
@@ -45,18 +49,24 @@ impl ClusterClient {
         })
     }
 
-    /// Get or create a connection to the specified node
-    async fn get_client(&self, addr: SocketAddr) -> Result<PrismClusterClient> {
-        // Check for existing connection
+    /// Get a live pooled QUIC connection, or create a new one
+    async fn get_connection(
+        &self,
+        addr: SocketAddr,
+        server_name: &str,
+    ) -> Result<quinn::Connection> {
+        // Check pool for a live connection
         {
             let connections = self.connections.read();
-            if let Some(conn) = connections.get(&addr) {
-                return Ok(conn.client.clone());
+            if let Some(pooled) = connections.get(&addr) {
+                if pooled.connection.close_reason().is_none() {
+                    return Ok(pooled.connection.clone());
+                }
             }
         }
 
-        // Create new connection
-        let client = self.create_connection(addr).await?;
+        // Create new QUIC connection (TLS handshake)
+        let connection = self.create_quic_connection(addr, server_name).await?;
 
         // Store in pool
         {
@@ -64,28 +74,33 @@ impl ClusterClient {
             connections.insert(
                 addr,
                 PooledConnection {
-                    client: client.clone(),
+                    connection: connection.clone(),
                     created_at: std::time::Instant::now(),
                 },
             );
             record_connection_pool_size(connections.len());
         }
 
-        Ok(client)
+        Ok(connection)
     }
 
-    /// Create a new connection to the specified node
-    async fn create_connection(&self, addr: SocketAddr) -> Result<PrismClusterClient> {
+    /// Establish a new QUIC connection (TLS handshake)
+    async fn create_quic_connection(
+        &self,
+        addr: SocketAddr,
+        server_name: &str,
+    ) -> Result<quinn::Connection> {
         let addr_str = addr.to_string();
-        debug!("Connecting to cluster node at {}", addr);
+        debug!(
+            "Connecting to cluster node at {} (SNI: {})",
+            addr, server_name
+        );
 
-        // Connect - endpoint.connect returns Result<Connecting, ConnectError>
-        let connecting = self.endpoint.connect(addr, "prism-cluster").map_err(|e| {
+        let connecting = self.endpoint.connect(addr, server_name).map_err(|e| {
             record_connection_failed(&addr_str, "connect_error");
             ClusterError::Connection(format!("Failed to connect to {}: {}", addr, e))
         })?;
 
-        // Wait for connection with timeout
         let connection = tokio::time::timeout(self.config.connect_timeout(), connecting)
             .await
             .map_err(|_| {
@@ -100,26 +115,64 @@ impl ClusterClient {
                 ))
             })?;
 
-        // Open bidirectional stream
+        info!("QUIC connection established to {}", addr);
+        record_connection_established(&addr_str);
+        Ok(connection)
+    }
+
+    /// Open a fresh bidirectional stream and create a one-shot tarpc client.
+    /// Retries once with a new connection if the pooled one is stale.
+    async fn new_rpc_client(
+        &self,
+        addr: SocketAddr,
+        server_name: &str,
+    ) -> Result<PrismClusterClient> {
+        let connection = self.get_connection(addr, server_name).await?;
+
+        match connection.open_bi().await {
+            Ok((send, recv)) => {
+                return Self::make_tarpc_client(send, recv);
+            }
+            Err(e) => {
+                warn!(
+                    "Stream open failed on pooled connection to {}: {}, reconnecting",
+                    addr, e
+                );
+                self.evict_connection(addr);
+            }
+        }
+
+        // Retry with a fresh connection
+        let connection = self.get_connection(addr, server_name).await?;
         let (send, recv) = connection.open_bi().await.map_err(|e| {
+            self.evict_connection(addr);
             ClusterError::Transport(format!("Failed to open stream to {}: {}", addr, e))
         })?;
 
-        // Create tarpc transport
+        Self::make_tarpc_client(send, recv)
+    }
+
+    /// Build a tarpc client from raw QUIC send/recv streams
+    fn make_tarpc_client(
+        send: quinn::SendStream,
+        recv: quinn::RecvStream,
+    ) -> Result<PrismClusterClient> {
         let transport = tarpc::serde_transport::new(
             tokio_util::codec::Framed::new(
                 QuicBiStream { send, recv },
                 tarpc::tokio_util::codec::LengthDelimitedCodec::new(),
             ),
-            tarpc::tokio_serde::formats::Bincode::default(),
+            tarpc::tokio_serde::formats::Json::default(),
         );
 
-        // Create tarpc client
-        let client = PrismClusterClient::new(TarpcConfig::default(), transport).spawn();
+        Ok(PrismClusterClient::new(TarpcConfig::default(), transport).spawn())
+    }
 
-        info!("Connected to cluster node at {}", addr);
-        record_connection_established(&addr_str);
-        Ok(client)
+    /// Evict a dead connection from the pool
+    fn evict_connection(&self, addr: SocketAddr) {
+        let mut connections = self.connections.write();
+        connections.remove(&addr);
+        record_connection_pool_size(connections.len());
     }
 
     /// Create a context with the configured request timeout
@@ -129,10 +182,26 @@ impl ClusterClient {
         ctx
     }
 
-    /// Parse address string to SocketAddr
-    fn parse_addr(addr: &str) -> Result<SocketAddr> {
-        addr.parse()
-            .map_err(|e| ClusterError::Config(format!("Invalid address '{}': {}", addr, e)))
+    /// Resolve address string to SocketAddr and extract hostname for TLS SNI
+    async fn resolve_addr(addr: &str) -> Result<(SocketAddr, String)> {
+        // Extract hostname for SNI (everything before the last ':port')
+        let server_name = addr
+            .rsplit_once(':')
+            .map(|(host, _)| host.to_string())
+            .unwrap_or_else(|| addr.to_string());
+
+        // Try direct parse first (e.g. "127.0.0.1:9080")
+        if let Ok(sa) = addr.parse::<SocketAddr>() {
+            return Ok((sa, server_name));
+        }
+        // DNS resolution for hostname:port (e.g. "prism-node1:9080")
+        let mut addrs = tokio::net::lookup_host(addr).await.map_err(|e| {
+            ClusterError::Config(format!("DNS resolution failed for '{}': {}", addr, e))
+        })?;
+        let socket_addr = addrs.next().ok_or_else(|| {
+            ClusterError::Config(format!("No addresses resolved for '{}'", addr))
+        })?;
+        Ok((socket_addr, server_name))
     }
 
     // ========================================
@@ -142,8 +211,8 @@ impl ClusterClient {
     /// Index documents on a remote node
     pub async fn index(&self, addr: &str, collection: &str, docs: Vec<RpcDocument>) -> Result<()> {
         let timer = RpcTimer::new("index", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .index(self.context(), collection.to_string(), docs)
             .await
@@ -168,8 +237,8 @@ impl ClusterClient {
         query: RpcQuery,
     ) -> Result<RpcSearchResults> {
         let timer = RpcTimer::new("search", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .search(self.context(), collection.to_string(), query)
             .await
@@ -189,8 +258,8 @@ impl ClusterClient {
     /// Get document from a remote node
     pub async fn get(&self, addr: &str, collection: &str, id: &str) -> Result<Option<RpcDocument>> {
         let timer = RpcTimer::new("get", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .get(self.context(), collection.to_string(), id.to_string())
             .await
@@ -210,8 +279,8 @@ impl ClusterClient {
     /// Delete documents from a remote node
     pub async fn delete(&self, addr: &str, collection: &str, ids: Vec<String>) -> Result<()> {
         let timer = RpcTimer::new("delete", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .delete(self.context(), collection.to_string(), ids)
             .await
@@ -231,8 +300,8 @@ impl ClusterClient {
     /// Get stats from a remote node
     pub async fn stats(&self, addr: &str, collection: &str) -> Result<RpcBackendStats> {
         let timer = RpcTimer::new("stats", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .stats(self.context(), collection.to_string())
             .await
@@ -252,8 +321,8 @@ impl ClusterClient {
     /// List collections on a remote node
     pub async fn list_collections(&self, addr: &str) -> Result<Vec<String>> {
         let timer = RpcTimer::new("list_collections", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         let result = client
             .list_collections(self.context())
             .await
@@ -269,8 +338,8 @@ impl ClusterClient {
         request: DeleteByQueryRequest,
     ) -> Result<DeleteByQueryResponse> {
         let timer = RpcTimer::new("delete_by_query", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .delete_by_query(self.context(), request)
             .await
@@ -294,8 +363,8 @@ impl ClusterClient {
         request: ImportByQueryRequest,
     ) -> Result<ImportByQueryResponse> {
         let timer = RpcTimer::new("import_by_query", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .import_by_query(self.context(), request)
             .await
@@ -315,8 +384,8 @@ impl ClusterClient {
     /// Get node info from a remote node
     pub async fn node_info(&self, addr: &str) -> Result<NodeInfo> {
         let timer = RpcTimer::new("node_info", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         let result = client
             .node_info(self.context())
             .await
@@ -328,8 +397,8 @@ impl ClusterClient {
     /// Ping a remote node
     pub async fn ping(&self, addr: &str) -> Result<String> {
         let timer = RpcTimer::new("ping", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         let result = client
             .ping(self.context())
             .await
@@ -341,8 +410,8 @@ impl ClusterClient {
     /// Apply a schema to a remote node (for schema propagation)
     pub async fn apply_schema(&self, addr: &str, versioned: crate::VersionedSchema) -> Result<()> {
         let timer = RpcTimer::new("apply_schema", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
 
         // Convert to RPC type
         let request = RpcApplySchemaRequest {
@@ -393,8 +462,8 @@ impl ClusterClient {
     /// Get schema version from a remote node
     pub async fn get_schema_version(&self, addr: &str, collection: &str) -> Result<Option<u64>> {
         let timer = RpcTimer::new("get_schema_version", addr);
-        let sock_addr = Self::parse_addr(addr)?;
-        let client = self.get_client(sock_addr).await?;
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
         match client
             .get_schema_version(self.context(), collection.to_string())
             .await
@@ -413,10 +482,8 @@ impl ClusterClient {
 
     /// Remove a connection from the pool
     pub fn remove_connection(&self, addr: &str) {
-        if let Ok(addr) = Self::parse_addr(addr) {
-            let mut connections = self.connections.write();
-            connections.remove(&addr);
-            record_connection_pool_size(connections.len());
+        if let Ok(addr) = addr.parse::<SocketAddr>() {
+            self.evict_connection(addr);
         }
     }
 

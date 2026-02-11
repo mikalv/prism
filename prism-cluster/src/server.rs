@@ -144,7 +144,7 @@ impl ClusterServer {
                 QuicBiStream { send, recv },
                 tarpc::tokio_util::codec::LengthDelimitedCodec::new(),
             ),
-            tarpc::tokio_serde::formats::Bincode::default(),
+            tarpc::tokio_serde::formats::Json::default(),
         );
 
         let handler = ClusterHandler {
@@ -178,13 +178,20 @@ impl PrismCluster for ClusterHandler {
     ) -> Result<(), ClusterError> {
         let timer = RpcHandlerTimer::new("index");
         let server = self.server.read().await;
+        let doc_count = docs.len();
+        info!("RPC index: collection={}, docs={}", collection, doc_count);
         let docs: Vec<prism::backends::Document> = docs.into_iter().map(Into::into).collect();
         match server.manager.index(&collection, docs).await {
             Ok(()) => {
+                info!("RPC index OK: collection={}, docs={}", collection, doc_count);
                 timer.success();
                 Ok(())
             }
             Err(e) => {
+                warn!(
+                    "RPC index ERROR: collection={}, error={}",
+                    collection, e
+                );
                 let err = ClusterError::from(e);
                 timer.error(err.error_type());
                 Err(err)
@@ -200,13 +207,24 @@ impl PrismCluster for ClusterHandler {
     ) -> Result<RpcSearchResults, ClusterError> {
         let timer = RpcHandlerTimer::new("search");
         let server = self.server.read().await;
+        info!(
+            "RPC search: collection={}, query='{}', limit={}",
+            collection, query.query_string, query.limit
+        );
         let query: prism::backends::Query = query.into();
         match server.manager.search(&collection, query, None).await {
             Ok(results) => {
+                info!(
+                    "RPC search OK: collection={}, results={}, total={}",
+                    collection,
+                    results.results.len(),
+                    results.total
+                );
                 timer.success();
                 Ok(RpcSearchResults::from(results))
             }
             Err(e) => {
+                warn!("RPC search ERROR: collection={}, error={}", collection, e);
                 let err = ClusterError::from(e);
                 timer.error(err.error_type());
                 Err(err)

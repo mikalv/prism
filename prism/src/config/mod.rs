@@ -298,6 +298,11 @@ pub struct ClusterConfig {
     #[serde(default = "default_cluster_bind_addr")]
     pub bind_addr: String,
 
+    /// Address to advertise to other nodes (defaults to bind_addr)
+    /// Set this to a reachable hostname:port when bind_addr is 0.0.0.0
+    #[serde(default)]
+    pub advertise_addr: Option<String>,
+
     /// Seed nodes for cluster discovery
     #[serde(default)]
     pub seed_nodes: Vec<String>,
@@ -337,6 +342,7 @@ impl Default for ClusterConfig {
             enabled: false,
             node_id: default_node_id(),
             bind_addr: default_cluster_bind_addr(),
+            advertise_addr: None,
             seed_nodes: Vec::new(),
             connect_timeout_ms: default_connect_timeout(),
             request_timeout_ms: default_request_timeout(),

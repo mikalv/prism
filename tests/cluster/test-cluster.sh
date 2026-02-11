@@ -8,10 +8,11 @@
 #
 # This script tests:
 #   1. All 3 nodes respond to health checks
-#   2. Index documents on node 1
-#   3. Search on node 1 returns results
-#   4. Each node operates independently (separate collections)
-#   5. Stats are correct per node
+#   2. Index documents on node 1 (local HTTP API)
+#   3. Search on node 1 returns results (local)
+#   4. FEDERATED search from node 3 finds docs indexed on node 1 (cross-node RPC)
+#   5. FEDERATED search from node 2 also finds docs from node 1
+#   6. Stats, schema, and metrics on each node
 set -euo pipefail
 
 NODE1="http://127.0.0.1:3081"
@@ -107,24 +108,23 @@ fi
 sleep 1
 echo ""
 
-# ── Test 5: Search on node 1 (POST) ──────────────────────────────
-echo "[5] Search on node 1"
+# ── Test 5: Local search on node 1 ────────────────────────────────
+echo "[5] Local search on node 1"
 RESULTS=$(curl -s -X POST "$NODE1/collections/docs/search" \
     -H "Content-Type: application/json" \
     -d '{"query": "distributed systems", "limit": 10}' 2>/dev/null || echo "ERROR")
 
 if echo "$RESULTS" | grep -q "doc1"; then
-    pass "Search found 'doc1' (Distributed Systems)"
+    pass "Local search found 'doc1' (Distributed Systems)"
 else
-    fail "Search on node 1 did not find doc1 (got: $RESULTS)"
+    fail "Local search on node 1 did not find doc1 (got: $RESULTS)"
 fi
 
-# Check total count
 TOTAL=$(echo "$RESULTS" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2)
 if [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ] 2>/dev/null; then
-    pass "Search returned $TOTAL results"
+    pass "Local search returned $TOTAL results"
 else
-    fail "Search returned 0 or unknown total (got: $RESULTS)"
+    fail "Local search returned 0 or unknown total (got: $RESULTS)"
 fi
 echo ""
 
@@ -154,64 +154,128 @@ else
 fi
 echo ""
 
-# ── Test 8: Index on node 2 (independent data) ────────────────────
-echo "[8] Index documents on node 2 (independent)"
-RESPONSE2=$(curl -s -w '\n%{http_code}' -X POST "$NODE2/collections/docs/documents" \
+# ── Test 8: Cluster RPC server status ─────────────────────────────
+echo "[8] Cluster RPC server status (via logs)"
+for i in 1 2 3; do
+    LOG=$(docker logs "prism-node$i" 2>&1 | grep -c "cluster RPC server" || echo "0")
+    if [ "$LOG" -gt 0 ]; then
+        pass "Node $i cluster RPC server started"
+    else
+        # Also check for the new log message format
+        LOG2=$(docker logs "prism-node$i" 2>&1 | grep -c "Cluster initialized" || echo "0")
+        if [ "$LOG2" -gt 0 ]; then
+            pass "Node $i cluster initialized"
+        else
+            fail "Node $i cluster not found in logs"
+        fi
+    fi
+done
+echo ""
+
+# ── Test 9: Cluster health endpoint ───────────────────────────────
+echo "[9] Cluster health endpoint"
+for i in 1 2 3; do
+    port=$((3080 + i))
+    CHEALTH=$(curl -s "http://127.0.0.1:$port/cluster/health" 2>/dev/null || echo "ERROR")
+    if echo "$CHEALTH" | grep -q '"federated":true'; then
+        pass "Node $i cluster health reports federated=true"
+    else
+        fail "Node $i cluster health unexpected: $CHEALTH"
+    fi
+done
+echo ""
+
+# ══════════════════════════════════════════════════════════════════
+# CRITICAL E2E TEST: Cross-node federated search
+# Index on node 1, search via federation from node 3
+# This proves actual inter-node QUIC RPC communication works
+# ══════════════════════════════════════════════════════════════════
+
+echo "========================================"
+echo "FEDERATED SEARCH E2E (cross-node RPC)"
+echo "========================================"
+echo ""
+
+# ── Test 10: Federated search from node 3 finds node 1's docs ────
+echo "[10] Federated search from NODE 3 for docs indexed on NODE 1"
+FED_RESULTS=$(curl -s -X POST "$NODE3/cluster/collections/docs/search" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "distributed systems", "limit": 10}' 2>/dev/null || echo "ERROR")
+
+echo "    Response: $FED_RESULTS"
+
+if echo "$FED_RESULTS" | grep -q "doc1"; then
+    pass "FEDERATED: Node 3 found 'doc1' from node 1 via cross-node RPC!"
+else
+    fail "FEDERATED: Node 3 did NOT find doc1 (indexed on node 1). Response: $FED_RESULTS"
+fi
+
+# Check the federated search returned results from node 1's data
+if echo "$FED_RESULTS" | grep -q "Distributed Systems"; then
+    pass "FEDERATED: Node 3 got full document content from node 1"
+else
+    fail "FEDERATED: Content mismatch. Response: $FED_RESULTS"
+fi
+
+# Check is_partial field exists (shows federation layer is active)
+if echo "$FED_RESULTS" | grep -q '"is_partial"'; then
+    pass "FEDERATED: Response includes shard status metadata"
+else
+    fail "FEDERATED: Missing shard status metadata"
+fi
+echo ""
+
+# ── Test 11: Federated search from node 2 also finds node 1's docs
+echo "[11] Federated search from NODE 2 for docs indexed on NODE 1"
+FED_RESULTS2=$(curl -s -X POST "$NODE2/cluster/collections/docs/search" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "HNSW vector search", "limit": 10}' 2>/dev/null || echo "ERROR")
+
+echo "    Response: $FED_RESULTS2"
+
+if echo "$FED_RESULTS2" | grep -q "doc2"; then
+    pass "FEDERATED: Node 2 found 'doc2' from node 1 via cross-node RPC!"
+else
+    fail "FEDERATED: Node 2 did NOT find doc2 (indexed on node 1). Response: $FED_RESULTS2"
+fi
+echo ""
+
+# ── Test 12: Federated index via node 3, then search from node 1 ──
+echo "[12] Federated index via NODE 3, then search from NODE 1"
+FED_INDEX=$(curl -s -w '\n%{http_code}' -X POST "$NODE3/cluster/collections/docs/documents" \
     -H "Content-Type: application/json" \
     -d '{"documents": [
-        {"id": "n2_doc1", "fields": {"title": "Node 2 Document", "body": "This document lives on node 2 only", "category": "test"}}
+        {"id": "fed_doc1", "fields": {"title": "Federated Document", "body": "This doc was indexed via federation from node 3", "category": "test"}}
     ]}' 2>/dev/null || echo "ERROR")
 
-HTTP_CODE2=$(echo "$RESPONSE2" | tail -1)
-if [ "$HTTP_CODE2" = "200" ] || [ "$HTTP_CODE2" = "201" ]; then
-    pass "Indexed 1 document on node 2"
+FED_INDEX_CODE=$(echo "$FED_INDEX" | tail -1)
+FED_INDEX_BODY=$(echo "$FED_INDEX" | sed '$d')
+echo "    Index response (HTTP $FED_INDEX_CODE): $FED_INDEX_BODY"
+
+if [ "$FED_INDEX_CODE" = "200" ] || [ "$FED_INDEX_CODE" = "201" ]; then
+    pass "Federated index via node 3 accepted"
 else
-    fail "Index on node 2 failed (HTTP $HTTP_CODE2)"
+    fail "Federated index via node 3 failed (HTTP $FED_INDEX_CODE)"
 fi
 
 sleep 1
 
-# Verify node 2 has the doc
-DOC_N2=$(curl -s "$NODE2/collections/docs/documents/n2_doc1" 2>/dev/null || echo "ERROR")
-if echo "$DOC_N2" | grep -q "Node 2 Document"; then
-    pass "Node 2 has its own document"
+# Search from node 1's federation endpoint
+FED_SEARCH_BACK=$(curl -s -X POST "$NODE1/cluster/collections/docs/search" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "federated document", "limit": 10}' 2>/dev/null || echo "ERROR")
+
+echo "    Search from node 1: $FED_SEARCH_BACK"
+
+if echo "$FED_SEARCH_BACK" | grep -q "fed_doc1"; then
+    pass "FEDERATED: Node 1 found fed_doc1 (indexed via node 3 federation)"
 else
-    fail "Node 2 missing its own document: $DOC_N2"
+    fail "FEDERATED: Node 1 did NOT find fed_doc1. Response: $FED_SEARCH_BACK"
 fi
 echo ""
 
-# ── Test 9: Index on node 3 ───────────────────────────────────────
-echo "[9] Index documents on node 3 (independent)"
-RESPONSE3=$(curl -s -w '\n%{http_code}' -X POST "$NODE3/collections/docs/documents" \
-    -H "Content-Type: application/json" \
-    -d '{"documents": [
-        {"id": "n3_doc1", "fields": {"title": "Node 3 First", "body": "Content on node three", "category": "test"}},
-        {"id": "n3_doc2", "fields": {"title": "Node 3 Second", "body": "More content on node three", "category": "test"}}
-    ]}' 2>/dev/null || echo "ERROR")
-
-HTTP_CODE3=$(echo "$RESPONSE3" | tail -1)
-if [ "$HTTP_CODE3" = "200" ] || [ "$HTTP_CODE3" = "201" ]; then
-    pass "Indexed 2 documents on node 3"
-else
-    fail "Index on node 3 failed (HTTP $HTTP_CODE3)"
-fi
-
-sleep 1
-
-# Search on node 3
-RESULTS3=$(curl -s -X POST "$NODE3/collections/docs/search" \
-    -H "Content-Type: application/json" \
-    -d '{"query": "node three", "limit": 10}' 2>/dev/null || echo "ERROR")
-
-if echo "$RESULTS3" | grep -q "n3_doc"; then
-    pass "Node 3 search returns its own documents"
-else
-    fail "Node 3 search failed (got: $RESULTS3)"
-fi
-echo ""
-
-# ── Test 10: Collection schema ─────────────────────────────────────
-echo "[10] Collection schema"
+# ── Test 13: Collection schema ────────────────────────────────────
+echo "[13] Collection schema"
 SCHEMA=$(curl -s "$NODE1/collections/docs/schema" 2>/dev/null || echo "ERROR")
 if echo "$SCHEMA" | grep -q "title"; then
     pass "Schema endpoint returns field definitions"
@@ -220,23 +284,11 @@ else
 fi
 echo ""
 
-# ── Test 11: Metrics endpoint ─────────────────────────────────────
-echo "[11] Metrics endpoint"
+# ── Test 14: Metrics endpoint ────────────────────────────────────
+echo "[14] Metrics endpoint"
 for i in 1 2 3; do
     port=$((3080 + i))
     check_status "http://127.0.0.1:$port/metrics" "200" "Node $i metrics"
-done
-echo ""
-
-# ── Test 12: Cluster RPC server running ───────────────────────────
-echo "[12] Cluster RPC server status (via logs)"
-for i in 1 2 3; do
-    LOG=$(docker logs "prism-node$i" 2>&1 | grep -c "Cluster server started" || echo "0")
-    if [ "$LOG" -gt 0 ]; then
-        pass "Node $i cluster RPC server started"
-    else
-        fail "Node $i cluster RPC server not found in logs"
-    fi
 done
 echo ""
 

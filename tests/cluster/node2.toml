@@ -8,7 +8,7 @@ data_dir = "/data"
 schemas_dir = "/schemas"
 
 [observability]
-log_level = "info"
+log_level = "info,prism_cluster=debug"
 log_format = "text"
 metrics_enabled = true
 
@@ -16,6 +16,7 @@ metrics_enabled = true
 enabled = true
 node_id = "node-2"
 bind_addr = "0.0.0.0:9080"
+advertise_addr = "prism-node2:9080"
 seed_nodes = ["prism-node1:9080", "prism-node3:9080"]
 connect_timeout_ms = 5000
 request_timeout_ms = 30000
