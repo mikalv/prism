@@ -26,6 +26,7 @@ async fn test_hybrid_merge_behaviour() {
                     stored: true,
                     indexed: true,
                     tokenizer: None,
+                    tokenizer_options: None,
                 }],
                 bm25_k1: None,
                 bm25_b: None,

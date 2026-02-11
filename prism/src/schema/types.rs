@@ -83,9 +83,12 @@ pub struct TextField {
     #[serde(default)]
     pub indexed: bool,
     /// Tokenizer to use for this field (default: "default")
-    /// Options: "default", "code", "raw"
+    /// Options: "default", "code", "raw", "code-treesitter"
     #[serde(default)]
     pub tokenizer: Option<TokenizerType>,
+    /// Options for the tree-sitter tokenizer (only used when tokenizer = "code-treesitter")
+    #[serde(default)]
+    pub tokenizer_options: Option<TreeSitterOptions>,
 }
 
 /// Tokenizer type for text fields
@@ -99,6 +102,27 @@ pub enum TokenizerType {
     Code,
     /// Raw tokenizer (no tokenization, exact match only)
     Raw,
+    /// Tree-sitter AST-aware code tokenizer (requires "tokenizer-treesitter" feature)
+    #[serde(rename = "code-treesitter")]
+    CodeTreeSitter,
+}
+
+/// Options for the tree-sitter code tokenizer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TreeSitterOptions {
+    /// Explicit language (e.g. "rust", "python"). None = auto-detect.
+    #[serde(default)]
+    pub language: Option<String>,
+    /// Index content of comments (default: true)
+    #[serde(default = "default_true")]
+    pub index_comments: bool,
+    /// Index content of string literals (default: true)
+    #[serde(default = "default_true")]
+    pub index_strings: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

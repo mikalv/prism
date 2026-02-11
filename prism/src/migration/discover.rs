@@ -76,6 +76,7 @@ impl SchemaDiscoverer {
                 stored: field_entry.is_stored(),
                 indexed: field_entry.is_indexed(),
                 tokenizer: None,
+                tokenizer_options: None,
             });
         }
 

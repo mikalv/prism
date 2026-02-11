@@ -5,6 +5,7 @@
 
 use crate::schema::types::{
     FieldType, IndexingConfig, QuotaConfig, SystemFieldsConfig, TextField, TokenizerType,
+    TreeSitterOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -79,6 +80,8 @@ pub struct TemplateTextField {
     pub stored: bool,
     #[serde(default)]
     pub tokenizer: Option<TokenizerType>,
+    #[serde(default)]
+    pub tokenizer_options: Option<TreeSitterOptions>,
 }
 
 fn default_field_type() -> FieldType {
@@ -97,6 +100,7 @@ impl From<TemplateTextField> for TextField {
             indexed: t.indexed,
             stored: t.stored,
             tokenizer: t.tokenizer,
+            tokenizer_options: t.tokenizer_options,
         }
     }
 }
@@ -213,6 +217,7 @@ mod tests {
                     indexed: true,
                     stored: true,
                     tokenizer: None,
+                    tokenizer_options: None,
                 }],
                 vector: None,
             },

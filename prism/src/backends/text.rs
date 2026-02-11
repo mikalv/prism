@@ -142,6 +142,31 @@ impl TextBackend {
                             TokenizerType::Default => "default",
                             TokenizerType::Code => CODE_TOKENIZER_NAME,
                             TokenizerType::Raw => "raw",
+                            TokenizerType::CodeTreeSitter => {
+                                #[cfg(feature = "tokenizer-treesitter")]
+                                {
+                                    let lang = field_def.tokenizer_options.as_ref()
+                                        .and_then(|o| o.language.as_deref());
+                                    match lang {
+                                        Some(l) => {
+                                            // Leak a string to get a &'static str for the match
+                                            // This is fine: called once at init, small set of languages
+                                            let name = format!("code-treesitter-{}", l);
+                                            Box::leak(name.into_boxed_str()) as &str
+                                        }
+                                        None => "code-treesitter",
+                                    }
+                                }
+                                #[cfg(not(feature = "tokenizer-treesitter"))]
+                                {
+                                    tracing::warn!(
+                                        "code-treesitter tokenizer requested for field '{}' but \
+                                        tokenizer-treesitter feature is not enabled; falling back to code tokenizer",
+                                        field_def.name
+                                    );
+                                    CODE_TOKENIZER_NAME
+                                }
+                            }
                         };
                         options = options.set_indexing_options(
                             TextFieldIndexing::default()
@@ -236,6 +261,10 @@ impl TextBackend {
         index
             .tokenizers()
             .register(CODE_TOKENIZER_NAME, code_tokenizer());
+
+        // Register tree-sitter tokenizers if feature is enabled
+        #[cfg(feature = "tokenizer-treesitter")]
+        prism_treesitter::register_tokenizers(index.tokenizers());
 
         // Use the index's schema (may differ if opening existing index)
         let existing_schema = index.schema();

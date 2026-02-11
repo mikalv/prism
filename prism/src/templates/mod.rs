@@ -311,6 +311,7 @@ mod tests {
                         indexed: true,
                         stored: true,
                         tokenizer: None,
+                        tokenizer_options: None,
                     },
                     TemplateTextField {
                         name: "level".to_string(),
@@ -318,6 +319,7 @@ mod tests {
                         indexed: true,
                         stored: true,
                         tokenizer: None,
+                        tokenizer_options: None,
                     },
                 ],
                 vector: None,
@@ -356,6 +358,7 @@ mod tests {
                         indexed: true,
                         stored: false,
                         tokenizer: None,
+                        tokenizer_options: None,
                     }],
                     bm25_k1: None,
                     bm25_b: None,

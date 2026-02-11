@@ -90,6 +90,9 @@ roaring = { workspace = true }
 # Unified storage (tantivy-adapter enabled by default for unified storage path)
 prism-storage = { workspace = true, features = ["tantivy-adapter"] }
 
+# Tree-sitter code tokenizer (optional)
+prism-treesitter = { workspace = true, optional = true }
+
 [features]
 default = ["vector-instant", "provider-ollama"]
 
@@ -115,6 +118,9 @@ storage-encryption = ["prism-storage/encryption"]
 
 # Compression support
 storage-compression = ["prism-storage/compression"]
+
+# Tree-sitter code tokenizer (NOT a default feature)
+tokenizer-treesitter = ["dep:prism-treesitter"]
 
 # Full feature set
 full = ["vector-instant", "all-providers", "cache-redis", "storage-encryption", "storage-compression"]
