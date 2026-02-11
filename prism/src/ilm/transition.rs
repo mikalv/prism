@@ -57,6 +57,7 @@ pub enum TransitionAction {
 /// Service for handling phase transitions
 pub struct TransitionService {
     /// Reference to collection manager
+    #[allow(dead_code)]
     manager: Arc<CollectionManager>,
 
     /// ILM state

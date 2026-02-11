@@ -2,6 +2,7 @@
 //!
 //! Run with: cargo test --release --features embedding-gen-real test_real_embedding
 
+#![allow(unexpected_cfgs)]
 #![cfg(feature = "embedding-gen-real")]
 
 use prism::embedding::{Embedder, ModelConfig};

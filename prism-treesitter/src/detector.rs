@@ -91,7 +91,11 @@ fn detect_from_shebang(text: &str) -> Option<Language> {
 
 fn detect_from_keywords(text: &str) -> Option<Language> {
     // Take a sample of the text for analysis (first 4KB)
-    let sample = if text.len() > 4096 { &text[..4096] } else { text };
+    let sample = if text.len() > 4096 {
+        &text[..4096]
+    } else {
+        text
+    };
 
     let mut best: Option<(Language, u32)> = None;
 
@@ -110,115 +114,216 @@ fn detect_from_keywords(text: &str) -> Option<Language> {
     #[cfg(feature = "rust")]
     {
         let mut score = 0u32;
-        if sample.contains("fn ") { score += 2; }
-        if sample.contains("let ") || sample.contains("let mut ") { score += 2; }
-        if sample.contains("impl ") { score += 3; }
-        if sample.contains("pub fn ") || sample.contains("pub struct ") { score += 3; }
-        if sample.contains("use std::") || sample.contains("use crate::") { score += 3; }
-        if sample.contains("-> Result<") || sample.contains("-> Option<") { score += 2; }
+        if sample.contains("fn ") {
+            score += 2;
+        }
+        if sample.contains("let ") || sample.contains("let mut ") {
+            score += 2;
+        }
+        if sample.contains("impl ") {
+            score += 3;
+        }
+        if sample.contains("pub fn ") || sample.contains("pub struct ") {
+            score += 3;
+        }
+        if sample.contains("use std::") || sample.contains("use crate::") {
+            score += 3;
+        }
+        if sample.contains("-> Result<") || sample.contains("-> Option<") {
+            score += 2;
+        }
         check(Language::Rust, score);
     }
 
     #[cfg(feature = "python")]
     {
         let mut score = 0u32;
-        if sample.contains("def ") { score += 2; }
-        if sample.contains("import ") { score += 1; }
-        if sample.contains("class ") && sample.contains("self") { score += 3; }
-        if sample.contains("__init__") { score += 3; }
-        if sample.contains("if __name__") { score += 4; }
+        if sample.contains("def ") {
+            score += 2;
+        }
+        if sample.contains("import ") {
+            score += 1;
+        }
+        if sample.contains("class ") && sample.contains("self") {
+            score += 3;
+        }
+        if sample.contains("__init__") {
+            score += 3;
+        }
+        if sample.contains("if __name__") {
+            score += 4;
+        }
         check(Language::Python, score);
     }
 
     #[cfg(feature = "javascript")]
     {
         let mut score = 0u32;
-        if sample.contains("function ") { score += 1; }
-        if sample.contains("const ") || sample.contains("let ") { score += 1; }
-        if sample.contains("require(") { score += 3; }
-        if sample.contains("module.exports") { score += 4; }
-        if sample.contains("console.log") { score += 2; }
-        if sample.contains("=> {") || sample.contains("=> (") { score += 1; }
+        if sample.contains("function ") {
+            score += 1;
+        }
+        if sample.contains("const ") || sample.contains("let ") {
+            score += 1;
+        }
+        if sample.contains("require(") {
+            score += 3;
+        }
+        if sample.contains("module.exports") {
+            score += 4;
+        }
+        if sample.contains("console.log") {
+            score += 2;
+        }
+        if sample.contains("=> {") || sample.contains("=> (") {
+            score += 1;
+        }
         check(Language::JavaScript, score);
     }
 
     #[cfg(feature = "typescript")]
     {
         let mut score = 0u32;
-        if sample.contains("interface ") { score += 3; }
-        if sample.contains(": string") || sample.contains(": number") || sample.contains(": boolean") { score += 3; }
-        if sample.contains("export type ") || sample.contains("export interface ") { score += 4; }
-        if sample.contains("<T>") || sample.contains("<T,") { score += 2; }
+        if sample.contains("interface ") {
+            score += 3;
+        }
+        if sample.contains(": string")
+            || sample.contains(": number")
+            || sample.contains(": boolean")
+        {
+            score += 3;
+        }
+        if sample.contains("export type ") || sample.contains("export interface ") {
+            score += 4;
+        }
+        if sample.contains("<T>") || sample.contains("<T,") {
+            score += 2;
+        }
         check(Language::TypeScript, score);
     }
 
     #[cfg(feature = "go")]
     {
         let mut score = 0u32;
-        if sample.contains("func ") { score += 2; }
-        if sample.contains("package ") { score += 3; }
-        if sample.contains("go func") || sample.contains("go ") { score += 2; }
-        if sample.contains("fmt.") { score += 3; }
-        if sample.contains(":= ") { score += 2; }
+        if sample.contains("func ") {
+            score += 2;
+        }
+        if sample.contains("package ") {
+            score += 3;
+        }
+        if sample.contains("go func") || sample.contains("go ") {
+            score += 2;
+        }
+        if sample.contains("fmt.") {
+            score += 3;
+        }
+        if sample.contains(":= ") {
+            score += 2;
+        }
         check(Language::Go, score);
     }
 
     #[cfg(feature = "c")]
     {
         let mut score = 0u32;
-        if sample.contains("#include") { score += 2; }
-        if sample.contains("int main(") { score += 3; }
-        if sample.contains("printf(") || sample.contains("malloc(") { score += 2; }
-        if sample.contains("void ") { score += 1; }
+        if sample.contains("#include") {
+            score += 2;
+        }
+        if sample.contains("int main(") {
+            score += 3;
+        }
+        if sample.contains("printf(") || sample.contains("malloc(") {
+            score += 2;
+        }
+        if sample.contains("void ") {
+            score += 1;
+        }
         check(Language::C, score);
     }
 
     #[cfg(feature = "cpp")]
     {
         let mut score = 0u32;
-        if sample.contains("#include") { score += 1; }
-        if sample.contains("std::") { score += 3; }
-        if sample.contains("class ") && sample.contains("public:") { score += 4; }
-        if sample.contains("template<") || sample.contains("template <") { score += 4; }
-        if sample.contains("namespace ") { score += 3; }
+        if sample.contains("#include") {
+            score += 1;
+        }
+        if sample.contains("std::") {
+            score += 3;
+        }
+        if sample.contains("class ") && sample.contains("public:") {
+            score += 4;
+        }
+        if sample.contains("template<") || sample.contains("template <") {
+            score += 4;
+        }
+        if sample.contains("namespace ") {
+            score += 3;
+        }
         check(Language::Cpp, score);
     }
 
     #[cfg(feature = "ruby")]
     {
         let mut score = 0u32;
-        if sample.contains("def ") && sample.contains("end") { score += 2; }
-        if sample.contains("require ") || sample.contains("require_relative") { score += 3; }
-        if sample.contains("attr_accessor") || sample.contains("attr_reader") { score += 4; }
-        if sample.contains("puts ") || sample.contains(".each do") { score += 2; }
+        if sample.contains("def ") && sample.contains("end") {
+            score += 2;
+        }
+        if sample.contains("require ") || sample.contains("require_relative") {
+            score += 3;
+        }
+        if sample.contains("attr_accessor") || sample.contains("attr_reader") {
+            score += 4;
+        }
+        if sample.contains("puts ") || sample.contains(".each do") {
+            score += 2;
+        }
         check(Language::Ruby, score);
     }
 
     #[cfg(feature = "elixir")]
     {
         let mut score = 0u32;
-        if sample.contains("defmodule ") { score += 5; }
-        if sample.contains("defp ") || sample.contains("def ") { score += 1; }
-        if sample.contains("|> ") { score += 3; }
-        if sample.contains("@spec") || sample.contains("@doc") { score += 3; }
+        if sample.contains("defmodule ") {
+            score += 5;
+        }
+        if sample.contains("defp ") || sample.contains("def ") {
+            score += 1;
+        }
+        if sample.contains("|> ") {
+            score += 3;
+        }
+        if sample.contains("@spec") || sample.contains("@doc") {
+            score += 3;
+        }
         check(Language::Elixir, score);
     }
 
     #[cfg(feature = "erlang")]
     {
         let mut score = 0u32;
-        if sample.contains("-module(") { score += 5; }
-        if sample.contains("-export(") { score += 4; }
-        if sample.contains("->") && sample.contains(".") { score += 2; }
+        if sample.contains("-module(") {
+            score += 5;
+        }
+        if sample.contains("-export(") {
+            score += 4;
+        }
+        if sample.contains("->") && sample.contains(".") {
+            score += 2;
+        }
         check(Language::Erlang, score);
     }
 
     #[cfg(feature = "html")]
     {
         let mut score = 0u32;
-        if sample.contains("<!DOCTYPE") || sample.contains("<!doctype") { score += 5; }
-        if sample.contains("<html") { score += 4; }
-        if sample.contains("<div") || sample.contains("<span") { score += 2; }
+        if sample.contains("<!DOCTYPE") || sample.contains("<!doctype") {
+            score += 5;
+        }
+        if sample.contains("<html") {
+            score += 4;
+        }
+        if sample.contains("<div") || sample.contains("<span") {
+            score += 2;
+        }
         check(Language::Html, score);
     }
 
@@ -226,7 +331,9 @@ fn detect_from_keywords(text: &str) -> Option<Language> {
     {
         let mut score = 0u32;
         // YAML is hard to detect; only strong signals
-        if sample.starts_with("---\n") || sample.starts_with("---\r\n") { score += 4; }
+        if sample.starts_with("---\n") || sample.starts_with("---\r\n") {
+            score += 4;
+        }
         check(Language::Yaml, score);
     }
 
@@ -246,8 +353,12 @@ fn detect_from_keywords(text: &str) -> Option<Language> {
     #[cfg(feature = "toml")]
     {
         let mut score = 0u32;
-        if sample.contains("[package]") || sample.contains("[dependencies]") { score += 5; }
-        if sample.contains("[workspace]") { score += 5; }
+        if sample.contains("[package]") || sample.contains("[dependencies]") {
+            score += 5;
+        }
+        if sample.contains("[workspace]") {
+            score += 5;
+        }
         check(Language::Toml, score);
     }
 
@@ -255,12 +366,24 @@ fn detect_from_keywords(text: &str) -> Option<Language> {
     {
         let mut score = 0u32;
         let upper = sample.to_uppercase();
-        if upper.contains("SELECT ") { score += 2; }
-        if upper.contains("CREATE TABLE") { score += 4; }
-        if upper.contains("INSERT INTO") { score += 3; }
-        if upper.contains("ALTER TABLE") { score += 4; }
-        if upper.contains("JOIN ") && upper.contains("ON ") { score += 3; }
-        if upper.contains("WHERE ") { score += 1; }
+        if upper.contains("SELECT ") {
+            score += 2;
+        }
+        if upper.contains("CREATE TABLE") {
+            score += 4;
+        }
+        if upper.contains("INSERT INTO") {
+            score += 3;
+        }
+        if upper.contains("ALTER TABLE") {
+            score += 4;
+        }
+        if upper.contains("JOIN ") && upper.contains("ON ") {
+            score += 3;
+        }
+        if upper.contains("WHERE ") {
+            score += 1;
+        }
         check(Language::Sql, score);
     }
 

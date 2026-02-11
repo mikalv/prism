@@ -1,6 +1,6 @@
 //! Factory for creating unified SegmentStorage backends.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use prism_storage::{LocalStorage, SegmentStorage};
@@ -19,7 +19,7 @@ impl StorageFactory {
     /// This is the only method needed - all backends use SegmentStorage directly.
     pub fn create_segment_storage(
         config: &StorageConfig,
-        base_path: &PathBuf,
+        base_path: &Path,
     ) -> Result<Arc<dyn SegmentStorage>, Error> {
         match config {
             StorageConfig::Local(local) => {
@@ -27,7 +27,7 @@ impl StorageFactory {
                     .path
                     .as_ref()
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| base_path.clone());
+                    .unwrap_or_else(|| base_path.to_path_buf());
                 Ok(Arc::new(LocalStorage::new(path)))
             }
             #[cfg(feature = "storage-s3")]
@@ -71,7 +71,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let config = StorageConfig::default();
 
-        let storage = StorageFactory::create_segment_storage(&config, &temp.path().to_path_buf());
+        let storage = StorageFactory::create_segment_storage(&config, temp.path());
         assert!(storage.is_ok());
         assert_eq!(storage.unwrap().backend_name(), "local");
     }
@@ -94,8 +94,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let config = StorageConfig::default();
 
-        let storage =
-            StorageFactory::create_segment_storage(&config, &temp.path().to_path_buf()).unwrap();
+        let storage = StorageFactory::create_segment_storage(&config, temp.path()).unwrap();
 
         let path = StoragePath::vector("test", "default", "data.bin");
         let data = Bytes::from_static(b"test data");

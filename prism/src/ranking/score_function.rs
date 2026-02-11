@@ -121,7 +121,10 @@ fn tokenize(expr: &str) -> anyhow::Result<Vec<Token>> {
                             | Some(Token::LParen)
                             | Some(Token::Comma)
                     );
-                if is_unary && i + 1 < chars.len() && (chars[i + 1].is_ascii_digit() || chars[i + 1] == '.') {
+                if is_unary
+                    && i + 1 < chars.len()
+                    && (chars[i + 1].is_ascii_digit() || chars[i + 1] == '.')
+                {
                     // Parse negative number
                     let start = i;
                     i += 1;
@@ -129,9 +132,9 @@ fn tokenize(expr: &str) -> anyhow::Result<Vec<Token>> {
                         i += 1;
                     }
                     let num_str: String = chars[start..i].iter().collect();
-                    let num: f32 = num_str.parse().map_err(|_| {
-                        anyhow::anyhow!("Invalid number: {}", num_str)
-                    })?;
+                    let num: f32 = num_str
+                        .parse()
+                        .map_err(|_| anyhow::anyhow!("Invalid number: {}", num_str))?;
                     tokens.push(Token::Number(num));
                 } else {
                     tokens.push(Token::Minus);
@@ -459,7 +462,10 @@ mod tests {
             make_result(3.0, HashMap::new()),
         ];
 
-        let scores = reranker.rerank_results("query", &results, &[]).await.unwrap();
+        let scores = reranker
+            .rerank_results("query", &results, &[])
+            .await
+            .unwrap();
         assert_eq!(scores.len(), 3);
         assert!((scores[0] - 2.0).abs() < 0.001);
         assert!((scores[1] - 4.0).abs() < 0.001);

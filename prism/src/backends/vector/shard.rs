@@ -45,6 +45,7 @@ pub struct PersistedShard {
 
 impl VectorShard {
     /// Create a new shard with a fresh active segment.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         shard_id: u32,
         dimensions: usize,
@@ -89,9 +90,9 @@ impl VectorShard {
         let mut all_results = Vec::new();
 
         // Search active segment
-        let active_results = self
-            .active_segment
-            .search(query_vector, oversample_k, self.ef_search)?;
+        let active_results =
+            self.active_segment
+                .search(query_vector, oversample_k, self.ef_search)?;
         all_results.extend(active_results);
 
         // Search sealed segments
@@ -101,7 +102,11 @@ impl VectorShard {
         }
 
         // Sort by score descending and dedup by id (prefer higher score)
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Dedup: keep first occurrence (highest score) per doc_id
         let mut seen = std::collections::HashSet::new();
@@ -293,9 +298,7 @@ mod tests {
         shard
             .index("doc1", &[1.0, 0.0, 0.0, 0.0], fields.clone())
             .unwrap();
-        shard
-            .index("doc2", &[0.0, 1.0, 0.0, 0.0], fields)
-            .unwrap();
+        shard.index("doc2", &[0.0, 1.0, 0.0, 0.0], fields).unwrap();
 
         let results = shard.search(&[1.0, 0.0, 0.0, 0.0], 2).unwrap();
         assert!(!results.is_empty());

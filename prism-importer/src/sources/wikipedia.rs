@@ -226,10 +226,7 @@ fn parse_single_page(
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(ImportError::XmlParse(format!(
-                    "Error inside <page>: {}",
-                    e
-                )));
+                return Err(ImportError::XmlParse(format!("Error inside <page>: {}", e)));
             }
             _ => {}
         }
@@ -360,12 +357,18 @@ mod tests {
 
     #[test]
     fn test_strip_wikitext_templates() {
-        assert_eq!(strip_wikitext("Hello {{cite web|url=x}} world"), "Hello  world");
+        assert_eq!(
+            strip_wikitext("Hello {{cite web|url=x}} world"),
+            "Hello  world"
+        );
     }
 
     #[test]
     fn test_strip_wikitext_bold_italic() {
-        assert_eq!(strip_wikitext("'''Norge''' er et ''land''"), "Norge er et land");
+        assert_eq!(
+            strip_wikitext("'''Norge''' er et ''land''"),
+            "Norge er et land"
+        );
     }
 
     #[test]

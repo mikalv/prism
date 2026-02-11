@@ -30,7 +30,7 @@ pub async fn search_handler(
     // Expand index pattern to collections (sync method)
     let collections = state
         .manager
-        .expand_collection_patterns(&[index_name.clone()]);
+        .expand_collection_patterns(std::slice::from_ref(&index_name));
 
     if collections.is_empty() {
         return Err(EsCompatError::IndexNotFound(index_name));

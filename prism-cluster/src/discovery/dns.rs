@@ -49,6 +49,7 @@ pub struct DnsDiscovery {
     refresh_interval: Duration,
 
     /// Optional DNS server
+    #[allow(dead_code)]
     dns_server: Option<String>,
 
     /// Default port if not in SRV record
@@ -345,7 +346,7 @@ mod tests {
         discovery.start().await.unwrap();
 
         // Should resolve localhost
-        let nodes = discovery.get_nodes().await.unwrap();
+        let _nodes = discovery.get_nodes().await.unwrap();
         // Note: might be empty if DNS resolution is blocked in test env
         // but shouldn't error
 

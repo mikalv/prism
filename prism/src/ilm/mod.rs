@@ -51,6 +51,7 @@ use tokio::time::interval;
 /// ILM Manager - coordinates all ILM operations
 pub struct IlmManager {
     /// Collection manager reference
+    #[allow(dead_code)]
     manager: Arc<CollectionManager>,
 
     /// ILM policies

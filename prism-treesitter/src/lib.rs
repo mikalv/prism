@@ -182,10 +182,7 @@ impl Language {
 /// - `code-treesitter-rust`, `code-treesitter-python`, etc. — explicit language
 pub fn register_tokenizers(manager: &TokenizerManager) {
     // Auto-detect tokenizer
-    manager.register(
-        "code-treesitter",
-        TreeSitterTokenizer::auto_detect(),
-    );
+    manager.register("code-treesitter", TreeSitterTokenizer::auto_detect());
 
     // Per-language tokenizers
     for lang in Language::all() {

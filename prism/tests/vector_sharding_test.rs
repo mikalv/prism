@@ -104,7 +104,7 @@ async fn test_3_shards_index_get_delete() {
     }
 
     // Verify shard distribution: no shard should have all 30
-    let mut shard_counts = vec![0u32; 3];
+    let mut shard_counts = [0u32; 3];
     for i in 0..30 {
         let s = shard_for_doc(&format!("doc_{}", i), 3);
         shard_counts[s as usize] += 1;
@@ -177,10 +177,7 @@ async fn test_4_shards_search_recall() {
         })
         .collect();
 
-    backend_1
-        .index("recall1", docs.clone())
-        .await
-        .unwrap();
+    backend_1.index("recall1", docs.clone()).await.unwrap();
     backend_4.index("recall4", docs).await.unwrap();
 
     // Query: find top-20 nearest to a specific vector
@@ -273,10 +270,7 @@ async fn test_8_shards_1000_docs_persistence() {
 
         // Spot-check get
         for i in [0, 42, 500, 999] {
-            let doc = backend
-                .get("big", &format!("item_{}", i))
-                .await
-                .unwrap();
+            let doc = backend.get("big", &format!("item_{}", i)).await.unwrap();
             assert!(doc.is_some(), "item_{} missing after reload", i);
         }
 
@@ -319,10 +313,7 @@ async fn test_3_shards_upsert() {
 
     // The updated docs should be retrievable
     for i in 0..20 {
-        let doc = backend
-            .get("upsert", &format!("u{}", i))
-            .await
-            .unwrap();
+        let doc = backend.get("upsert", &format!("u{}", i)).await.unwrap();
         assert!(doc.is_some());
     }
 }
@@ -349,7 +340,10 @@ async fn test_5_shards_interleaved_operations() {
     backend.index("interleaved", batch1).await.unwrap();
 
     // Delete odd-numbered from batch 1
-    let del1: Vec<String> = (0..40).filter(|i| i % 2 == 1).map(|i| format!("b1_{}", i)).collect();
+    let del1: Vec<String> = (0..40)
+        .filter(|i| i % 2 == 1)
+        .map(|i| format!("b1_{}", i))
+        .collect();
     backend.delete("interleaved", del1).await.unwrap();
     assert_eq!(
         backend.stats("interleaved").await.unwrap().document_count,
@@ -374,10 +368,7 @@ async fn test_5_shards_interleaved_operations() {
 
     // Search should find results from both batches
     let results = backend
-        .search(
-            "interleaved",
-            make_query(vec![1.0, 0.0, 0.5, 0.5], 10),
-        )
+        .search("interleaved", make_query(vec![1.0, 0.0, 0.5, 0.5], 10))
         .await
         .unwrap();
     assert_eq!(results.results.len(), 10);

@@ -1,6 +1,6 @@
 use prism::config::{ApiKeyConfig, RoleConfig, SecurityConfig};
 use prism::security::permissions::PermissionChecker;
-use prism::security::types::{AuthUser, Permission};
+use prism::security::types::Permission;
 use std::collections::HashMap;
 
 fn test_config() -> SecurityConfig {

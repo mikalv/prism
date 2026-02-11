@@ -93,6 +93,7 @@ impl IDPoint for PointVec {
 pub struct InstantDistanceAdapter {
     dimensions: usize,
     metric: Metric,
+    #[allow(dead_code)]
     m: usize,
     ef_construction: usize,
     points: Vec<PointVec>,

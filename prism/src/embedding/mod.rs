@@ -149,6 +149,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)]
         fn call_count(&self) -> usize {
             self.call_count.load(std::sync::atomic::Ordering::Relaxed)
         }

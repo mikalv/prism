@@ -7,9 +7,7 @@ use prism::backends::r#trait::{SearchResult, SearchResults};
 use prism::backends::HybridSearchCoordinator;
 use prism::ranking::score_function::ScoreFunctionReranker;
 use prism::schema::loader::SchemaLoader;
-use prism::schema::types::{
-    CollectionSchema, HybridConfig, ScoreNormalization, VectorDistance,
-};
+use prism::schema::types::{CollectionSchema, HybridConfig, ScoreNormalization, VectorDistance};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -26,7 +24,11 @@ fn make_results(items: Vec<(&str, f32)>) -> SearchResults {
         })
         .collect();
     let total = results.len();
-    SearchResults { results, total, latency_ms: 0 }
+    SearchResults {
+        results,
+        total,
+        latency_ms: 0,
+    }
 }
 
 fn make_results_with_fields(
@@ -42,7 +44,11 @@ fn make_results_with_fields(
         })
         .collect();
     let total = results.len();
-    SearchResults { results, total, latency_ms: 0 }
+    SearchResults {
+        results,
+        total,
+        latency_ms: 0,
+    }
 }
 
 // ── Normalization: MaxNorm ──────────────────────────────────────────────────
@@ -266,12 +272,16 @@ backends:
     let issues = SchemaLoader::lint_schema(&schema);
 
     assert!(
-        issues.iter().any(|i| i.contains("bm25_k1") && i.contains("1.5")),
+        issues
+            .iter()
+            .any(|i| i.contains("bm25_k1") && i.contains("1.5")),
         "Should warn about non-default bm25_k1; got: {:?}",
         issues
     );
     assert!(
-        issues.iter().any(|i| i.contains("bm25_b") && i.contains("0.6")),
+        issues
+            .iter()
+            .any(|i| i.contains("bm25_b") && i.contains("0.6")),
         "Should warn about non-default bm25_b; got: {:?}",
         issues
     );

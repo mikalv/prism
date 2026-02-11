@@ -26,7 +26,11 @@ pub fn split_identifier(ident: &str) -> Vec<String> {
     while i < chars.len() {
         let c = chars[i];
         let prev = if i > 0 { Some(chars[i - 1]) } else { None };
-        let next = if i + 1 < chars.len() { Some(chars[i + 1]) } else { None };
+        let next = if i + 1 < chars.len() {
+            Some(chars[i + 1])
+        } else {
+            None
+        };
 
         // Split on underscores and hyphens
         if c == '_' || c == '-' {
@@ -107,7 +111,10 @@ mod tests {
 
     #[test]
     fn test_camel_case() {
-        assert_eq!(split_identifier("getUserById"), vec!["get", "user", "by", "id"]);
+        assert_eq!(
+            split_identifier("getUserById"),
+            vec!["get", "user", "by", "id"]
+        );
     }
 
     #[test]
@@ -124,7 +131,10 @@ mod tests {
 
     #[test]
     fn test_snake_case() {
-        assert_eq!(split_identifier("get_user_by_id"), vec!["get", "user", "by", "id"]);
+        assert_eq!(
+            split_identifier("get_user_by_id"),
+            vec!["get", "user", "by", "id"]
+        );
         assert_eq!(split_identifier("__init__"), vec!["init"]);
     }
 
@@ -136,7 +146,10 @@ mod tests {
     #[test]
     fn test_digits() {
         assert_eq!(split_identifier("user123"), vec!["user", "123"]);
-        assert_eq!(split_identifier("get2ndPlace"), vec!["get", "2", "nd", "place"]);
+        assert_eq!(
+            split_identifier("get2ndPlace"),
+            vec!["get", "2", "nd", "place"]
+        );
     }
 
     #[test]
@@ -152,6 +165,9 @@ mod tests {
     #[test]
     fn test_tokenize_text() {
         assert_eq!(tokenize_text("This is a test"), vec!["this", "is", "test"]);
-        assert_eq!(tokenize_text("TODO: fix the bug"), vec!["todo", "fix", "the", "bug"]);
+        assert_eq!(
+            tokenize_text("TODO: fix the bug"),
+            vec!["todo", "fix", "the", "bug"]
+        );
     }
 }

@@ -144,6 +144,6 @@ mod tests {
         let context = extract_context_fields(&doc, &field_map, &["project_id", "session_id"]);
 
         assert_eq!(context.get("project_id"), Some(&"proj-456".to_string()));
-        assert!(context.get("session_id").is_none()); // Not in doc
+        assert!(!context.contains_key("session_id")); // Not in doc
     }
 }

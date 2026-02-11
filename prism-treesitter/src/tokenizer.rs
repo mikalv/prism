@@ -135,10 +135,7 @@ fn is_string_kind(kind: &str) -> bool {
 
 /// Check if a tree-sitter node kind represents a comment.
 fn is_comment_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "line_comment" | "block_comment" | "comment"
-    )
+    matches!(kind, "line_comment" | "block_comment" | "comment")
 }
 
 /// Parse text with tree-sitter and extract tokens.
@@ -321,13 +318,12 @@ fn strip_string_delimiters(text: &str) -> String {
         return text[3..text.len() - 3].to_string();
     }
     // Regular quotes
-    if (text.starts_with('"') && text.ends_with('"'))
+    if ((text.starts_with('"') && text.ends_with('"'))
         || (text.starts_with('\'') && text.ends_with('\''))
-        || (text.starts_with('`') && text.ends_with('`'))
+        || (text.starts_with('`') && text.ends_with('`')))
+        && text.len() >= 2
     {
-        if text.len() >= 2 {
-            return text[1..text.len() - 1].to_string();
-        }
+        return text[1..text.len() - 1].to_string();
     }
     text.to_string()
 }
@@ -338,7 +334,38 @@ fn fallback_tokenize(text: &str) -> Vec<ExtractedToken> {
     let mut tokens = Vec::new();
     let mut offset = 0;
 
-    for word in text.split(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '{' | '}' | '[' | ']' | ';' | ',' | '.' | ':' | '<' | '>' | '=' | '+' | '-' | '*' | '/' | '&' | '|' | '!' | '?' | '@' | '#' | '$' | '%' | '^' | '~')) {
+    for word in text.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '(' | ')'
+                    | '{'
+                    | '}'
+                    | '['
+                    | ']'
+                    | ';'
+                    | ','
+                    | '.'
+                    | ':'
+                    | '<'
+                    | '>'
+                    | '='
+                    | '+'
+                    | '-'
+                    | '*'
+                    | '/'
+                    | '&'
+                    | '|'
+                    | '!'
+                    | '?'
+                    | '@'
+                    | '#'
+                    | '$'
+                    | '%'
+                    | '^'
+                    | '~'
+            )
+    }) {
         if !word.is_empty() && word.len() >= 2 {
             let parts = split_identifier(word);
             for part in parts {

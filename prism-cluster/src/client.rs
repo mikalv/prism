@@ -198,9 +198,9 @@ impl ClusterClient {
         let mut addrs = tokio::net::lookup_host(addr).await.map_err(|e| {
             ClusterError::Config(format!("DNS resolution failed for '{}': {}", addr, e))
         })?;
-        let socket_addr = addrs.next().ok_or_else(|| {
-            ClusterError::Config(format!("No addresses resolved for '{}'", addr))
-        })?;
+        let socket_addr = addrs
+            .next()
+            .ok_or_else(|| ClusterError::Config(format!("No addresses resolved for '{}'", addr)))?;
         Ok((socket_addr, server_name))
     }
 
@@ -519,7 +519,7 @@ impl tokio::io::AsyncWrite for QuicBiStream {
     ) -> std::task::Poll<io::Result<usize>> {
         std::pin::Pin::new(&mut self.send)
             .poll_write(cx, buf)
-            .map_err(|e| io::Error::other(e))
+            .map_err(io::Error::other)
     }
 
     fn poll_flush(

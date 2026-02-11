@@ -78,7 +78,7 @@ async fn execute_single_search(
     let index_name = header.index.unwrap_or_else(|| "*".to_string());
 
     // Expand index pattern (sync)
-    let collections = manager.expand_collection_patterns(&[index_name.clone()]);
+    let collections = manager.expand_collection_patterns(std::slice::from_ref(&index_name));
 
     if collections.is_empty() {
         return EsMSearchItem::Error {

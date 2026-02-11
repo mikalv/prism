@@ -143,6 +143,7 @@ pub enum PartitionEvent {
 /// Partition detector and handler
 pub struct PartitionDetector {
     config: ConsistencyConfig,
+    #[allow(dead_code)]
     cluster_config: ClusterConfig,
     health_checker: Arc<HealthChecker>,
     state: Arc<RwLock<PartitionState>>,

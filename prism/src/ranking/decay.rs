@@ -143,16 +143,20 @@ pub fn parse_duration(s: &str) -> Option<Duration> {
         return None;
     }
 
-    let (num_str, unit) = if s.ends_with('d') {
-        (&s[..s.len() - 1], "d")
-    } else if s.ends_with('h') {
-        (&s[..s.len() - 1], "h")
-    } else if s.ends_with('w') {
-        (&s[..s.len() - 1], "w")
+    let (num_str, unit) = if let Some(stripped) = s.strip_suffix('d') {
+        (stripped, "d")
+    } else if let Some(stripped) = s.strip_suffix('h') {
+        (stripped, "h")
+    } else if let Some(stripped) = s.strip_suffix('w') {
+        (stripped, "w")
     } else if s.ends_with('m') && !s.ends_with("ms") {
-        (&s[..s.len() - 1], "m")
-    } else if s.ends_with('s') {
-        (&s[..s.len() - 1], "s")
+        if let Some(stripped) = s.strip_suffix('m') {
+            (stripped, "m")
+        } else {
+            (s, "d")
+        }
+    } else if let Some(stripped) = s.strip_suffix('s') {
+        (stripped, "s")
     } else {
         // Assume days if no unit
         (s, "d")

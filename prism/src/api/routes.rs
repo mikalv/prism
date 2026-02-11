@@ -136,7 +136,7 @@ pub async fn search(
         vector_weight: request.vector_weight,
         highlight: request.highlight,
         rrf_k: request.rrf_k,
-        min_score: None, // applied post-search
+        min_score: None,      // applied post-search
         score_function: None, // applied post-search
         skip_ranking: false,
     };
@@ -147,7 +147,9 @@ pub async fn search(
         text_fields: r.text_fields.clone().unwrap_or_default(),
     });
 
-    let result = manager.search(&collection, query, rerank_override.as_ref()).await;
+    let result = manager
+        .search(&collection, query, rerank_override.as_ref())
+        .await;
 
     let duration = start.elapsed().as_secs_f64();
 

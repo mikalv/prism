@@ -2,7 +2,7 @@ use crate::backends::{
     BackendStats, Document, HybridSearchCoordinator, Query, SearchBackend, SearchResults,
     SearchResultsWithAggs, TextBackend, VectorBackend,
 };
-use crate::ranking::reranker::{Reranker, RerankOptions};
+use crate::ranking::reranker::{RerankOptions, Reranker};
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use parking_lot::RwLock;
@@ -46,8 +46,7 @@ impl CollectionManager {
         let mut per_collection_backends = HashMap::new();
         let mut per_collection_rerankers = HashMap::new();
         for (name, schema) in &schemas {
-            let backend =
-                Self::build_backend_for_schema(schema, &text_backend, &vector_backend)?;
+            let backend = Self::build_backend_for_schema(schema, &text_backend, &vector_backend)?;
             if let Some(b) = backend {
                 per_collection_backends.insert(name.clone(), b);
             }
@@ -87,11 +86,7 @@ impl CollectionManager {
                     schema.collection
                 )));
             }
-            let distance_metric = schema
-                .backends
-                .vector
-                .as_ref()
-                .map(|v| v.distance.clone());
+            let distance_metric = schema.backends.vector.as_ref().map(|v| v.distance.clone());
             let hybrid = if let Some(config) = &schema.hybrid {
                 HybridSearchCoordinator::with_config(
                     text_backend.clone(),
@@ -311,7 +306,10 @@ impl CollectionManager {
         // Resolve reranking config
         let rerank_config = Self::resolve_rerank_config(&schema, rerank_override);
         let reranker = if rerank_config.is_some() {
-            self.per_collection_rerankers.read().get(collection).cloned()
+            self.per_collection_rerankers
+                .read()
+                .get(collection)
+                .cloned()
         } else {
             None
         };
@@ -645,6 +643,7 @@ impl CollectionManager {
     /// * `merge_strategy` - "rrf" (default) or "weighted"
     /// * `text_weight` - Weight for text results in weighted merge (default 0.5)
     /// * `vector_weight` - Weight for vector results in weighted merge (default 0.5)
+    #[allow(clippy::too_many_arguments)]
     pub async fn hybrid_search(
         &self,
         collection: &str,
@@ -784,6 +783,7 @@ impl CollectionManager {
     }
 
     /// Find documents similar to a given document or text.
+    #[allow(clippy::too_many_arguments)]
     pub fn more_like_this(
         &self,
         collection: &str,

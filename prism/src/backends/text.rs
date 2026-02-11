@@ -145,7 +145,9 @@ impl TextBackend {
                             TokenizerType::CodeTreeSitter => {
                                 #[cfg(feature = "tokenizer-treesitter")]
                                 {
-                                    let lang = field_def.tokenizer_options.as_ref()
+                                    let lang = field_def
+                                        .tokenizer_options
+                                        .as_ref()
                                         .and_then(|o| o.language.as_deref());
                                     match lang {
                                         Some(l) => {
@@ -1777,6 +1779,7 @@ impl TextBackend {
     /// Extracts significant terms from the source (by ID or raw text), builds
     /// a disjunction query, and returns the top matching documents (excluding
     /// the source document when searching by ID).
+    #[allow(clippy::too_many_arguments)]
     pub fn more_like_this(
         &self,
         collection: &str,

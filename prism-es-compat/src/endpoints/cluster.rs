@@ -18,9 +18,11 @@ pub async fn cluster_health_handler(
     // Get basic stats from manager (sync method)
     let collections = state.manager.list_collections();
 
-    let mut health = EsClusterHealth::default();
-    health.active_primary_shards = collections.len() as u32;
-    health.active_shards = collections.len() as u32;
+    let health = EsClusterHealth {
+        active_primary_shards: collections.len() as u32,
+        active_shards: collections.len() as u32,
+        ..Default::default()
+    };
 
     Ok(Json(health))
 }

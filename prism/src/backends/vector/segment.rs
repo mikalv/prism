@@ -283,8 +283,12 @@ mod tests {
         let mut seg = make_segment(4);
         let fields: HashMap<String, serde_json::Value> = HashMap::new();
         for i in 0..10 {
-            seg.add(&format!("doc{}", i), &[i as f32, 0.0, 0.0, 0.0], fields.clone())
-                .unwrap();
+            seg.add(
+                &format!("doc{}", i),
+                &[i as f32, 0.0, 0.0, 0.0],
+                fields.clone(),
+            )
+            .unwrap();
         }
         seg.seal();
 

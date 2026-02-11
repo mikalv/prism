@@ -14,7 +14,9 @@ pub async fn mapping_handler(
     Path(index): Path<String>,
 ) -> Result<Json<EsMappingResponse>, EsCompatError> {
     // Expand index pattern (sync)
-    let collections = state.manager.expand_collection_patterns(&[index.clone()]);
+    let collections = state
+        .manager
+        .expand_collection_patterns(std::slice::from_ref(&index));
 
     if collections.is_empty() {
         return Err(EsCompatError::IndexNotFound(index));

@@ -917,10 +917,12 @@ backends:
 
     #[test]
     fn test_replication_config_validation() {
-        let mut config = ReplicationConfig::default();
+        let mut config = ReplicationConfig {
+            factor: 0,
+            ..Default::default()
+        };
 
         // Factor 0 is invalid
-        config.factor = 0;
         assert!(config.validate().is_err());
 
         // min_replicas > factor is invalid

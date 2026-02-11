@@ -4,8 +4,7 @@
 //! Documents are distributed across shards via hash-based assignment.
 
 use crate::backends::r#trait::{
-    BackendStats, Document, Query, SearchBackend, SearchResults,
-    SearchResultsWithAggs,
+    BackendStats, Document, Query, SearchBackend, SearchResults, SearchResultsWithAggs,
 };
 use crate::cache::EmbeddingCacheStats;
 use crate::error::Result;
@@ -215,6 +214,7 @@ impl VectorBackend {
     }
 
     /// Embed a single text using the cached provider
+    #[allow(clippy::await_holding_lock)]
     #[tracing::instrument(name = "embed_text", skip(self, text))]
     pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
         let start = std::time::Instant::now();
@@ -241,6 +241,7 @@ impl VectorBackend {
     }
 
     /// Embed multiple texts using the cached provider (uses batch API)
+    #[allow(clippy::await_holding_lock)]
     #[tracing::instrument(name = "embed_texts", skip(self, texts), fields(text_count = texts.len()))]
     pub async fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         let start = std::time::Instant::now();
@@ -414,11 +415,7 @@ impl SearchBackend for VectorBackend {
                 .map(|s| s.embedding_target_field.clone())
                 .unwrap_or_else(|| "embedding".to_string());
 
-            let dimensions = sharded
-                .shards
-                .first()
-                .map(|s| s.dimensions)
-                .unwrap_or(0);
+            let dimensions = sharded.shards.first().map(|s| s.dimensions).unwrap_or(0);
 
             for doc in docs {
                 let vector_value = doc.fields.get(&target_field).ok_or_else(|| {
@@ -457,11 +454,7 @@ impl SearchBackend for VectorBackend {
         let query_vector: Vec<f32> = serde_json::from_str(&query.query_string)
             .map_err(|_| crate::error::Error::InvalidQuery("Invalid vector format".into()))?;
 
-        let dimensions = sharded
-            .shards
-            .first()
-            .map(|s| s.dimensions)
-            .unwrap_or(0);
+        let dimensions = sharded.shards.first().map(|s| s.dimensions).unwrap_or(0);
 
         if query_vector.len() != dimensions {
             return Err(crate::error::Error::InvalidQuery(format!(
@@ -485,8 +478,11 @@ impl SearchBackend for VectorBackend {
         }
 
         // Merge results by score (descending), take top-k
-        all_results
-            .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Dedup by id
         let mut seen = std::collections::HashSet::new();
@@ -552,11 +548,7 @@ impl SearchBackend for VectorBackend {
             .get(collection)
             .ok_or_else(|| crate::error::Error::CollectionNotFound(collection.to_string()))?;
 
-        let dimensions = sharded
-            .shards
-            .first()
-            .map(|s| s.dimensions)
-            .unwrap_or(0);
+        let dimensions = sharded.shards.first().map(|s| s.dimensions).unwrap_or(0);
 
         let document_count: usize = sharded.shards.iter().map(|s| s.live_count() as usize).sum();
         let size_bytes: usize = sharded
@@ -795,12 +787,7 @@ mod tests {
         // Index 100 documents
         let mut docs = Vec::new();
         for i in 0..100 {
-            let vec = vec![
-                (i as f32) / 100.0,
-                ((100 - i) as f32) / 100.0,
-                0.5,
-                0.5,
-            ];
+            let vec = vec![(i as f32) / 100.0, ((100 - i) as f32) / 100.0, 0.5, 0.5];
             docs.push(Document {
                 id: format!("doc_{}", i),
                 fields: {
@@ -814,10 +801,7 @@ mod tests {
 
         // Verify all docs are retrievable
         for i in 0..100 {
-            let doc = backend
-                .get("test", &format!("doc_{}", i))
-                .await
-                .unwrap();
+            let doc = backend.get("test", &format!("doc_{}", i)).await.unwrap();
             assert!(doc.is_some(), "doc_{} not found", i);
         }
 
@@ -917,10 +901,7 @@ mod tests {
         }
     }
 
-    fn make_test_schema(
-        num_shards: usize,
-        dimension: usize,
-    ) -> CollectionSchema {
+    fn make_test_schema(num_shards: usize, dimension: usize) -> CollectionSchema {
         use crate::schema::types::*;
         use crate::storage::StorageConfig;
 

@@ -79,7 +79,9 @@ pub async fn bulk_handler(
     // Process index/create actions
     for (index, docs) in by_index {
         // Check if collection exists (sync)
-        let collections = state.manager.expand_collection_patterns(&[index.clone()]);
+        let collections = state
+            .manager
+            .expand_collection_patterns(std::slice::from_ref(&index));
 
         if collections.is_empty() {
             // Collection doesn't exist - report errors
@@ -164,7 +166,9 @@ pub async fn bulk_handler(
 
     // Process delete actions
     for (index, ids) in delete_by_index {
-        let collections = state.manager.expand_collection_patterns(&[index.clone()]);
+        let collections = state
+            .manager
+            .expand_collection_patterns(std::slice::from_ref(&index));
 
         if collections.is_empty() {
             for id in ids {

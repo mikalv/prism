@@ -474,10 +474,7 @@ mod tests {
 
         // Create existing assignments for the balance check
         let existing: Vec<ShardAssignment> = (0..5)
-            .map(|i| {
-                let mut a = ShardAssignment::new("test", i, "node-1");
-                a
-            })
+            .map(|i| ShardAssignment::new("test", i, "node-1"))
             .chain((0..2).map(|i| ShardAssignment::new("test", i + 5, "node-3")))
             .collect();
 

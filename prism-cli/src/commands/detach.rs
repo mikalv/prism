@@ -39,9 +39,7 @@ pub async fn run_detach(
         println!("Detached successfully.");
         println!(
             "  Snapshot: {}",
-            result["destination"]["path"]
-                .as_str()
-                .unwrap_or("unknown")
+            result["destination"]["path"].as_str().unwrap_or("unknown")
         );
         println!(
             "  Data deleted: {}",

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
 use std::path::Path;
-use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug, Clone)]
@@ -423,9 +422,7 @@ async fn main() -> Result<()> {
 
 /// Build cluster federation routes
 #[cfg(feature = "cluster")]
-fn cluster_routes(
-    federation: Arc<prism_cluster::FederatedSearch>,
-) -> axum::Router<()> {
+fn cluster_routes(federation: Arc<prism_cluster::FederatedSearch>) -> axum::Router<()> {
     use axum::extract::{Path, State};
     use axum::routing::{get, post};
     use axum::Json;
@@ -443,10 +440,7 @@ fn cluster_routes(
             .and_then(|v| v.as_str())
             .unwrap_or("*")
             .to_string();
-        let limit = body
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+        let limit = body.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
         let rpc_query = prism_cluster::RpcQuery {
             query_string,

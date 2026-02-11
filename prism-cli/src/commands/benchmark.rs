@@ -220,7 +220,7 @@ fn read_queries(path: &Path) -> Result<Vec<String>> {
 
     let queries: Vec<String> = reader
         .lines()
-        .filter_map(|l| l.ok())
+        .map_while(|l| l.ok())
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .collect();

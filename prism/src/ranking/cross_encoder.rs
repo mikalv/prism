@@ -81,9 +81,13 @@ mod onnx_impl {
                         .encode((query, doc), true)
                         .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
 
-                    let mut ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
-                    let mut mask: Vec<i64> =
-                        encoding.get_attention_mask().iter().map(|&m| m as i64).collect();
+                    let mut ids: Vec<i64> =
+                        encoding.get_ids().iter().map(|&id| id as i64).collect();
+                    let mut mask: Vec<i64> = encoding
+                        .get_attention_mask()
+                        .iter()
+                        .map(|&m| m as i64)
+                        .collect();
                     let mut type_ids: Vec<i64> =
                         encoding.get_type_ids().iter().map(|&t| t as i64).collect();
 
@@ -284,9 +288,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cross_encoder_rerank_stub() {
-        let reranker = CrossEncoderReranker::new("test-model", 512)
-            .await
-            .unwrap();
+        let reranker = CrossEncoderReranker::new("test-model", 512).await.unwrap();
         let scores = reranker
             .rerank("query text", &["doc one", "doc two", "doc three"])
             .await
@@ -296,9 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cross_encoder_rerank_results_uses_default() {
-        let reranker = CrossEncoderReranker::new("test-model", 512)
-            .await
-            .unwrap();
+        let reranker = CrossEncoderReranker::new("test-model", 512).await.unwrap();
         let results = vec![
             SearchResult {
                 id: "1".to_string(),

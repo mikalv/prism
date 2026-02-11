@@ -104,5 +104,5 @@ async fn test_hybrid_merge_behaviour() {
     let res = hybrid.search("col", q).await.unwrap();
 
     // Expect results contain at least one document
-    assert!(res.results.len() >= 1);
+    assert!(!res.results.is_empty());
 }

@@ -103,9 +103,7 @@ async fn index_batch(
         .map(|doc| {
             let fields: HashMap<String, serde_json::Value> =
                 if let serde_json::Value::Object(map) = &doc.fields {
-                    map.iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect()
+                    map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
                 } else {
                     HashMap::new()
                 };

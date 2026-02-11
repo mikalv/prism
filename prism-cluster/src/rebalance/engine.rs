@@ -569,7 +569,7 @@ impl RebalanceEngine {
                 // Verify the new node satisfies spread constraints
                 if let Ok(target) = find_rebalance_target(
                     &shard,
-                    &[new_node.clone()],
+                    std::slice::from_ref(new_node),
                     &all_assignments,
                     &self.strategy,
                 ) {
@@ -649,8 +649,10 @@ mod tests {
     #[test]
     fn test_should_rebalance_disabled() {
         let state = Arc::new(ClusterState::new());
-        let mut config = RebalancingConfig::default();
-        config.enabled = false;
+        let config = RebalancingConfig {
+            enabled: false,
+            ..Default::default()
+        };
 
         let engine = RebalanceEngine::new(config, state, PlacementStrategy::default());
         assert!(!engine.should_rebalance());

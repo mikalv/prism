@@ -401,9 +401,9 @@ impl Default for ClusterTlsConfig {
 /// Expand ~ to home directory in path
 pub fn expand_tilde(path: &Path) -> Result<PathBuf> {
     let s = path.to_string_lossy();
-    if s.starts_with("~/") {
+    if let Some(rest) = s.strip_prefix("~/") {
         let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
-        Ok(home.join(&s[2..]))
+        Ok(home.join(rest))
     } else if s == "~" {
         dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))
     } else {

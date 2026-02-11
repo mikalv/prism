@@ -25,6 +25,7 @@ struct EmbedRequest<'a> {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct EmbedResponse {
     data: Vec<EmbeddingData>,
     model: String,
@@ -38,6 +39,7 @@ struct EmbeddingData {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct Usage {
     prompt_tokens: u32,
     total_tokens: u32,

@@ -17,7 +17,7 @@ pub use cross_encoder::CrossEncoderReranker;
 pub use decay::{
     compute_decay, compute_decay_from_micros, parse_duration, DecayConfig, DecayFunction,
 };
-pub use reranker::{extract_text_from_result, Reranker, RerankOptions, RerankRequest};
+pub use reranker::{extract_text_from_result, RerankOptions, RerankRequest, Reranker};
 pub use score_function::ScoreFunctionReranker;
 
 use crate::schema::BoostingConfig;
@@ -78,7 +78,7 @@ impl RankingConfig {
 /// # Returns
 /// Results sorted by adjusted scores (highest first)
 pub fn apply_ranking_adjustments(
-    results: &mut Vec<RankableResult>,
+    results: &mut [RankableResult],
     config: &RankingConfig,
     now: SystemTime,
 ) {

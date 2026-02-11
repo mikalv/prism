@@ -68,6 +68,7 @@ impl MergeStrategy {
 
 /// Result merger
 pub struct ResultMerger {
+    #[allow(dead_code)]
     default_strategy: MergeStrategy,
 }
 

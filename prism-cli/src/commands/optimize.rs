@@ -80,11 +80,7 @@ pub fn run_optimize(data_dir: &Path, collection: &str, gc_only: bool) -> Result<
     let elapsed = start.elapsed();
     let initial_bytes = initial_space.get_bytes();
     let final_bytes = final_space.get_bytes();
-    let saved_bytes = if initial_bytes > final_bytes {
-        initial_bytes - final_bytes
-    } else {
-        0
-    };
+    let saved_bytes = initial_bytes.saturating_sub(final_bytes);
     let pct_saved = if initial_bytes > 0 {
         (saved_bytes as f64 / initial_bytes as f64) * 100.0
     } else {

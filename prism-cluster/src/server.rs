@@ -183,15 +183,15 @@ impl PrismCluster for ClusterHandler {
         let docs: Vec<prism::backends::Document> = docs.into_iter().map(Into::into).collect();
         match server.manager.index(&collection, docs).await {
             Ok(()) => {
-                info!("RPC index OK: collection={}, docs={}", collection, doc_count);
+                info!(
+                    "RPC index OK: collection={}, docs={}",
+                    collection, doc_count
+                );
                 timer.success();
                 Ok(())
             }
             Err(e) => {
-                warn!(
-                    "RPC index ERROR: collection={}, error={}",
-                    collection, e
-                );
+                warn!("RPC index ERROR: collection={}, error={}", collection, e);
                 let err = ClusterError::from(e);
                 timer.error(err.error_type());
                 Err(err)
@@ -313,7 +313,11 @@ impl PrismCluster for ClusterHandler {
 
         // Execute search to find matching documents
         let query: prism::backends::Query = request.query.into();
-        let results = match server.manager.search(&request.collection, query, None).await {
+        let results = match server
+            .manager
+            .search(&request.collection, query, None)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 let err = ClusterError::from(e);
@@ -806,7 +810,7 @@ impl tokio::io::AsyncWrite for QuicBiStream {
     ) -> std::task::Poll<std::io::Result<usize>> {
         std::pin::Pin::new(&mut self.send)
             .poll_write(cx, buf)
-            .map_err(|e| std::io::Error::other(e))
+            .map_err(std::io::Error::other)
     }
 
     fn poll_flush(

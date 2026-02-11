@@ -10,8 +10,7 @@ async fn test_import_creates_importer() {
 
     let _importer = DataImporter::new(input_dir, "http://localhost:8080".to_string());
 
-    // Just verify it constructs successfully
-    assert!(true);
+    // Just verify it constructs successfully (the line above would panic on failure)
 }
 
 #[tokio::test]

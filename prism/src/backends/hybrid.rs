@@ -64,6 +64,7 @@ impl HybridSearchCoordinator {
         }
     }
 
+    #[allow(dead_code)]
     #[tracing::instrument(name = "merge_results", skip(self, text, vector))]
     async fn merge_results(
         &self,

@@ -9,6 +9,7 @@ use std::sync::{Arc, RwLock};
 /// LRU cache entry with access tracking
 #[derive(Clone, Debug)]
 pub(crate) struct LruEntry {
+    #[allow(dead_code)]
     key: PathBuf,
     size: u64,
     last_accessed: Arc<AtomicU64>,
@@ -20,6 +21,7 @@ pub struct LruCache {
     entries: Arc<RwLock<HashMap<PathBuf, Arc<LruEntry>>>>,
     max_size_bytes: u64,
     current_size_bytes: Arc<AtomicU64>,
+    #[allow(dead_code)]
     access_counter: Arc<AtomicU64>,
     stats: Arc<ObjectCacheStats>,
 }
@@ -39,6 +41,7 @@ impl LruCache {
         Arc::clone(&self.stats)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get(&self, key: &PathBuf) -> Option<Arc<LruEntry>> {
         let entries = self.entries.read().ok()?;
 
@@ -53,6 +56,7 @@ impl LruCache {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn put(&self, key: PathBuf, size: u64) -> Option<PathBuf> {
         let mut entries = match self.entries.write() {
             Ok(guard) => guard,
@@ -125,6 +129,7 @@ impl LruCache {
         self.stats.hit_rate()
     }
 
+    #[allow(dead_code)]
     fn evict_lru(
         entries: &mut HashMap<PathBuf, Arc<LruEntry>>,
         current_size: &AtomicU64,

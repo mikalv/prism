@@ -119,7 +119,10 @@ async fn test_search_with_facets() {
         skip_ranking: false,
     };
 
-    let results = manager.search("logs", query, None).await.expect("Search failed");
+    let results = manager
+        .search("logs", query, None)
+        .await
+        .expect("Search failed");
 
     // Should find 2 error documents
     assert_eq!(results.total, 2, "Expected 2 error documents");
@@ -168,7 +171,10 @@ async fn test_search_pagination() {
         skip_ranking: false,
     };
 
-    let results1 = manager.search("logs", query1, None).await.expect("Search failed");
+    let results1 = manager
+        .search("logs", query1, None)
+        .await
+        .expect("Search failed");
     assert_eq!(
         results1.results.len(),
         5,
@@ -191,7 +197,10 @@ async fn test_search_pagination() {
         skip_ranking: false,
     };
 
-    let results2 = manager.search("logs", query2, None).await.expect("Search failed");
+    let results2 = manager
+        .search("logs", query2, None)
+        .await
+        .expect("Search failed");
     assert_eq!(
         results2.results.len(),
         5,
