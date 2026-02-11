@@ -14,6 +14,7 @@ env:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Linux (glibc)
@@ -52,6 +53,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create placeholder UI dist
+        shell: bash
+        run: |
+          mkdir -p websearch-ui/dist
+          echo '<!DOCTYPE html><html><body>placeholder</body></html>' > websearch-ui/dist/index.html
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
