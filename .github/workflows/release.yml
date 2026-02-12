@@ -22,19 +22,16 @@ jobs:
             os: ubuntu-latest
             label: linux-x86_64
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             label: linux-aarch64
-            use-cross: true
 
           # Linux (musl/static)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             label: linux-x86_64-static
-            use-cross: true
           - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             label: linux-aarch64-static
-            use-cross: true
 
           # macOS
           - target: x86_64-apple-darwin
@@ -70,17 +67,19 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Install cross
-        if: matrix.use-cross
-        run: cargo install cross
+      - name: Install musl-tools
+        if: endsWith(matrix.target, '-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Build (cross)
-        if: matrix.use-cross
-        run: cross build --release --target ${{ matrix.target }}
-
-      - name: Build (native)
-        if: "!matrix.use-cross"
+      - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Strip binaries (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          for bin in prism-server prism prism-import; do
+            strip target/${{ matrix.target }}/release/${bin}
+          done
 
       - name: Import code signing certificate
         if: startsWith(matrix.os, 'macos')
