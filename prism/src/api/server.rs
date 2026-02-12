@@ -545,6 +545,36 @@ impl ApiServer {
                 post(crate::api::mnemos_compat::session_init),
             )
             .route("/api/context", post(crate::api::mnemos_compat::context))
+            // Graph API (Issue #41) — sharded graph CRUD and traversal
+            .route(
+                "/collections/:collection/graph/nodes",
+                post(crate::api::routes::add_graph_node),
+            )
+            .route(
+                "/collections/:collection/graph/nodes/:id",
+                get(crate::api::routes::get_graph_node)
+                    .delete(crate::api::routes::remove_graph_node),
+            )
+            .route(
+                "/collections/:collection/graph/edges",
+                post(crate::api::routes::add_graph_edge),
+            )
+            .route(
+                "/collections/:collection/graph/nodes/:id/edges",
+                get(crate::api::routes::get_node_edges),
+            )
+            .route(
+                "/collections/:collection/graph/bfs",
+                post(crate::api::routes::graph_bfs),
+            )
+            .route(
+                "/collections/:collection/graph/shortest-path",
+                post(crate::api::routes::graph_shortest_path),
+            )
+            .route(
+                "/collections/:collection/graph/stats",
+                get(crate::api::routes::graph_stats),
+            )
             .with_state(self.manager.clone());
 
         // MCP SSE routes that use AppState

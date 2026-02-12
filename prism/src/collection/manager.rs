@@ -1,11 +1,12 @@
 use crate::backends::{
     BackendStats, Document, HybridSearchCoordinator, Query, SearchBackend, SearchResults,
-    SearchResultsWithAggs, TextBackend, VectorBackend,
+    SearchResultsWithAggs, ShardedGraphBackend, TextBackend, VectorBackend,
 };
 use crate::ranking::reranker::{RerankOptions, Reranker};
 use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use parking_lot::RwLock;
+use prism_storage::SegmentStorage;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -14,8 +15,10 @@ pub struct CollectionManager {
     schemas: RwLock<HashMap<String, CollectionSchema>>,
     per_collection_backends: RwLock<HashMap<String, Arc<dyn SearchBackend>>>,
     per_collection_rerankers: RwLock<HashMap<String, Arc<dyn Reranker>>>,
+    per_collection_graphs: RwLock<HashMap<String, Arc<ShardedGraphBackend>>>,
     text_backend: Arc<TextBackend>,
     vector_backend: Arc<VectorBackend>,
+    graph_storage: Option<Arc<dyn SegmentStorage>>,
     schemas_dir: PathBuf,
 }
 
@@ -24,6 +27,7 @@ impl CollectionManager {
         schemas_dir: impl AsRef<Path>,
         text_backend: Arc<TextBackend>,
         vector_backend: Arc<VectorBackend>,
+        graph_storage: Option<Arc<dyn SegmentStorage>>,
     ) -> Result<Self> {
         let schemas_dir_path = schemas_dir.as_ref().to_path_buf();
         let loader = SchemaLoader::new(schemas_dir);
@@ -47,6 +51,7 @@ impl CollectionManager {
 
         let mut per_collection_backends = HashMap::new();
         let mut per_collection_rerankers = HashMap::new();
+        let mut per_collection_graphs = HashMap::new();
         for (name, schema) in &schemas {
             let backend = Self::build_backend_for_schema(schema, &text_backend, &vector_backend)?;
             if let Some(b) = backend {
@@ -55,14 +60,20 @@ impl CollectionManager {
             if let Some(reranker) = Self::build_reranker_for_schema(schema) {
                 per_collection_rerankers.insert(name.clone(), reranker);
             }
+            if let Some(ref graph_config) = schema.backends.graph {
+                let graph = ShardedGraphBackend::new(name, graph_config, graph_storage.clone());
+                per_collection_graphs.insert(name.clone(), Arc::new(graph));
+            }
         }
 
         Ok(Self {
             schemas: RwLock::new(schemas),
             per_collection_backends: RwLock::new(per_collection_backends),
             per_collection_rerankers: RwLock::new(per_collection_rerankers),
+            per_collection_graphs: RwLock::new(per_collection_graphs),
             text_backend: text_backend.clone(),
             vector_backend: vector_backend.clone(),
+            graph_storage,
             schemas_dir: schemas_dir_path,
         })
     }
@@ -249,6 +260,16 @@ impl CollectionManager {
             if schema.backends.vector.is_some() {
                 self.vector_backend.initialize(name, schema).await?;
             }
+        }
+
+        // Initialize graph backends
+        let graph_entries: Vec<_> = {
+            let graphs = self.per_collection_graphs.read();
+            graphs.iter().map(|(n, g)| (n.clone(), g.clone())).collect()
+        };
+        for (name, graph) in &graph_entries {
+            graph.initialize().await?;
+            tracing::info!("Initialized graph backend for '{}' ({} shards)", name, graph.num_shards());
         }
 
         // Initialize async rerankers (cross-encoders)
@@ -589,6 +610,7 @@ impl CollectionManager {
         // Remove from manager maps
         self.per_collection_backends.write().remove(name);
         self.per_collection_rerankers.write().remove(name);
+        self.per_collection_graphs.write().remove(name);
         self.schemas.write().remove(name);
 
         // Update gauge
@@ -629,6 +651,15 @@ impl CollectionManager {
         // Insert into manager maps
         if let Some(b) = backend {
             self.per_collection_backends.write().insert(name.clone(), b);
+        }
+        // Build graph backend if configured
+        if let Some(ref graph_config) = schema.backends.graph {
+            let graph = ShardedGraphBackend::new(&name, graph_config, self.graph_storage.clone());
+            graph.initialize().await?;
+            tracing::info!("Initialized graph backend for '{}' ({} shards)", name, graph.num_shards());
+            self.per_collection_graphs
+                .write()
+                .insert(name.clone(), Arc::new(graph));
         }
         // Build reranker if configured
         if let Some(reranker) = Self::build_reranker_for_schema(&schema) {
@@ -677,6 +708,11 @@ impl CollectionManager {
     /// Get a reference to the vector backend (for use by detach/attach operations).
     pub fn vector_backend(&self) -> &Arc<VectorBackend> {
         &self.vector_backend
+    }
+
+    /// Get the graph backend for a collection, if one is configured.
+    pub fn graph_backend(&self, collection: &str) -> Option<Arc<ShardedGraphBackend>> {
+        self.per_collection_graphs.read().get(collection).cloned()
     }
 
     /// Perform hybrid search combining text and vector search results.
@@ -1146,7 +1182,7 @@ backends:
 
         let text_backend = Arc::new(TextBackend::new(&data_dir)?);
         let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
-        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend)?;
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend, None)?;
         manager.initialize().await?;
 
         // Index document
@@ -1253,7 +1289,7 @@ backends:
 
         let text_backend = Arc::new(TextBackend::new(&data_dir)?);
         let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
-        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend)?;
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend, None)?;
         manager.initialize().await?;
 
         // Index documents in both collections
@@ -1342,7 +1378,7 @@ backends:
 
         let text_backend = Arc::new(TextBackend::new(&data_dir)?);
         let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
-        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend)?;
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend, None)?;
         manager.initialize().await?;
 
         // Test pattern expansion

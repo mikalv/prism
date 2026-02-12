@@ -524,7 +524,7 @@ backends:
         let text_backend = Arc::new(TextBackend::new(&data_dir).unwrap());
         let vector_backend = Arc::new(VectorBackend::new(&data_dir).unwrap());
         let manager =
-            Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap());
+            Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap());
         manager.initialize().await.unwrap();
 
         let config_str = r#"

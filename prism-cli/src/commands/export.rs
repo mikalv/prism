@@ -75,7 +75,7 @@ async fn export_portable_collection(
 
     // Create collection manager
     let manager =
-        prism::collection::CollectionManager::new(schemas_dir, text_backend, vector_backend)
+        prism::collection::CollectionManager::new(schemas_dir, text_backend, vector_backend, None)
             .context("Failed to create collection manager")?;
     manager.initialize().await?;
 

@@ -718,6 +718,143 @@ See [Clustering & Federation](../guides/clustering.md) for the full guide.
 
 ---
 
+## Graph
+
+Graph API endpoints require a collection with a `graph` backend configured.
+
+### POST /collections/:collection/graph/nodes
+
+Add a graph node.
+
+**Request:**
+
+```json
+{
+  "id": "node-1",
+  "node_type": "document",
+  "title": "My Node",
+  "payload": { "custom": "data" }
+}
+```
+
+**Response:** `201 Created`
+
+### GET /collections/:collection/graph/nodes/:id
+
+Get a graph node by ID.
+
+**Response:** `200 OK`
+
+```json
+{
+  "id": "node-1",
+  "node_type": "document",
+  "title": "My Node",
+  "payload": { "custom": "data" }
+}
+```
+
+### DELETE /collections/:collection/graph/nodes/:id
+
+Remove a graph node and all its edges.
+
+**Response:** `204 No Content`
+
+### POST /collections/:collection/graph/edges
+
+Add an edge between two nodes.
+
+**Request:**
+
+```json
+{
+  "from": "node-1",
+  "to": "node-2",
+  "edge_type": "references",
+  "weight": 1.0
+}
+```
+
+**Response:** `201 Created`
+
+When `scope: shard` is configured and the two nodes hash to different shards,
+returns `400 Bad Request` with an error message.
+
+### GET /collections/:collection/graph/nodes/:id/edges
+
+Get all outgoing edges from a node.
+
+**Response:** `200 OK`
+
+```json
+[
+  { "from": "node-1", "to": "node-2", "edge_type": "references", "weight": 1.0 }
+]
+```
+
+### POST /collections/:collection/graph/bfs
+
+Breadth-first search traversal.
+
+**Request:**
+
+```json
+{
+  "start": "node-1",
+  "edge_type": "references",
+  "max_depth": 3
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "nodes": ["node-1", "node-2", "node-3"],
+  "count": 3
+}
+```
+
+### POST /collections/:collection/graph/shortest-path
+
+Find the shortest path between two nodes (Dijkstra).
+
+**Request:**
+
+```json
+{
+  "start": "node-1",
+  "target": "node-5",
+  "edge_types": ["references"]
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "path": ["node-1", "node-3", "node-5"],
+  "length": 2
+}
+```
+
+Returns `null` path if no route exists or nodes are on different shards.
+
+### GET /collections/:collection/graph/stats
+
+Get graph statistics.
+
+**Response:** `200 OK`
+
+```json
+{
+  "node_count": 42,
+  "edge_count": 128
+}
+```
+
+---
+
 ## Error responses
 
 All error responses use standard HTTP status codes:

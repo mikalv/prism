@@ -1,5 +1,5 @@
 use crate::api::server::AppState;
-use crate::backends::{Document, HighlightConfig, Query, SearchResult, SearchResults};
+use crate::backends::{Document, GraphEdge, GraphNode, GraphStats, HighlightConfig, Query, SearchResult, SearchResults};
 use crate::collection::CollectionManager;
 use crate::ranking::reranker::{RerankOptions, RerankRequest};
 use crate::ranking::score_function::ScoreFunctionReranker;
@@ -1870,4 +1870,170 @@ pub async fn collection_attach(
         Ok(result) => Ok(Json(result)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
+}
+
+// ============================================================================
+// Graph API (Issue #41) - Sharded graph backend CRUD and traversal
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct BfsRequest {
+    pub start: String,
+    pub edge_type: String,
+    #[serde(default = "default_max_depth")]
+    pub max_depth: usize,
+}
+
+fn default_max_depth() -> usize {
+    3
+}
+
+#[derive(Deserialize)]
+pub struct ShortestPathRequest {
+    pub start: String,
+    pub target: String,
+    #[serde(default)]
+    pub edge_types: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+pub struct BfsResponse {
+    pub nodes: Vec<String>,
+    pub count: usize,
+}
+
+#[derive(Serialize)]
+pub struct ShortestPathResponse {
+    pub path: Option<Vec<String>>,
+    pub length: Option<usize>,
+}
+
+#[derive(Deserialize)]
+pub struct RemoveEdgeRequest {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub edge_type: Option<String>,
+}
+
+/// POST /collections/:collection/graph/nodes
+pub async fn add_graph_node(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(node): Json<GraphNode>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let graph = manager.graph_backend(&collection).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("No graph backend for collection '{}'", collection),
+        )
+    })?;
+    graph
+        .add_node(node)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    Ok(StatusCode::CREATED)
+}
+
+/// GET /collections/:collection/graph/nodes/:id
+pub async fn get_graph_node(
+    Path((collection, id)): Path<(String, String)>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<GraphNode>, StatusCode> {
+    let graph = manager
+        .graph_backend(&collection)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    graph.get_node(&id).map(Json).ok_or(StatusCode::NOT_FOUND)
+}
+
+/// DELETE /collections/:collection/graph/nodes/:id
+pub async fn remove_graph_node(
+    Path((collection, id)): Path<(String, String)>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let graph = manager.graph_backend(&collection).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("No graph backend for collection '{}'", collection),
+        )
+    })?;
+    let removed = graph
+        .remove_node(&id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if removed {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((StatusCode::NOT_FOUND, format!("Node '{}' not found", id)))
+    }
+}
+
+/// POST /collections/:collection/graph/edges
+pub async fn add_graph_edge(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(edge): Json<GraphEdge>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let graph = manager.graph_backend(&collection).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("No graph backend for collection '{}'", collection),
+        )
+    })?;
+    graph
+        .add_edge(edge)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    Ok(StatusCode::CREATED)
+}
+
+/// GET /collections/:collection/graph/nodes/:id/edges
+pub async fn get_node_edges(
+    Path((collection, id)): Path<(String, String)>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<Vec<GraphEdge>>, StatusCode> {
+    let graph = manager
+        .graph_backend(&collection)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(graph.get_edges(&id)))
+}
+
+/// POST /collections/:collection/graph/bfs
+pub async fn graph_bfs(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(request): Json<BfsRequest>,
+) -> Result<Json<BfsResponse>, StatusCode> {
+    let graph = manager
+        .graph_backend(&collection)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let nodes = graph.bfs(&request.start, &request.edge_type, request.max_depth);
+    let count = nodes.len();
+    Ok(Json(BfsResponse { nodes, count }))
+}
+
+/// POST /collections/:collection/graph/shortest-path
+pub async fn graph_shortest_path(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(request): Json<ShortestPathRequest>,
+) -> Result<Json<ShortestPathResponse>, StatusCode> {
+    let graph = manager
+        .graph_backend(&collection)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let edge_types = request.edge_types.as_deref();
+    let path = graph.shortest_path(&request.start, &request.target, edge_types);
+    let length = path.as_ref().map(|p| p.len().saturating_sub(1));
+    Ok(Json(ShortestPathResponse { path, length }))
+}
+
+/// GET /collections/:collection/graph/stats
+pub async fn graph_stats(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<GraphStats>, StatusCode> {
+    let graph = manager
+        .graph_backend(&collection)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(graph.stats()))
 }

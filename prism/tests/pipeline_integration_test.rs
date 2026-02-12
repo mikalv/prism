@@ -24,7 +24,7 @@ async fn setup_server(pipelines_yaml: &[(&str, &str)]) -> (TempDir, String) {
     let text_backend = Arc::new(TextBackend::new(temp.path()).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(temp.path()).unwrap());
     let manager =
-        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap());
+        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap());
 
     let registry = PipelineRegistry::load(&pipelines_dir).unwrap();
     let server = ApiServer::with_pipelines(

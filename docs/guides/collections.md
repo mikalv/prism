@@ -172,11 +172,11 @@ backends:
 ## Graph backend
 
 The graph backend stores relationships between documents for traversal queries.
+It supports sharding to align graph nodes with vector shards for co-located traversal.
 
 ```yaml
 backends:
   graph:
-    path: ./data/graph
     edges:
       - edge_type: references
         from_field: id
@@ -184,7 +184,26 @@ backends:
       - edge_type: authored_by
         from_field: id
         to_field: author_id
+    num_shards: 4        # Number of graph shards (default: 1)
+    scope: shard          # Edge scope: shard (default) or collection
 ```
+
+### Graph sharding
+
+When `num_shards > 1`, graph nodes are distributed across shards using the same
+hash function as the vector backend. This means a document's graph node lives on
+the same shard as its vector embedding.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `num_shards` | 1 | Number of graph shards |
+| `scope` | `shard` | Edge scope: `shard` restricts edges to same-shard nodes |
+
+With `scope: shard`, edges can only connect nodes that hash to the same shard.
+This keeps BFS and shortest-path traversals entirely local to a single shard
+with zero cross-shard overhead. Attempting to add a cross-shard edge returns an error.
+
+Single-shard (`num_shards: 1`) preserves backward compatibility with no restrictions.
 
 ## Automatic embedding generation
 

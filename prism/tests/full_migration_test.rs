@@ -53,7 +53,7 @@ async fn test_full_migration_flow() {
     let text_backend = Arc::new(TextBackend::new(&new_data_dir).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(&new_data_dir).unwrap());
     let manager = Arc::new(
-        CollectionManager::new(&schemas_dir, text_backend.clone(), vector_backend).unwrap(),
+        CollectionManager::new(&schemas_dir, text_backend.clone(), vector_backend, None).unwrap(),
     );
     manager.initialize().await.unwrap();
 

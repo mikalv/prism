@@ -2620,6 +2620,7 @@ dependencies = [
  "prism",
  "prism-cluster",
  "prism-es-compat",
+ "prism-storage",
  "prism-ui",
  "serde",
  "serde_json",

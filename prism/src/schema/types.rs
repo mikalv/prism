@@ -484,10 +484,29 @@ fn default_vector_weight_hybrid() -> f32 {
     0.5
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphScope {
+    #[default]
+    Shard,
+    Collection, // reserved for v2
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphBackendConfig {
+    #[serde(default)]
     pub path: String,
     pub edges: Vec<EdgeTypeConfig>,
+    /// Number of graph shards (default: 1)
+    #[serde(default = "default_graph_num_shards")]
+    pub num_shards: usize,
+    /// Edge scoping (default: shard)
+    #[serde(default)]
+    pub scope: GraphScope,
+}
+
+fn default_graph_num_shards() -> usize {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

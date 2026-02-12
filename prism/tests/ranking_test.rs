@@ -25,7 +25,7 @@ async fn setup_ranking_environment(schema_yaml: &str) -> (TempDir, Arc<Collectio
     let vector_backend =
         Arc::new(VectorBackend::new(&data_dir).expect("Failed to create vector backend"));
     let manager = Arc::new(
-        CollectionManager::new(&schemas_dir, text_backend, vector_backend)
+        CollectionManager::new(&schemas_dir, text_backend, vector_backend, None)
             .expect("Failed to create collection manager"),
     );
     manager

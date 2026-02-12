@@ -21,7 +21,7 @@ async fn setup_server(security: SecurityConfig) -> (TempDir, String) {
     let text_backend = Arc::new(TextBackend::new(temp.path()).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(temp.path()).unwrap());
     let manager =
-        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend).unwrap());
+        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap());
 
     let server = ApiServer::with_security(manager, CorsConfig::default(), security);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

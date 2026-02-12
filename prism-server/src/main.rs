@@ -145,10 +145,16 @@ async fn main() -> Result<()> {
     } else {
         config.schemas_dir()
     };
+    // Create graph storage (uses same data_dir as other backends)
+    let graph_storage: Option<std::sync::Arc<dyn prism_storage::SegmentStorage>> = Some(
+        std::sync::Arc::new(prism_storage::LocalStorage::new(&config.storage.data_dir)),
+    );
+
     let manager = std::sync::Arc::new(prism::collection::CollectionManager::new(
         &schemas_path,
         text_backend,
         vector_backend,
+        graph_storage,
     )?);
     manager.initialize().await?;
 
