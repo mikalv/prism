@@ -243,3 +243,43 @@ backends:
 ```
 
 Use BFS to find all transitive dependencies, or shortest-path to trace dependency chains.
+
+## Merge operations
+
+### Merge shards within a collection
+
+Consolidate all graph shards into shard 0. This enables full graph traversal across all data (BFS and shortest-path work across the entire graph instead of being shard-local):
+
+```bash
+prism collection graph-merge --name knowledge-base --schemas-dir schemas
+```
+
+Output:
+
+```
+Merging graph shards for 'knowledge-base'
+  Before: 1000 nodes, 4500 edges across 4 shards
+  After:  1000 nodes, 4500 edges in shard 0
+  Time:   0.12s
+```
+
+After merging, the graph data persists in shard 0. The collection continues to work normally — new nodes added after the merge will still be routed by hash, but all existing data is in shard 0.
+
+### Merge collections
+
+Combine graph data from multiple collections into a new target collection:
+
+```bash
+prism collection merge \
+  --source col_a --source col_b \
+  --target combined \
+  --schemas-dir schemas
+```
+
+This creates a new schema for the target collection (copied from the first source, with `num_shards: 1`), then imports all nodes and edges from each source. The source collections are not modified.
+
+Requirements:
+
+- At least two source collections
+- All sources must have a graph backend configured
+- Target collection must not already exist

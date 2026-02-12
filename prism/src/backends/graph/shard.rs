@@ -46,7 +46,7 @@ fn default_weight() -> f32 {
 
 /// Internal edge storage (adjacency list entry).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct EdgeEntry {
+pub(crate) struct EdgeEntry {
     to: String,
     edge_type: String,
     weight: f32,
@@ -373,6 +373,42 @@ impl GraphShard {
     pub fn list_nodes(&self) -> Vec<GraphNode> {
         let nodes = self.nodes.read();
         nodes.values().cloned().collect()
+    }
+
+    /// Merge nodes and edges from another source into this shard.
+    /// Duplicate node IDs are overwritten. Edges are appended.
+    pub(crate) async fn merge_from(
+        &self,
+        other_nodes: HashMap<String, GraphNode>,
+        other_edges: HashMap<String, Vec<EdgeEntry>>,
+    ) -> Result<()> {
+        {
+            let mut nodes = self.nodes.write();
+            for (id, node) in other_nodes {
+                nodes.insert(id, node);
+            }
+        }
+        {
+            let mut edges = self.edges.write();
+            for (from, entries) in other_edges {
+                edges.entry(from).or_default().extend(entries);
+            }
+        }
+        self.persist().await
+    }
+
+    /// Export raw nodes and edges (for merge source).
+    pub(crate) fn export_raw(&self) -> (HashMap<String, GraphNode>, HashMap<String, Vec<EdgeEntry>>) {
+        let nodes = self.nodes.read().clone();
+        let edges = self.edges.read().clone();
+        (nodes, edges)
+    }
+
+    /// Clear all nodes and edges from this shard.
+    pub async fn clear(&self) -> Result<()> {
+        self.nodes.write().clear();
+        self.edges.write().clear();
+        self.persist().await
     }
 
     /// List all edges in this shard.

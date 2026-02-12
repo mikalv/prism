@@ -176,6 +176,38 @@ impl ShardedGraphBackend {
         all
     }
 
+    /// Merge all shards into shard 0, clearing other shards.
+    /// After merge, the graph behaves as a single shard.
+    /// Returns (nodes_merged, edges_merged) counts.
+    pub async fn merge_all_shards(&self) -> Result<(usize, usize)> {
+        if self.num_shards <= 1 {
+            let s = self.shards[0].stats();
+            return Ok((s.node_count, s.edge_count));
+        }
+
+        // Collect data from shards 1..N
+        let mut all_nodes = std::collections::HashMap::new();
+        let mut all_edges: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+        for shard in &self.shards[1..] {
+            let (nodes, edges) = shard.export_raw();
+            all_nodes.extend(nodes);
+            for (from, entries) in edges {
+                all_edges.entry(from).or_default().extend(entries);
+            }
+        }
+
+        // Merge into shard 0
+        self.shards[0].merge_from(all_nodes, all_edges).await?;
+
+        // Clear shards 1..N
+        for shard in &self.shards[1..] {
+            shard.clear().await?;
+        }
+
+        let s = self.shards[0].stats();
+        Ok((s.node_count, s.edge_count))
+    }
+
     /// Collection name.
     pub fn collection(&self) -> &str {
         &self.collection

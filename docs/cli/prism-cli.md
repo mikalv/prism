@@ -138,6 +138,53 @@ prism collection attach -i /backups/logs-2025.tar.zst
 prism collection attach -i /backups/logs-2025.tar.zst -t logs-restored
 ```
 
+### collection graph-merge
+
+Merge all graph shards into shard 0 for full graph traversal.
+
+```bash
+prism collection graph-merge --name <NAME> [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --name <NAME>` | required | Collection name |
+| `--schemas-dir <DIR>` | `schemas` | Schemas directory path |
+
+Examples:
+
+```bash
+# Merge all graph shards in a collection
+prism collection graph-merge -n knowledge-base
+
+# With custom schemas directory
+prism collection graph-merge -n knowledge-base --schemas-dir /etc/prism/schemas
+```
+
+### collection merge
+
+Merge multiple collections into a new target collection.
+
+```bash
+prism collection merge --source <NAME> --source <NAME> --target <NAME> [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-s, --source <NAME>` | required (2+) | Source collection names |
+| `-t, --target <NAME>` | required | Target collection name |
+| `--schemas-dir <DIR>` | `schemas` | Schemas directory path |
+
+Examples:
+
+```bash
+# Merge two collections into a new one
+prism collection merge -s col_a -s col_b -t combined
+
+# Merge three collections
+prism collection merge -s tenant_1 -s tenant_2 -s tenant_3 -t all_tenants
+```
+
 ---
 
 ## document

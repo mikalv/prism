@@ -165,6 +165,32 @@ enum CollectionCommands {
         #[arg(long, default_value = "http://localhost:3080")]
         api_url: String,
     },
+
+    /// Merge all graph shards into one (consolidation)
+    GraphMerge {
+        /// Collection name
+        #[arg(short, long)]
+        name: String,
+
+        /// Schemas directory path
+        #[arg(long, default_value = "schemas")]
+        schemas_dir: PathBuf,
+    },
+
+    /// Merge multiple collections into a new target collection
+    Merge {
+        /// Source collection names (at least 2)
+        #[arg(short, long, num_args = 2..)]
+        source: Vec<String>,
+
+        /// Target collection name
+        #[arg(short, long)]
+        target: String,
+
+        /// Schemas directory path
+        #[arg(long, default_value = "schemas")]
+        schemas_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -282,6 +308,16 @@ async fn main() -> Result<()> {
                 api_url,
             } => {
                 commands::run_attach(&api_url, input, target).await?;
+            }
+            CollectionCommands::GraphMerge { name, schemas_dir } => {
+                commands::run_graph_merge(&cli.data_dir, &schemas_dir, &name).await?;
+            }
+            CollectionCommands::Merge {
+                source,
+                target,
+                schemas_dir,
+            } => {
+                commands::run_merge(&cli.data_dir, &schemas_dir, &source, &target).await?;
             }
         },
 
