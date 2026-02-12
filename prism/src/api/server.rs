@@ -10,6 +10,7 @@ use axum::{
     response::sse::{Event, KeepAlive, Sse},
     routing::get,
     routing::post,
+    routing::put,
     Router,
 };
 use futures::stream::Stream;
@@ -486,6 +487,12 @@ impl ApiServer {
             .route(
                 "/admin/collections",
                 get(crate::api::routes::list_collections),
+            )
+            // Collection CRUD API (Issue #76)
+            .route(
+                "/collections/:name",
+                put(crate::api::routes::create_collection)
+                    .delete(crate::api::routes::delete_collection),
             )
             .route("/admin/lint-schemas", get(crate::api::routes::lint_schemas))
             .route("/", get(crate::api::routes::root))

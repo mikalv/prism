@@ -1,6 +1,58 @@
 # Collections & Schema Configuration
 
-A collection in Prism is a named index with a defined schema. Collections are configured through YAML files placed in the `schemas/` directory.
+A collection in Prism is a named index with a defined schema. Collections can be configured through YAML files placed in the `schemas/` directory, or created and deleted at runtime via the HTTP API.
+
+## Creating collections via HTTP API
+
+You can create and delete collections without restarting the server using the REST API. This is the recommended approach for Docker, cloud, and remote deployments.
+
+### Create a collection
+
+```bash
+curl -X PUT http://localhost:3080/collections/my-articles \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "backends": {
+      "text": {
+        "fields": [
+          { "name": "title", "type": "text", "stored": true, "indexed": true },
+          { "name": "content", "type": "text", "stored": true, "indexed": true }
+        ]
+      }
+    }
+  }'
+```
+
+**Response:** `201 Created`
+
+```json
+{
+  "collection": "my-articles",
+  "status": "created",
+  "backends": ["text"]
+}
+```
+
+The collection name is taken from the URL path. The request body is the same schema format used in YAML files (as JSON). The schema is automatically persisted to `schemas/my-articles.yaml` on disk.
+
+Collection names may only contain alphanumeric characters, hyphens, and underscores.
+
+### Delete a collection
+
+```bash
+curl -X DELETE http://localhost:3080/collections/my-articles
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "my-articles",
+  "status": "deleted"
+}
+```
+
+This removes the collection from the running server and deletes the schema file from disk.
 
 ## Schema file structure
 

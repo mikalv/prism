@@ -7,7 +7,7 @@ use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct CollectionManager {
@@ -16,6 +16,7 @@ pub struct CollectionManager {
     per_collection_rerankers: RwLock<HashMap<String, Arc<dyn Reranker>>>,
     text_backend: Arc<TextBackend>,
     vector_backend: Arc<VectorBackend>,
+    schemas_dir: PathBuf,
 }
 
 impl CollectionManager {
@@ -24,6 +25,7 @@ impl CollectionManager {
         text_backend: Arc<TextBackend>,
         vector_backend: Arc<VectorBackend>,
     ) -> Result<Self> {
+        let schemas_dir_path = schemas_dir.as_ref().to_path_buf();
         let loader = SchemaLoader::new(schemas_dir);
         let schemas = loader.load_all()?;
 
@@ -61,6 +63,7 @@ impl CollectionManager {
             per_collection_rerankers: RwLock::new(per_collection_rerankers),
             text_backend: text_backend.clone(),
             vector_backend: vector_backend.clone(),
+            schemas_dir: schemas_dir_path,
         })
     }
 
@@ -522,6 +525,49 @@ impl CollectionManager {
     // ========================================================================
     // Runtime collection management (Issue #57)
     // ========================================================================
+
+    /// Check if a collection exists
+    pub fn collection_exists(&self, name: &str) -> bool {
+        self.schemas.read().contains_key(name)
+    }
+
+    /// Validate collection name — alphanumeric, hyphens, underscores only
+    pub fn validate_collection_name(name: &str) -> Result<()> {
+        if name.is_empty() {
+            return Err(Error::Schema("Collection name cannot be empty".into()));
+        }
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(Error::Schema(format!(
+                "Collection name '{}' contains invalid characters (use alphanumeric, hyphens, underscores)",
+                name
+            )));
+        }
+        Ok(())
+    }
+
+    /// Persist schema to disk as YAML (atomic: write .tmp then rename)
+    pub fn persist_schema(&self, schema: &CollectionSchema) -> Result<PathBuf> {
+        let dir = &self.schemas_dir;
+        std::fs::create_dir_all(dir)?;
+        let path = dir.join(format!("{}.yaml", schema.collection));
+        let tmp_path = dir.join(format!("{}.yaml.tmp", schema.collection));
+        let yaml = serde_yaml::to_string(schema)?;
+        std::fs::write(&tmp_path, &yaml)?;
+        std::fs::rename(&tmp_path, &path)?;
+        Ok(path)
+    }
+
+    /// Remove schema file from disk
+    pub fn remove_schema_file(&self, name: &str) -> Result<()> {
+        let path = self.schemas_dir.join(format!("{name}.yaml"));
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        Ok(())
+    }
 
     /// Remove a collection from the running server.
     ///

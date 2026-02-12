@@ -412,6 +412,8 @@ pub struct CollectionsList {
     pub collections: Vec<String>,
 }
 
+use crate::schema::CollectionSchema;
+
 pub async fn list_collections(
     State(manager): State<Arc<CollectionManager>>,
 ) -> Json<CollectionsList> {
@@ -425,6 +427,126 @@ pub async fn lint_schemas(
     let issues = manager.lint_schemas();
     let json = serde_json::to_value(&issues).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json))
+}
+
+// ============================================================================
+// Collection CRUD API (Issue #76)
+// ============================================================================
+
+#[derive(Serialize)]
+pub struct CreateCollectionResponse {
+    pub collection: String,
+    pub status: String,
+    pub backends: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteCollectionQuery {
+    #[serde(default)]
+    pub delete_data: bool,
+}
+
+/// PUT /collections/:name - Create a new collection
+#[tracing::instrument(
+    name = "create_collection",
+    skip(manager, schema),
+    fields(collection = %name)
+)]
+pub async fn create_collection(
+    Path(name): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(mut schema): Json<CollectionSchema>,
+) -> Result<(StatusCode, Json<CreateCollectionResponse>), (StatusCode, Json<serde_json::Value>)> {
+    // Set collection name from URL path
+    schema.collection = name.clone();
+
+    // Validate name
+    if let Err(e) = CollectionManager::validate_collection_name(&name) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ));
+    }
+
+    // Check if already exists
+    if manager.collection_exists(&name) {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": format!("Collection already exists: {}", name) })),
+        ));
+    }
+
+    // Determine which backends are configured
+    let mut backends = Vec::new();
+    if schema.backends.text.is_some() {
+        backends.push("text".to_string());
+    }
+    if schema.backends.vector.is_some() {
+        backends.push("vector".to_string());
+    }
+
+    // Initialize the collection
+    manager.add_collection(schema.clone()).await.map_err(|e| {
+        tracing::error!("Failed to add collection '{}': {:?}", name, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+    })?;
+
+    // Persist schema to disk (best-effort — don't fail the request)
+    if let Err(e) = manager.persist_schema(&schema) {
+        tracing::warn!(
+            "Collection '{}' created but schema file not persisted: {}",
+            name,
+            e
+        );
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateCollectionResponse {
+            collection: name,
+            status: "created".to_string(),
+            backends,
+        }),
+    ))
+}
+
+/// DELETE /collections/:name - Delete a collection
+#[tracing::instrument(
+    name = "delete_collection",
+    skip(manager, params),
+    fields(collection = %name)
+)]
+pub async fn delete_collection(
+    Path(name): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    axum::extract::Query(params): axum::extract::Query<DeleteCollectionQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let _ = params.delete_data; // reserved for future use
+
+    // Remove from running server
+    manager.remove_collection(&name).await.map_err(|e| {
+        let status = match &e {
+            crate::Error::CollectionNotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(serde_json::json!({ "error": e.to_string() })))
+    })?;
+
+    // Remove schema file from disk (best-effort)
+    if let Err(e) = manager.remove_schema_file(&name) {
+        tracing::warn!(
+            "Collection '{}' removed but schema file not deleted: {}",
+            name,
+            e
+        );
+    }
+
+    Ok(Json(
+        serde_json::json!({ "collection": name, "status": "deleted" }),
+    ))
 }
 
 pub async fn health() -> StatusCode {

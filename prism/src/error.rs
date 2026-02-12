@@ -11,6 +11,9 @@ pub enum Error {
     #[error("Collection not found: {0}")]
     CollectionNotFound(String),
 
+    #[error("Collection already exists: {0}")]
+    CollectionAlreadyExists(String),
+
     #[error("Invalid query: {0}")]
     InvalidQuery(String),
 

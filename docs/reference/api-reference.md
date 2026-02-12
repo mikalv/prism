@@ -501,6 +501,69 @@ List all collections.
 
 ---
 
+### PUT /collections/:name
+
+Create a new collection. The collection name is taken from the URL path.
+
+**Request:**
+
+```json
+{
+  "backends": {
+    "text": {
+      "fields": [
+        { "name": "title", "type": "text", "stored": true, "indexed": true },
+        { "name": "content", "type": "text", "stored": true, "indexed": true }
+      ]
+    }
+  }
+}
+```
+
+The request body accepts the same schema format as YAML schema files (in JSON). The `collection` field in the body is ignored — the name from the URL path is used.
+
+**Response:** `201 Created`
+
+```json
+{
+  "collection": "my-index",
+  "status": "created",
+  "backends": ["text"]
+}
+```
+
+**Errors:**
+
+- `400` — Invalid collection name (must be alphanumeric, hyphens, underscores)
+- `409` — Collection already exists
+- `500` — Backend initialization error
+
+---
+
+### DELETE /collections/:name
+
+Delete a collection and remove its schema file.
+
+**Query parameters:**
+
+- `delete_data` (boolean, default `false`) — Reserved for future use
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "my-index",
+  "status": "deleted"
+}
+```
+
+**Errors:**
+
+- `404` — Collection not found
+- `500` — Internal error
+
+---
+
 ### GET /collections/:collection/schema
 
 Get collection schema.
@@ -663,6 +726,7 @@ All error responses use standard HTTP status codes:
 |------|---------|
 | `400` | Bad request (invalid query syntax, missing required field) |
 | `404` | Collection or document not found |
+| `409` | Conflict (collection already exists) |
 | `500` | Internal server error |
 
 Error bodies vary by endpoint but typically include a message string.
