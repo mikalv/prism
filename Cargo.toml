@@ -3,7 +3,7 @@ resolver = "2"
 members = ["prism", "prism-server", "prism-cli", "prism-storage", "prism-importer", "prism-cluster", "prism-es-compat", "prism-ui", "prism-treesitter", "xtask"]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 license = "MIT"
 authors = ["mikalv"]

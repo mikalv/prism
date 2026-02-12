@@ -2466,7 +2466,7 @@ dependencies = [
 
 [[package]]
 name = "prism"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2523,7 +2523,7 @@ dependencies = [
 
 [[package]]
 name = "prism-cli"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2541,7 +2541,7 @@ dependencies = [
 
 [[package]]
 name = "prism-cluster"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2567,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "prism-es-compat"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -2585,7 +2585,7 @@ dependencies = [
 
 [[package]]
 name = "prism-importer"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2612,7 +2612,7 @@ dependencies = [
 
 [[package]]
 name = "prism-server"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2633,7 +2633,7 @@ dependencies = [
 
 [[package]]
 name = "prism-storage"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aes-gcm",
  "async-recursion",
@@ -2656,7 +2656,7 @@ dependencies = [
 
 [[package]]
 name = "prism-treesitter"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "tantivy",
  "tree-sitter",
@@ -2680,7 +2680,7 @@ dependencies = [
 
 [[package]]
 name = "prism-ui"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "axum",
  "mime_guess",
