@@ -33,6 +33,7 @@ graph TD
             SRCH[Search]
             VEC[Vector Search]
             HYB[Hybrid Search]
+            GRF[Graph Search]
             AGG[Aggregations]
         end
     end
@@ -69,6 +70,7 @@ graph TD
 - [Search](guides/search.md) — Query syntax, filtering, pagination
 - [Vector Search](guides/vector-search.md) — Embeddings, HNSW configuration
 - [Hybrid Search](guides/hybrid-search.md) — Combining text and vector
+- [Graph Search](guides/graph-search.md) — Nodes, edges, BFS, shortest-path
 - [Aggregations](guides/aggregations.md) — Metrics, histograms, facets
 - [Highlighting](guides/highlighting.md) — Search result snippets
 - [Suggestions](guides/suggestions.md) — Autocomplete
