@@ -1,0 +1,25 @@
+# Maintainer: mikalv <spam@mux.rs>
+pkgname=prismsearch
+pkgver=0.6.2
+pkgrel=1
+pkgdesc='Hybrid search engine combining full-text and vector search for AI/RAG applications'
+arch=('x86_64' 'aarch64')
+url='https://github.com/mikalv/prism'
+license=('MIT')
+depends=('gcc-libs')
+makedepends=('cargo' 'rust')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/mikalv/prism/archive/v${pkgver}.tar.gz")
+sha256sums=('371cb05d8267653c866ed8e2f578b78d7c81a02289e3023ae2395c6bcba244a5')
+
+build() {
+  cd "prism-${pkgver}"
+  cargo build --release --workspace
+}
+
+package() {
+  cd "prism-${pkgver}"
+  install -Dm755 target/release/prism-server "${pkgdir}/usr/bin/prism-server"
+  install -Dm755 target/release/prism "${pkgdir}/usr/bin/prism"
+  install -Dm755 target/release/prism-import "${pkgdir}/usr/bin/prism-import"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

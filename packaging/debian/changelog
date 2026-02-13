@@ -1,0 +1,7 @@
+prismsearch (0.6.2-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+  * Hybrid search engine combining full-text and vector search.
+  * Includes prism-server, prism CLI, and prism-import binaries.
+
+ -- mikalv <spam@mux.rs>  Thu, 13 Feb 2026 00:00:00 +0000

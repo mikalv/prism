@@ -173,6 +173,78 @@ jobs:
             prism-*.tar.gz
             prism-*.zip
 
+  packages:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux x86_64 archive
+        uses: actions/download-artifact@v4
+        with:
+          name: archive-linux-x86_64
+
+      - name: Extract version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build DEB package
+        run: |
+          mkdir -p deb/usr/bin deb/DEBIAN
+          tar xzf prism-${GITHUB_REF_NAME}-linux-x86_64.tar.gz
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server deb/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism deb/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import deb/usr/bin/
+          cat > deb/DEBIAN/control <<EOF
+          Package: prismsearch
+          Version: ${VERSION}
+          Architecture: amd64
+          Maintainer: mikalv <spam@mux.rs>
+          Description: Hybrid search engine combining full-text and vector search for AI/RAG applications
+          EOF
+          # Remove leading spaces from heredoc
+          sed -i 's/^          //' deb/DEBIAN/control
+          dpkg-deb --build deb "prismsearch_${VERSION}_amd64.deb"
+
+      - name: Build RPM package
+        run: |
+          sudo apt-get update && sudo apt-get install -y rpm
+          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cat > rpmbuild/SPECS/prismsearch.spec <<EOF
+          Name: prismsearch
+          Version: ${VERSION}
+          Release: 1
+          Summary: Hybrid search engine for AI/RAG applications
+          License: MIT
+          URL: https://github.com/mikalv/prism
+          %description
+          Prism is a hybrid search engine combining full-text and vector search.
+          %files
+          /usr/bin/prism-server
+          /usr/bin/prism
+          /usr/bin/prism-import
+          EOF
+          sed -i 's/^          //' rpmbuild/SPECS/prismsearch.spec
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/prismsearch.spec
+          cp rpmbuild/RPMS/x86_64/prismsearch-${VERSION}-1.x86_64.rpm .
+
+      - name: Upload DEB to pkg42
+        run: |
+          curl -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.PKG42_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@prismsearch_${VERSION}_amd64.deb" \
+            "https://pkg42.dev/deb/stable/main/amd64/upload?file=prismsearch_${VERSION}_amd64.deb&meta[Package]=prismsearch&meta[Version]=${VERSION}"
+
+      - name: Upload RPM to pkg42
+        run: |
+          curl -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.PKG42_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@prismsearch-${VERSION}-1.x86_64.rpm" \
+            "https://pkg42.dev/rpm/stable/x86_64/upload"
+
   docker:
     runs-on: ubuntu-latest
     steps:

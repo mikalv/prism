@@ -1,0 +1,15 @@
+pkgbase = prismsearch
+	pkgdesc = Hybrid search engine combining full-text and vector search for AI/RAG applications
+	pkgver = 0.6.2
+	pkgrel = 1
+	url = https://github.com/mikalv/prism
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = cargo
+	makedepends = rust
+	depends = gcc-libs
+	source = prismsearch-0.6.2.tar.gz::https://github.com/mikalv/prism/archive/v0.6.2.tar.gz
+	sha256sums = 371cb05d8267653c866ed8e2f578b78d7c81a02289e3023ae2395c6bcba244a5
+
+pkgname = prismsearch

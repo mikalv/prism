@@ -1,0 +1,21 @@
+Source: prismsearch
+Section: database
+Priority: optional
+Maintainer: mikalv <spam@mux.rs>
+Build-Depends: debhelper-compat (= 13), cargo, rustc (>= 1.75)
+Standards-Version: 4.6.2
+Homepage: https://github.com/mikalv/prism
+Vcs-Browser: https://github.com/mikalv/prism
+Vcs-Git: https://github.com/mikalv/prism.git
+Rules-Requires-Root: no
+
+Package: prismsearch
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Hybrid search engine for AI/RAG applications
+ Prism is a hybrid search engine combining full-text search (via Tantivy)
+ and vector search (HNSW) with support for embedding providers, pipelines,
+ and MCP protocol integration.
+ .
+ Includes prism-server (HTTP API), prism (CLI), and prism-import (bulk
+ data importer).

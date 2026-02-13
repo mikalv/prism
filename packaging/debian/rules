@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --workspace
+
+override_dh_auto_install:
+	install -Dm755 target/release/prism-server $(DESTDIR)/usr/bin/prism-server
+	install -Dm755 target/release/prism $(DESTDIR)/usr/bin/prism
+	install -Dm755 target/release/prism-import $(DESTDIR)/usr/bin/prism-import
+
+override_dh_auto_test:
+	# Tests require network access and runtime dependencies; skip in build
