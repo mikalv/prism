@@ -10,6 +10,6 @@ pkgbase = prismsearch
 	makedepends = rust
 	depends = gcc-libs
 	source = prismsearch-0.6.2.tar.gz::https://github.com/mikalv/prism/archive/v0.6.2.tar.gz
-	sha256sums = 371cb05d8267653c866ed8e2f578b78d7c81a02289e3023ae2395c6bcba244a5
+	sha256sums = 54b513d9a3c655d22f59a31ec401bb87e7d3ac9aa3316aee470fcdb6643bfc77
 
 pkgname = prismsearch

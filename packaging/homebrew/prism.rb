@@ -7,20 +7,20 @@ class Prism < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/mikalv/prism/releases/download/v#{version}/prism-v#{version}-darwin-aarch64.tar.gz"
-      sha256 "1b9925c27eee3a484948f2faf618e66ecc954f5195d0f58db3d4a5884f133c8e"
+      sha256 "4feb65c12c17f9bc03a7ee6952a4ee4d39e8cbe7d51c72c083fed0c8217e3a5e"
     else
       url "https://github.com/mikalv/prism/releases/download/v#{version}/prism-v#{version}-darwin-x86_64.tar.gz"
-      sha256 "5d462f4340d00f01b1d95688e35bc17172ed1b3427b0476f739dfec2c431050a"
+      sha256 "d09a2829e5b7e3aa33c8242bb6f83c5f849680181216256671d71034188cc6ee"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
       url "https://github.com/mikalv/prism/releases/download/v#{version}/prism-v#{version}-linux-aarch64-static.tar.gz"
-      sha256 "b8ec6a02ee546cb5957a0dafa41b83451390bafadb7dd841250cfa4aec787f9f"
+      sha256 "3c4109292029b269168cd72eb4e9a2d32b4ff7e6ef5dd8625f28354f7260ba8e"
     else
       url "https://github.com/mikalv/prism/releases/download/v#{version}/prism-v#{version}-linux-x86_64-static.tar.gz"
-      sha256 "300c0103f8d7d04b3015cb7433a1e3c356bbc028c99458f542b01a4d5fed670e"
+      sha256 "672500a943c702a9d153c7f4aff09540af402f6d63ff96cec61a9652799220ed"
     end
   end
 
