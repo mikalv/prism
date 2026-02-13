@@ -235,7 +235,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.PKG42_TOKEN }}" \
             -H "Content-Type: application/octet-stream" \
             --data-binary "@prismsearch_${VERSION}_amd64.deb" \
-            "https://pkg42.dev/deb/stable/main/amd64/upload?file=prismsearch_${VERSION}_amd64.deb&meta[Package]=prismsearch&meta[Version]=${VERSION}"
+            --url "https://pkg42.dev/deb/stable/main/amd64/upload?file=prismsearch_${VERSION}_amd64.deb&meta%5BPackage%5D=prismsearch&meta%5BVersion%5D=${VERSION}"
 
       - name: Upload RPM to pkg42
         run: |
