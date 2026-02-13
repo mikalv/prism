@@ -34,6 +34,7 @@ RUN mkdir -p prism/src prism-server/src prism-cli/src prism-storage/src prism-cl
     echo "fn main() {}" > prism-cli/src/main.rs && \
     echo "" > prism-storage/src/lib.rs && \
     echo "" > prism-cluster/src/lib.rs && \
+    echo "" > prism-importer/src/lib.rs && \
     echo "fn main() {}" > prism-importer/src/main.rs && \
     echo "" > prism-es-compat/src/lib.rs && \
     echo "" > prism-ui/src/lib.rs && \
@@ -45,7 +46,7 @@ ARG FEATURES=""
 
 # Build dependencies only
 RUN cargo build --release --workspace && \
-    rm -rf prism/src prism-server/src prism-cli/src prism-storage/src prism-cluster/src prism-es-compat/src prism-ui/src prism-treesitter/src xtask/src
+    rm -rf prism/src prism-server/src prism-cli/src prism-storage/src prism-cluster/src prism-importer/src prism-es-compat/src prism-ui/src prism-treesitter/src xtask/src
 
 # Copy actual source
 COPY prism/src prism/src
@@ -61,7 +62,7 @@ COPY xtask/src xtask/src
 COPY prism/tests prism/tests
 
 # Touch source files to invalidate cache and rebuild
-RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs prism-storage/src/lib.rs prism-cluster/src/lib.rs prism-importer/src/main.rs prism-es-compat/src/lib.rs prism-ui/src/lib.rs prism-treesitter/src/lib.rs xtask/src/main.rs
+RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs prism-storage/src/lib.rs prism-cluster/src/lib.rs prism-importer/src/lib.rs prism-importer/src/main.rs prism-es-compat/src/lib.rs prism-ui/src/lib.rs prism-treesitter/src/lib.rs xtask/src/main.rs
 
 # Build release binaries (with optional features)
 RUN if [ -n "$FEATURES" ]; then \
