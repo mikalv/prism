@@ -2,6 +2,44 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.2] - 2026-02-13
+
+### Highlights
+
+crates.io publishing as `prismsearch`, macOS code signing, native ARM builds, graph merge CLI.
+
+### Graph
+
+- **Graph Shard Merge CLI** ([#41](https://github.com/mikalv/prism/issues/41)) — `prism collection graph-merge` consolidates all graph shards into shard 0 for full cross-shard traversal
+- **Collection Merge CLI** ([#41](https://github.com/mikalv/prism/issues/41)) — `prism collection merge` combines graph data from multiple collections into a new target
+- **Sharded Graph Backend with HTTP API** ([#41](https://github.com/mikalv/prism/issues/41)) — distributes graph nodes across shards, BFS/shortest-path, full CRUD via REST
+
+### Server & API
+
+- **Create/Delete Collection Endpoints** ([#76](https://github.com/mikalv/prism/issues/76)) — runtime collection management via `POST /collections` and `DELETE /collections/:name`
+
+### Packaging & CI
+
+- **crates.io publishing** — all crates renamed to `prismsearch-*` (Rust import paths unchanged)
+- **macOS code signing** — binaries signed with hardened runtime via Apple Developer certificate
+- **Native ARM builds** — switched from cross-compilation to `ubuntu-24.04-arm` runners
+- **Binary stripping** — Linux binaries stripped for smaller release archives
+
+### Fixes
+
+- ES-compat: fix axum 0.7 path param syntax for index routes
+
+### Documentation
+
+- Graph search feature guide with sharding, API reference, and merge operations
+- Updated CLI reference with graph-merge and merge commands
+
+### Breaking Changes
+
+None — backwards compatible with v0.6.0.
+
+---
+
 ## [0.6.1] - 2026-02-12
 
 ### Highlights

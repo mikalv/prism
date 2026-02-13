@@ -14,7 +14,7 @@ name = "prism-import"
 path = "src/main.rs"
 
 [dependencies]
-prism = { path = "../prism", package = "prismsearch", version = "0.6.1" }
+prism = { path = "../prism", package = "prismsearch", version = "0.6.2" }
 reqwest = { workspace = true, features = ["json", "stream"] }
 tokio = { workspace = true }
 clap = { workspace = true }
