@@ -268,7 +268,7 @@ impl HealthChecker {
         }
     }
 
-    /// Check a single node with heartbeat (ping)
+    /// Check a single node with heartbeat
     async fn check_node(&self, node_id: &str, address: &str) {
         let start = Instant::now();
 
@@ -282,16 +282,37 @@ impl HealthChecker {
             }
         };
 
-        // Send ping
-        match client.ping(address).await {
-            Ok(_) => {
+        // Send heartbeat (provides version info) with fallback to ping
+        match client.heartbeat(address).await {
+            Ok(response) => {
                 let latency_ms = start.elapsed().as_millis() as u64;
                 self.record_heartbeat(node_id, latency_ms);
-                debug!("Heartbeat from {} in {}ms", node_id, latency_ms);
+
+                // Propagate version info to cluster state
+                self.cluster_state.update_node_version(
+                    node_id,
+                    response.protocol_version,
+                    response.min_supported_version,
+                );
+
+                debug!(
+                    "Heartbeat from {} in {}ms (proto v{})",
+                    node_id, latency_ms, response.protocol_version
+                );
             }
-            Err(e) => {
-                debug!("Heartbeat failed for {}: {}", node_id, e);
-                self.record_missed_heartbeat(node_id);
+            Err(_) => {
+                // Fallback: try ping for backward compat with old nodes
+                match client.ping(address).await {
+                    Ok(_) => {
+                        let latency_ms = start.elapsed().as_millis() as u64;
+                        self.record_heartbeat(node_id, latency_ms);
+                        debug!("Heartbeat (ping) from {} in {}ms", node_id, latency_ms);
+                    }
+                    Err(e) => {
+                        debug!("Heartbeat failed for {}: {}", node_id, e);
+                        self.record_missed_heartbeat(node_id);
+                    }
+                }
             }
         }
     }
@@ -535,6 +556,7 @@ mod tests {
             disk_used_bytes: 0,
             disk_total_bytes: 0,
             index_size_bytes: 0,
+            draining: false,
         };
         cluster_state.register_node(node_info);
 

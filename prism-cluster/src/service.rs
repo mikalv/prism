@@ -73,6 +73,16 @@ pub trait PrismCluster {
     async fn heartbeat() -> RpcHeartbeatResponse;
 
     // ========================================
+    // Node Drain (Rolling Upgrades)
+    // ========================================
+
+    /// Drain this node - stop routing new queries to it
+    async fn drain_node() -> Result<bool, ClusterError>;
+
+    /// Undrain this node - resume routing queries to it
+    async fn undrain_node() -> Result<bool, ClusterError>;
+
+    // ========================================
     // Shard Management
     // ========================================
 

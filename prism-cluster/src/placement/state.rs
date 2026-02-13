@@ -22,6 +22,18 @@ pub struct NodeState {
 
     /// Node version
     pub version: String,
+
+    /// Protocol version this node speaks
+    #[serde(default)]
+    pub protocol_version: u32,
+
+    /// Minimum protocol version this node supports
+    #[serde(default)]
+    pub min_supported_version: u32,
+
+    /// Whether this node is draining (not accepting new queries)
+    #[serde(default)]
+    pub draining: bool,
 }
 
 impl NodeState {
@@ -32,6 +44,9 @@ impl NodeState {
             last_heartbeat: 0,
             reachable: true,
             version: String::new(),
+            protocol_version: 0,
+            min_supported_version: 0,
+            draining: false,
         }
     }
 
@@ -158,6 +173,51 @@ impl ClusterState {
             .filter(|n| n.is_healthy(self.heartbeat_timeout_secs))
             .map(|n| n.info.clone())
             .collect()
+    }
+
+    /// Get all available nodes (healthy AND not draining)
+    pub fn get_available_nodes(&self) -> Vec<NodeInfo> {
+        self.nodes
+            .read()
+            .values()
+            .filter(|n| n.is_healthy(self.heartbeat_timeout_secs) && !n.draining)
+            .map(|n| n.info.clone())
+            .collect()
+    }
+
+    /// Drain a node (stop routing new queries to it)
+    pub fn drain_node(&self, node_id: &str) -> bool {
+        if let Some(node) = self.nodes.write().get_mut(node_id) {
+            node.draining = true;
+            node.info.draining = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Undrain a node (resume routing queries to it)
+    pub fn undrain_node(&self, node_id: &str) -> bool {
+        if let Some(node) = self.nodes.write().get_mut(node_id) {
+            node.draining = false;
+            node.info.draining = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update protocol version info for a node
+    pub fn update_node_version(
+        &self,
+        node_id: &str,
+        protocol_version: u32,
+        min_supported: u32,
+    ) {
+        if let Some(node) = self.nodes.write().get_mut(node_id) {
+            node.protocol_version = protocol_version;
+            node.min_supported_version = min_supported;
+        }
     }
 
     /// Get a specific node
@@ -361,6 +421,7 @@ mod tests {
             disk_used_bytes: 0,
             disk_total_bytes: 100_000_000_000,
             index_size_bytes: 0,
+            draining: false,
         }
     }
 
@@ -437,5 +498,56 @@ mod tests {
 
         assert_eq!(new_state.node_count(), 1);
         assert!(new_state.get_shard("test-shard-0").is_some());
+    }
+
+    #[test]
+    fn test_drain_undrain_node() {
+        let state = ClusterState::with_heartbeat_timeout(3600);
+
+        state.register_node(make_node_info("node-1", "zone-a"));
+        state.register_node(make_node_info("node-2", "zone-b"));
+
+        // Initially not draining
+        let node = state.get_node("node-1").unwrap();
+        assert!(!node.draining);
+
+        // Drain node-1
+        assert!(state.drain_node("node-1"));
+        let node = state.get_node("node-1").unwrap();
+        assert!(node.draining);
+        assert!(node.info.draining);
+
+        // Available nodes should exclude draining
+        let available = state.get_available_nodes();
+        assert_eq!(available.len(), 1);
+        assert_eq!(available[0].node_id, "node-2");
+
+        // Healthy nodes still includes draining
+        let healthy = state.get_healthy_nodes();
+        assert_eq!(healthy.len(), 2);
+
+        // Undrain
+        assert!(state.undrain_node("node-1"));
+        let available = state.get_available_nodes();
+        assert_eq!(available.len(), 2);
+
+        // Drain nonexistent node returns false
+        assert!(!state.drain_node("nonexistent"));
+    }
+
+    #[test]
+    fn test_update_node_version() {
+        let state = ClusterState::new();
+        state.register_node(make_node_info("node-1", "zone-a"));
+
+        // Initially version 0
+        let node = state.get_node("node-1").unwrap();
+        assert_eq!(node.protocol_version, 0);
+
+        // Update version
+        state.update_node_version("node-1", 2, 1);
+        let node = state.get_node("node-1").unwrap();
+        assert_eq!(node.protocol_version, 2);
+        assert_eq!(node.min_supported_version, 1);
     }
 }

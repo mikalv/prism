@@ -449,6 +449,11 @@ impl PrismCluster for ClusterHandler {
     async fn node_info(self, _ctx: Context) -> NodeInfo {
         let timer = RpcHandlerTimer::new("node_info");
         let server = self.server.read().await;
+        let draining = server
+            .cluster_state
+            .get_node(&server.config.node_id)
+            .map(|n| n.draining)
+            .unwrap_or(false);
         timer.success();
         NodeInfo {
             node_id: server.config.node_id.clone(),
@@ -456,6 +461,9 @@ impl PrismCluster for ClusterHandler {
             collections: server.manager.list_collections(),
             uptime_secs: server.start_time.elapsed().as_secs(),
             healthy: true,
+            protocol_version: server.config.protocol_version,
+            min_supported_version: server.config.min_supported_version,
+            draining,
         }
     }
 
@@ -498,6 +506,7 @@ impl PrismCluster for ClusterHandler {
                     last_heartbeat: Some(n.last_heartbeat),
                     missed_heartbeats: 0, // Would need to track this
                     last_latency_ms: None,
+                    draining: n.draining,
                 }
             })
             .collect();
@@ -531,7 +540,37 @@ impl PrismCluster for ClusterHandler {
             version: env!("CARGO_PKG_VERSION").to_string(),
             uptime_secs: server.start_time.elapsed().as_secs(),
             timestamp,
+            protocol_version: server.config.protocol_version,
+            min_supported_version: server.config.min_supported_version,
         }
+    }
+
+    async fn drain_node(self, _ctx: Context) -> Result<bool, ClusterError> {
+        let timer = RpcHandlerTimer::new("drain_node");
+        let server = self.server.read().await;
+        let node_id = server.config.node_id.clone();
+        let result = server.cluster_state.drain_node(&node_id);
+        if result {
+            info!("Node {} is now draining", node_id);
+        } else {
+            warn!("Failed to drain node {} (not found in cluster state)", node_id);
+        }
+        timer.success();
+        Ok(result)
+    }
+
+    async fn undrain_node(self, _ctx: Context) -> Result<bool, ClusterError> {
+        let timer = RpcHandlerTimer::new("undrain_node");
+        let server = self.server.read().await;
+        let node_id = server.config.node_id.clone();
+        let result = server.cluster_state.undrain_node(&node_id);
+        if result {
+            info!("Node {} is no longer draining", node_id);
+        } else {
+            warn!("Failed to undrain node {} (not found in cluster state)", node_id);
+        }
+        timer.success();
+        Ok(result)
     }
 
     // ========================================

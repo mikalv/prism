@@ -23,6 +23,13 @@ use tarpc::client::Config as TarpcConfig;
 use tarpc::context;
 use tracing::{debug, info, warn};
 
+/// Cached protocol version info for a remote node
+#[derive(Debug, Clone)]
+struct NodeVersionInfo {
+    protocol_version: u32,
+    min_supported_version: u32,
+}
+
 /// Pooled QUIC connection (long-lived, multiplexed)
 struct PooledConnection {
     connection: quinn::Connection,
@@ -35,6 +42,7 @@ pub struct ClusterClient {
     config: ClusterConfig,
     endpoint: quinn::Endpoint,
     connections: Arc<RwLock<HashMap<SocketAddr, PooledConnection>>>,
+    version_cache: Arc<RwLock<HashMap<SocketAddr, NodeVersionInfo>>>,
 }
 
 impl ClusterClient {
@@ -46,6 +54,7 @@ impl ClusterClient {
             config,
             endpoint,
             connections: Arc::new(RwLock::new(HashMap::new())),
+            version_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -477,6 +486,86 @@ impl ClusterClient {
                 timer.error(e.error_type());
                 Err(e)
             }
+        }
+    }
+
+    /// Send heartbeat to a remote node and return the response
+    pub async fn heartbeat(&self, addr: &str) -> Result<RpcHeartbeatResponse> {
+        let timer = RpcTimer::new("heartbeat", addr);
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
+        let response = client
+            .heartbeat(self.context())
+            .await
+            .map_err(|e| ClusterError::Transport(e.to_string()))?;
+
+        // Cache the version info
+        self.record_node_version(sock_addr, response.protocol_version, response.min_supported_version);
+
+        timer.success();
+        Ok(response)
+    }
+
+    /// Drain a remote node (stop routing queries to it)
+    pub async fn drain_node(&self, addr: &str) -> Result<bool> {
+        let timer = RpcTimer::new("drain_node", addr);
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
+        match client
+            .drain_node(self.context())
+            .await
+            .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(result) => {
+                timer.success();
+                Ok(result)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
+    }
+
+    /// Undrain a remote node (resume routing queries to it)
+    pub async fn undrain_node(&self, addr: &str) -> Result<bool> {
+        let timer = RpcTimer::new("undrain_node", addr);
+        let (sock_addr, server_name) = Self::resolve_addr(addr).await?;
+        let client = self.new_rpc_client(sock_addr, &server_name).await?;
+        match client
+            .undrain_node(self.context())
+            .await
+            .map_err(|e| ClusterError::Transport(e.to_string()))?
+        {
+            Ok(result) => {
+                timer.success();
+                Ok(result)
+            }
+            Err(e) => {
+                timer.error(e.error_type());
+                Err(e)
+            }
+        }
+    }
+
+    /// Record a node's protocol version in the cache
+    pub fn record_node_version(&self, addr: SocketAddr, protocol_version: u32, min_supported: u32) {
+        self.version_cache.write().insert(addr, NodeVersionInfo {
+            protocol_version,
+            min_supported_version: min_supported,
+        });
+    }
+
+    /// Check if our protocol version is compatible with a remote node
+    pub fn check_version_compatible(&self, addr: &SocketAddr) -> bool {
+        let cache = self.version_cache.read();
+        if let Some(remote) = cache.get(addr) {
+            // We must speak at least the remote's min, and they must speak at least ours
+            self.config.protocol_version >= remote.min_supported_version
+                && remote.protocol_version >= self.config.min_supported_version
+        } else {
+            // No version info yet - assume compatible (legacy node)
+            true
         }
     }
 

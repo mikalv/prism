@@ -32,6 +32,10 @@ enum Commands {
     #[command(subcommand)]
     Index(IndexCommands),
 
+    /// Cluster management commands (rolling upgrades, drain)
+    #[command(subcommand)]
+    Cluster(ClusterCommands),
+
     /// Run performance benchmarks
     Benchmark {
         /// Collection name
@@ -244,6 +248,38 @@ enum IndexCommands {
     },
 }
 
+#[derive(Subcommand, Debug)]
+enum ClusterCommands {
+    /// Show upgrade status for all cluster nodes
+    UpgradeStatus {
+        /// Prism API URL
+        #[arg(long, default_value = "http://localhost:3080")]
+        api_url: String,
+    },
+
+    /// Drain a node (stop routing new queries to it)
+    Drain {
+        /// Node ID to drain
+        #[arg(long)]
+        node: String,
+
+        /// Prism API URL
+        #[arg(long, default_value = "http://localhost:3080")]
+        api_url: String,
+    },
+
+    /// Undrain a node (resume routing queries to it)
+    Undrain {
+        /// Node ID to undrain
+        #[arg(long)]
+        node: String,
+
+        /// Prism API URL
+        #[arg(long, default_value = "http://localhost:3080")]
+        api_url: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
@@ -348,6 +384,18 @@ async fn main() -> Result<()> {
                 gc_only,
             } => {
                 commands::run_optimize(&cli.data_dir, &collection, gc_only)?;
+            }
+        },
+
+        Commands::Cluster(cmd) => match cmd {
+            ClusterCommands::UpgradeStatus { api_url } => {
+                commands::run_upgrade_status(&api_url).await?;
+            }
+            ClusterCommands::Drain { node, api_url } => {
+                commands::run_drain(&api_url, &node).await?;
+            }
+            ClusterCommands::Undrain { node, api_url } => {
+                commands::run_undrain(&api_url, &node).await?;
             }
         },
 

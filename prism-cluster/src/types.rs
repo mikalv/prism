@@ -279,6 +279,15 @@ pub struct NodeInfo {
     pub uptime_secs: u64,
     /// Whether the node is healthy
     pub healthy: bool,
+    /// Protocol version this node speaks
+    #[serde(default)]
+    pub protocol_version: u32,
+    /// Minimum protocol version this node supports
+    #[serde(default)]
+    pub min_supported_version: u32,
+    /// Whether this node is draining (not accepting new queries)
+    #[serde(default)]
+    pub draining: bool,
 }
 
 // ========================================
@@ -410,6 +419,9 @@ pub struct RpcNodeHealth {
     pub missed_heartbeats: u32,
     /// Last heartbeat latency in milliseconds
     pub last_latency_ms: Option<u64>,
+    /// Whether this node is draining
+    #[serde(default)]
+    pub draining: bool,
 }
 
 /// Cluster health summary for RPC
@@ -440,6 +452,12 @@ pub struct RpcHeartbeatResponse {
     pub uptime_secs: u64,
     /// Timestamp of response (Unix epoch seconds)
     pub timestamp: u64,
+    /// Protocol version this node speaks
+    #[serde(default)]
+    pub protocol_version: u32,
+    /// Minimum protocol version this node supports
+    #[serde(default)]
+    pub min_supported_version: u32,
 }
 
 // ================================
@@ -489,4 +507,76 @@ pub struct RpcApplySchemaResponse {
     pub current_version: u64,
     /// Error message if failed
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serde_backward_compat_heartbeat() {
+        // Old-format heartbeat (no protocol_version fields) should deserialize with defaults
+        let json = r#"{
+            "node_id": "node-1",
+            "version": "0.6.0",
+            "uptime_secs": 100,
+            "timestamp": 1700000000
+        }"#;
+
+        let response: RpcHeartbeatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.node_id, "node-1");
+        assert_eq!(response.protocol_version, 0);
+        assert_eq!(response.min_supported_version, 0);
+    }
+
+    #[test]
+    fn test_serde_backward_compat_node_info() {
+        // Old-format NodeInfo (no draining/version fields)
+        let json = r#"{
+            "node_id": "node-1",
+            "version": "0.6.0",
+            "collections": ["test"],
+            "uptime_secs": 100,
+            "healthy": true
+        }"#;
+
+        let info: NodeInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.node_id, "node-1");
+        assert_eq!(info.protocol_version, 0);
+        assert_eq!(info.min_supported_version, 0);
+        assert!(!info.draining);
+    }
+
+    #[test]
+    fn test_serde_backward_compat_node_health() {
+        // Old-format RpcNodeHealth (no draining field)
+        let json = r#"{
+            "node_id": "node-1",
+            "state": "alive",
+            "last_heartbeat": 1700000000,
+            "missed_heartbeats": 0,
+            "last_latency_ms": 5
+        }"#;
+
+        let health: RpcNodeHealth = serde_json::from_str(json).unwrap();
+        assert_eq!(health.node_id, "node-1");
+        assert!(!health.draining);
+    }
+
+    #[test]
+    fn test_serde_new_format_heartbeat() {
+        // New-format with protocol version fields
+        let json = r#"{
+            "node_id": "node-2",
+            "version": "0.7.0",
+            "uptime_secs": 200,
+            "timestamp": 1700000000,
+            "protocol_version": 2,
+            "min_supported_version": 1
+        }"#;
+
+        let response: RpcHeartbeatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.protocol_version, 2);
+        assert_eq!(response.min_supported_version, 1);
+    }
 }

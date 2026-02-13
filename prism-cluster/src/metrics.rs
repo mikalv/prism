@@ -705,6 +705,7 @@ mod tests {
             disk_used_bytes: 0,
             disk_total_bytes: 0,
             index_size_bytes: 0,
+            draining: false,
         };
         state.register_node(node_info);
 

@@ -258,6 +258,10 @@ pub struct NodeInfo {
 
     /// Index size in bytes
     pub index_size_bytes: u64,
+
+    /// Whether this node is draining (not accepting new queries)
+    #[serde(default)]
+    pub draining: bool,
 }
 
 impl NodeInfo {

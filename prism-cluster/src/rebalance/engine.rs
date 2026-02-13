@@ -620,6 +620,7 @@ mod tests {
             disk_used_bytes: 0,
             disk_total_bytes: 100_000_000_000,
             index_size_bytes: 0,
+            draining: false,
         }
     }
 

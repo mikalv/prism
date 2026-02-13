@@ -1,5 +1,6 @@
 pub mod attach;
 pub mod benchmark;
+pub mod cluster;
 pub mod detach;
 pub mod export;
 pub mod graph_merge;
@@ -11,6 +12,7 @@ pub mod restore;
 
 pub use attach::run_attach;
 pub use benchmark::run_benchmark;
+pub use cluster::{run_drain, run_undrain, run_upgrade_status};
 pub use detach::run_detach;
 pub use export::run_export;
 pub use graph_merge::run_graph_merge;

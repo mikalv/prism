@@ -98,17 +98,21 @@ impl QueryRouter {
 
         for shard in &shards {
             if shard.state.can_serve_reads() {
-                // Get node address from cluster state
+                // Get node address from cluster state, skip draining nodes
                 if let Some(node) = self.cluster_state.get_node(&shard.primary_node) {
-                    targets.push(ShardTarget::from_assignment(
-                        shard,
-                        node.info.address.clone(),
-                    ));
-                } else {
-                    // Try replicas
-                    let mut found = false;
-                    for replica in &shard.replica_nodes {
-                        if let Some(node) = self.cluster_state.get_node(replica) {
+                    if !node.draining {
+                        targets.push(ShardTarget::from_assignment(
+                            shard,
+                            node.info.address.clone(),
+                        ));
+                        continue;
+                    }
+                }
+                // Primary unavailable or draining - try replicas
+                let mut found = false;
+                for replica in &shard.replica_nodes {
+                    if let Some(node) = self.cluster_state.get_node(replica) {
+                        if !node.draining {
                             targets.push(ShardTarget::from_assignment(
                                 shard,
                                 node.info.address.clone(),
@@ -117,9 +121,9 @@ impl QueryRouter {
                             break;
                         }
                     }
-                    if !found {
-                        unavailable += 1;
-                    }
+                }
+                if !found {
+                    unavailable += 1;
                 }
             } else {
                 unavailable += 1;
@@ -157,21 +161,25 @@ impl QueryRouter {
         if let Some(shard) = target_shard {
             let mut targets = Vec::new();
 
-            // Add primary
+            // Add primary (if not draining)
             if let Some(node) = self.cluster_state.get_node(&shard.primary_node) {
-                targets.push(ShardTarget::from_assignment(
-                    shard,
-                    node.info.address.clone(),
-                ));
-            }
-
-            // Add replicas for failover
-            for replica in &shard.replica_nodes {
-                if let Some(node) = self.cluster_state.get_node(replica) {
+                if !node.draining {
                     targets.push(ShardTarget::from_assignment(
                         shard,
                         node.info.address.clone(),
                     ));
+                }
+            }
+
+            // Add replicas for failover (skip draining)
+            for replica in &shard.replica_nodes {
+                if let Some(node) = self.cluster_state.get_node(replica) {
+                    if !node.draining {
+                        targets.push(ShardTarget::from_assignment(
+                            shard,
+                            node.info.address.clone(),
+                        ));
+                    }
                 }
             }
 
@@ -240,6 +248,7 @@ mod tests {
                 disk_used_bytes: 0,
                 disk_total_bytes: 0,
                 index_size_bytes: 0,
+                draining: false,
             };
             state.register_node(node);
         }
@@ -336,5 +345,70 @@ mod tests {
 
         let decision = router.route("products", &query).unwrap();
         assert!(decision.targets.is_empty());
+    }
+
+    #[test]
+    fn test_route_skips_draining() {
+        let state = Arc::new(ClusterState::with_heartbeat_timeout(3600));
+
+        // Register 3 nodes
+        for i in 1..=3 {
+            let node = NodeInfo {
+                node_id: format!("node-{}", i),
+                address: format!("127.0.0.1:908{}", i - 1),
+                topology: NodeTopology::default(),
+                healthy: true,
+                shard_count: 0,
+                disk_used_bytes: 0,
+                disk_total_bytes: 0,
+                index_size_bytes: 0,
+                draining: false,
+            };
+            state.register_node(node);
+        }
+
+        // Assign 3 shards (one per node)
+        for i in 0..3 {
+            let mut shard = ShardAssignment::new("products", i, &format!("node-{}", i + 1));
+            shard.state = ShardState::Active;
+            // Add replicas
+            let replicas: Vec<String> = (1..=3)
+                .filter(|&n| n != (i + 1) as usize)
+                .map(|n| format!("node-{}", n))
+                .collect();
+            shard.replica_nodes = replicas;
+            state.assign_shard(shard);
+        }
+
+        let router = QueryRouter::new(Arc::clone(&state));
+
+        // All 3 shards should be routed
+        let query = RpcQuery {
+            query_string: "test".into(),
+            fields: vec!["title".into()],
+            limit: 10,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
+        };
+        let decision = router.route("products", &query).unwrap();
+        assert_eq!(decision.targets.len(), 3);
+
+        // Drain node-1
+        state.drain_node("node-1");
+
+        // Now route should still find 3 targets (falling back to replicas for node-1's shard)
+        let decision = router.route("products", &query).unwrap();
+        assert_eq!(decision.targets.len(), 3);
+        // node-1's address should not appear as any target's primary address
+        for target in &decision.targets {
+            assert_ne!(target.node_address, "127.0.0.1:9080");
+        }
     }
 }

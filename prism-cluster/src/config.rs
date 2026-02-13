@@ -69,6 +69,18 @@ pub struct ClusterConfig {
     /// Federation (distributed query) configuration
     #[serde(default)]
     pub federation: FederationConfig,
+
+    /// Protocol version this node speaks (for rolling upgrades)
+    #[serde(default = "default_protocol_version")]
+    pub protocol_version: u32,
+
+    /// Minimum protocol version this node can communicate with
+    #[serde(default = "default_protocol_version")]
+    pub min_supported_version: u32,
+}
+
+fn default_protocol_version() -> u32 {
+    1
 }
 
 fn default_node_id() -> String {
@@ -109,6 +121,8 @@ impl Default for ClusterConfig {
             discovery: DiscoveryConfig::default(),
             consistency: ConsistencyConfig::default(),
             federation: FederationConfig::default(),
+            protocol_version: default_protocol_version(),
+            min_supported_version: default_protocol_version(),
         }
     }
 }

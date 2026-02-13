@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use std::path::Path;
+use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug, Clone)]
@@ -95,10 +96,10 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", args.host, args.port);
 
     // Create backends
-    let text_backend = std::sync::Arc::new(prism::backends::text::TextBackend::new(
+    let text_backend = Arc::new(prism::backends::text::TextBackend::new(
         &config.storage.data_dir,
     )?);
-    let vector_backend = std::sync::Arc::new(prism::backends::VectorBackend::new(
+    let vector_backend = Arc::new(prism::backends::VectorBackend::new(
         &config.storage.data_dir,
     )?);
 
@@ -114,14 +115,14 @@ async fn main() -> Result<()> {
                     .map(std::path::PathBuf::from)
                     .or_else(|| config.embedding.cache_dir.clone())
                     .unwrap_or_else(|| config.storage.data_dir.join("embedding_cache.db"));
-                let cache = std::sync::Arc::new(
+                let cache = Arc::new(
                     prism::cache::SqliteCache::new(
                         cache_path.to_str().unwrap_or("embedding_cache.db"),
                     )
                     .expect("Failed to create embedding cache"),
                 );
                 let cached_provider =
-                    std::sync::Arc::new(prism::embedding::CachedEmbeddingProvider::new(
+                    Arc::new(prism::embedding::CachedEmbeddingProvider::new(
                         provider,
                         cache,
                         prism::cache::KeyStrategy::ModelText,
@@ -146,11 +147,11 @@ async fn main() -> Result<()> {
         config.schemas_dir()
     };
     // Create graph storage (uses same data_dir as other backends)
-    let graph_storage: Option<std::sync::Arc<dyn prism_storage::SegmentStorage>> = Some(
-        std::sync::Arc::new(prism_storage::LocalStorage::new(&config.storage.data_dir)),
+    let graph_storage: Option<Arc<dyn prism_storage::SegmentStorage>> = Some(
+        Arc::new(prism_storage::LocalStorage::new(&config.storage.data_dir)),
     );
 
-    let manager = std::sync::Arc::new(prism::collection::CollectionManager::new(
+    let manager = Arc::new(prism::collection::CollectionManager::new(
         &schemas_path,
         text_backend,
         vector_backend,
@@ -173,7 +174,7 @@ async fn main() -> Result<()> {
             .await
         {
             Ok(ilm) => {
-                let ilm = std::sync::Arc::new(ilm);
+                let ilm = Arc::new(ilm);
                 tracing::info!(
                     "ILM manager initialized ({} policies)",
                     config.ilm.policies.len()
@@ -313,6 +314,7 @@ async fn main() -> Result<()> {
             disk_used_bytes: 0,
             disk_total_bytes: 0,
             index_size_bytes: 0,
+            draining: false,
         });
 
         // 3. Register seed nodes (use address as node_id until we discover their real ID)
@@ -328,6 +330,7 @@ async fn main() -> Result<()> {
                 disk_used_bytes: 0,
                 disk_total_bytes: 0,
                 index_size_bytes: 0,
+                draining: false,
             });
             all_node_ids.push(seed_id);
         }
@@ -367,7 +370,8 @@ async fn main() -> Result<()> {
         ));
 
         // 7. Build cluster routes
-        extension_router = extension_router.merge(cluster_routes(federation));
+        extension_router =
+            extension_router.merge(cluster_routes(federation, Arc::clone(&cluster_state)));
 
         // 8. Start ClusterServer with shared state
         let cluster_manager = server.manager();
@@ -428,7 +432,10 @@ async fn main() -> Result<()> {
 
 /// Build cluster federation routes
 #[cfg(feature = "cluster")]
-fn cluster_routes(federation: Arc<prism_cluster::FederatedSearch>) -> axum::Router<()> {
+fn cluster_routes(
+    federation: Arc<prism_cluster::FederatedSearch>,
+    cluster_state: Arc<prism_cluster::ClusterState>,
+) -> axum::Router<()> {
     use axum::extract::{Path, State};
     use axum::routing::{get, post};
     use axum::Json;
@@ -541,7 +548,84 @@ fn cluster_routes(federation: Arc<prism_cluster::FederatedSearch>) -> axum::Rout
         }))
     }
 
-    axum::Router::new()
+    async fn drain_node(
+        Path(node_id): Path<String>,
+        State(state): State<Arc<prism_cluster::ClusterState>>,
+    ) -> axum::response::Response {
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+
+        let result = state.drain_node(&node_id);
+        if result {
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"drained": true, "node_id": node_id})),
+            )
+                .into_response()
+        } else {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("node {} not found", node_id)})),
+            )
+                .into_response()
+        }
+    }
+
+    async fn undrain_node(
+        Path(node_id): Path<String>,
+        State(state): State<Arc<prism_cluster::ClusterState>>,
+    ) -> axum::response::Response {
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+
+        let result = state.undrain_node(&node_id);
+        if result {
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"undrained": true, "node_id": node_id})),
+            )
+                .into_response()
+        } else {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("node {} not found", node_id)})),
+            )
+                .into_response()
+        }
+    }
+
+    async fn upgrade_status(
+        State(state): State<Arc<prism_cluster::ClusterState>>,
+    ) -> Json<serde_json::Value> {
+        let nodes = state.get_nodes();
+        let node_statuses: Vec<serde_json::Value> = nodes
+            .iter()
+            .map(|n| {
+                serde_json::json!({
+                    "node_id": n.info.node_id,
+                    "version": n.version,
+                    "protocol_version": n.protocol_version,
+                    "min_supported_version": n.min_supported_version,
+                    "draining": n.draining,
+                    "reachable": n.reachable,
+                })
+            })
+            .collect();
+
+        let all_same_version = nodes.windows(2).all(|w| {
+            w[0].protocol_version == w[1].protocol_version
+        });
+
+        Json(serde_json::json!({
+            "nodes": node_statuses,
+            "total_nodes": nodes.len(),
+            "draining_count": nodes.iter().filter(|n| n.draining).count(),
+            "all_same_version": all_same_version,
+        }))
+    }
+
+    // Federation routes (with federation state)
+    let federation_routes = axum::Router::new()
         .route(
             "/cluster/collections/:collection/search",
             post(federated_search),
@@ -551,5 +635,14 @@ fn cluster_routes(federation: Arc<prism_cluster::FederatedSearch>) -> axum::Rout
             post(federated_index),
         )
         .route("/cluster/health", get(cluster_health))
-        .with_state(federation)
+        .with_state(federation);
+
+    // Drain/upgrade routes (with cluster_state)
+    let cluster_mgmt_routes = axum::Router::new()
+        .route("/cluster/nodes/:node_id/drain", post(drain_node))
+        .route("/cluster/nodes/:node_id/undrain", post(undrain_node))
+        .route("/cluster/upgrade/status", get(upgrade_status))
+        .with_state(cluster_state);
+
+    federation_routes.merge(cluster_mgmt_routes)
 }
