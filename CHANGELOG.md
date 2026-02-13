@@ -2,6 +2,25 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.3] - 2026-02-13
+
+### Highlights
+
+Zero-downtime rolling cluster upgrades with protocol version negotiation and node drain/undrain.
+
+### Cluster
+
+- **Rolling Upgrade Support** ([#39](https://github.com/mikalv/prism/issues/39)) — protocol version negotiation at heartbeat level enables mixed-version clusters during upgrades
+- **Node Drain/Undrain** ([#39](https://github.com/mikalv/prism/issues/39)) — administrative drain state stops routing queries to a node while keeping it alive for graceful upgrades
+- **Federation Routing** — query router skips draining nodes, falling back to replicas automatically
+- **Upgrade Status API** — `GET /cluster/upgrade/status` shows version and drain state of all nodes
+
+### CLI
+
+- **`prism cluster upgrade-status`** — display cluster-wide version and drain status
+- **`prism cluster drain --node <id>`** — drain a node before upgrade
+- **`prism cluster undrain --node <id>`** — resume routing after upgrade
+
 ## [0.6.2] - 2026-02-13
 
 ### Highlights
