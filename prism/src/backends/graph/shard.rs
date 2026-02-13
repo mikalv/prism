@@ -398,7 +398,9 @@ impl GraphShard {
     }
 
     /// Export raw nodes and edges (for merge source).
-    pub(crate) fn export_raw(&self) -> (HashMap<String, GraphNode>, HashMap<String, Vec<EdgeEntry>>) {
+    pub(crate) fn export_raw(
+        &self,
+    ) -> (HashMap<String, GraphNode>, HashMap<String, Vec<EdgeEntry>>) {
         let nodes = self.nodes.read().clone();
         let edges = self.edges.read().clone();
         (nodes, edges)
@@ -696,7 +698,13 @@ mod tests {
         let storage: Arc<dyn SegmentStorage> = Arc::new(LocalStorage::new(dir.path()));
 
         {
-            let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), Some(storage.clone()));
+            let shard = GraphShard::new(
+                0,
+                "test",
+                "default",
+                &test_edge_configs(),
+                Some(storage.clone()),
+            );
             shard.initialize().await.unwrap();
 
             shard
@@ -721,7 +729,13 @@ mod tests {
         }
 
         {
-            let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), Some(storage.clone()));
+            let shard = GraphShard::new(
+                0,
+                "test",
+                "default",
+                &test_edge_configs(),
+                Some(storage.clone()),
+            );
             shard.initialize().await.unwrap();
 
             let node = shard.get_node("n1").unwrap();

@@ -1,5 +1,7 @@
 use crate::api::server::AppState;
-use crate::backends::{Document, GraphEdge, GraphNode, GraphStats, HighlightConfig, Query, SearchResult, SearchResults};
+use crate::backends::{
+    Document, GraphEdge, GraphNode, GraphStats, HighlightConfig, Query, SearchResult, SearchResults,
+};
 use crate::collection::CollectionManager;
 use crate::ranking::reranker::{RerankOptions, RerankRequest};
 use crate::ranking::score_function::ScoreFunctionReranker;

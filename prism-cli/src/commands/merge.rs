@@ -90,10 +90,7 @@ pub async fn run_merge(
     // Write target schema YAML to schemas_dir
     let schema_path = schemas_dir.join(format!("{}.yaml", target));
     if schema_path.exists() {
-        anyhow::bail!(
-            "Schema file already exists: {}",
-            schema_path.display()
-        );
+        anyhow::bail!("Schema file already exists: {}", schema_path.display());
     }
     let yaml = serde_yaml::to_string(&target_schema)
         .context("Failed to serialize target schema to YAML")?;

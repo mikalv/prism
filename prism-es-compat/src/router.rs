@@ -72,8 +72,8 @@ async fn bulk_handler_no_index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{Request, StatusCode};
     use axum::body::Body;
+    use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
     /// Verify that parameterised routes (/:index/...) are matched by the router.
@@ -98,9 +98,9 @@ mod tests {
             ("POST", "/logs-2024-01/_search"),
             ("POST", "/_bulk"),
             ("POST", "/my_index/_bulk"),
-            ("GET",  "/my_index/_mapping"),
-            ("GET",  "/_cat/indices"),
-            ("GET",  "/_cluster/health"),
+            ("GET", "/my_index/_mapping"),
+            ("GET", "/_cat/indices"),
+            ("GET", "/_cluster/health"),
         ];
 
         for (method, path) in cases {

@@ -269,7 +269,11 @@ impl CollectionManager {
         };
         for (name, graph) in &graph_entries {
             graph.initialize().await?;
-            tracing::info!("Initialized graph backend for '{}' ({} shards)", name, graph.num_shards());
+            tracing::info!(
+                "Initialized graph backend for '{}' ({} shards)",
+                name,
+                graph.num_shards()
+            );
         }
 
         // Initialize async rerankers (cross-encoders)
@@ -656,7 +660,11 @@ impl CollectionManager {
         if let Some(ref graph_config) = schema.backends.graph {
             let graph = ShardedGraphBackend::new(&name, graph_config, self.graph_storage.clone());
             graph.initialize().await?;
-            tracing::info!("Initialized graph backend for '{}' ({} shards)", name, graph.num_shards());
+            tracing::info!(
+                "Initialized graph backend for '{}' ({} shards)",
+                name,
+                graph.num_shards()
+            );
             self.per_collection_graphs
                 .write()
                 .insert(name.clone(), Arc::new(graph));

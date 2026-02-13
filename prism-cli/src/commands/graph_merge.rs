@@ -16,9 +16,13 @@ pub async fn run_graph_merge(data_dir: &Path, schemas_dir: &Path, collection: &s
     let graph_storage: Option<Arc<dyn SegmentStorage>> =
         Some(Arc::new(LocalStorage::new(data_dir)));
 
-    let manager =
-        prism::collection::CollectionManager::new(schemas_dir, text_backend, vector_backend, graph_storage)
-            .context("Failed to create collection manager")?;
+    let manager = prism::collection::CollectionManager::new(
+        schemas_dir,
+        text_backend,
+        vector_backend,
+        graph_storage,
+    )
+    .context("Failed to create collection manager")?;
     manager.initialize().await?;
 
     let graph = manager

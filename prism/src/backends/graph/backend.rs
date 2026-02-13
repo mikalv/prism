@@ -187,7 +187,8 @@ impl ShardedGraphBackend {
 
         // Collect data from shards 1..N
         let mut all_nodes = std::collections::HashMap::new();
-        let mut all_edges: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+        let mut all_edges: std::collections::HashMap<String, Vec<_>> =
+            std::collections::HashMap::new();
         for shard in &self.shards[1..] {
             let (nodes, edges) = shard.export_raw();
             all_nodes.extend(nodes);
