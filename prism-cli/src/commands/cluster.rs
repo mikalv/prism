@@ -17,7 +17,9 @@ pub async fn run_upgrade_status(api_url: &str) -> Result<()> {
     println!("======================");
     println!(
         "Total nodes: {}",
-        body.get("total_nodes").and_then(|v| v.as_u64()).unwrap_or(0)
+        body.get("total_nodes")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
     );
     println!(
         "Draining:    {}",
@@ -42,12 +44,8 @@ pub async fn run_upgrade_status(api_url: &str) -> Result<()> {
         for node in nodes {
             println!(
                 "{:<20} {:<10} {:<10} {:<10} {:<10} {:<10}",
-                node.get("node_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?"),
-                node.get("version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?"),
+                node.get("node_id").and_then(|v| v.as_str()).unwrap_or("?"),
+                node.get("version").and_then(|v| v.as_str()).unwrap_or("?"),
                 node.get("protocol_version")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0),
@@ -103,12 +101,7 @@ pub async fn run_undrain(api_url: &str, node_id: &str) -> Result<()> {
     } else {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Failed to undrain node {} ({}): {}",
-            node_id,
-            status,
-            body
-        );
+        anyhow::bail!("Failed to undrain node {} ({}): {}", node_id, status, body);
     }
 
     Ok(())

@@ -553,7 +553,10 @@ impl PrismCluster for ClusterHandler {
         if result {
             info!("Node {} is now draining", node_id);
         } else {
-            warn!("Failed to drain node {} (not found in cluster state)", node_id);
+            warn!(
+                "Failed to drain node {} (not found in cluster state)",
+                node_id
+            );
         }
         timer.success();
         Ok(result)
@@ -567,7 +570,10 @@ impl PrismCluster for ClusterHandler {
         if result {
             info!("Node {} is no longer draining", node_id);
         } else {
-            warn!("Failed to undrain node {} (not found in cluster state)", node_id);
+            warn!(
+                "Failed to undrain node {} (not found in cluster state)",
+                node_id
+            );
         }
         timer.success();
         Ok(result)

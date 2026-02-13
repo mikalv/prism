@@ -500,7 +500,11 @@ impl ClusterClient {
             .map_err(|e| ClusterError::Transport(e.to_string()))?;
 
         // Cache the version info
-        self.record_node_version(sock_addr, response.protocol_version, response.min_supported_version);
+        self.record_node_version(
+            sock_addr,
+            response.protocol_version,
+            response.min_supported_version,
+        );
 
         timer.success();
         Ok(response)
@@ -550,10 +554,13 @@ impl ClusterClient {
 
     /// Record a node's protocol version in the cache
     pub fn record_node_version(&self, addr: SocketAddr, protocol_version: u32, min_supported: u32) {
-        self.version_cache.write().insert(addr, NodeVersionInfo {
-            protocol_version,
-            min_supported_version: min_supported,
-        });
+        self.version_cache.write().insert(
+            addr,
+            NodeVersionInfo {
+                protocol_version,
+                min_supported_version: min_supported,
+            },
+        );
     }
 
     /// Check if our protocol version is compatible with a remote node

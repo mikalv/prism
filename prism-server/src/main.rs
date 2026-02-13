@@ -121,12 +121,11 @@ async fn main() -> Result<()> {
                     )
                     .expect("Failed to create embedding cache"),
                 );
-                let cached_provider =
-                    Arc::new(prism::embedding::CachedEmbeddingProvider::new(
-                        provider,
-                        cache,
-                        prism::cache::KeyStrategy::ModelText,
-                    ));
+                let cached_provider = Arc::new(prism::embedding::CachedEmbeddingProvider::new(
+                    provider,
+                    cache,
+                    prism::cache::KeyStrategy::ModelText,
+                ));
                 vector_backend.set_embedding_provider(cached_provider);
                 tracing::info!(
                     "Embedding provider configured (cache: {})",
@@ -147,9 +146,9 @@ async fn main() -> Result<()> {
         config.schemas_dir()
     };
     // Create graph storage (uses same data_dir as other backends)
-    let graph_storage: Option<Arc<dyn prism_storage::SegmentStorage>> = Some(
-        Arc::new(prism_storage::LocalStorage::new(&config.storage.data_dir)),
-    );
+    let graph_storage: Option<Arc<dyn prism_storage::SegmentStorage>> = Some(Arc::new(
+        prism_storage::LocalStorage::new(&config.storage.data_dir),
+    ));
 
     let manager = Arc::new(prism::collection::CollectionManager::new(
         &schemas_path,
@@ -612,9 +611,9 @@ fn cluster_routes(
             })
             .collect();
 
-        let all_same_version = nodes.windows(2).all(|w| {
-            w[0].protocol_version == w[1].protocol_version
-        });
+        let all_same_version = nodes
+            .windows(2)
+            .all(|w| w[0].protocol_version == w[1].protocol_version);
 
         Json(serde_json::json!({
             "nodes": node_statuses,

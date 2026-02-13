@@ -208,12 +208,7 @@ impl ClusterState {
     }
 
     /// Update protocol version info for a node
-    pub fn update_node_version(
-        &self,
-        node_id: &str,
-        protocol_version: u32,
-        min_supported: u32,
-    ) {
+    pub fn update_node_version(&self, node_id: &str, protocol_version: u32, min_supported: u32) {
         if let Some(node) = self.nodes.write().get_mut(node_id) {
             node.protocol_version = protocol_version;
             node.min_supported_version = min_supported;
