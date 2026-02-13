@@ -1,0 +1,26 @@
+[Unit]
+Description=Prism hybrid search engine
+Documentation=https://mikalv.github.io/prism/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=prismsearch
+Group=prismsearch
+ExecStart=/usr/bin/prism-server --host 0.0.0.0 --port 3000
+WorkingDirectory=/var/lib/prismsearch
+StateDirectory=prismsearch
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/prismsearch
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

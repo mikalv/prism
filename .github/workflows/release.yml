@@ -177,6 +177,8 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download Linux x86_64 archive
         uses: actions/download-artifact@v4
         with:
@@ -187,11 +189,12 @@ jobs:
 
       - name: Build DEB package
         run: |
-          mkdir -p deb/usr/bin deb/DEBIAN
+          mkdir -p deb/usr/bin deb/DEBIAN deb/lib/systemd/system
           tar xzf prism-${GITHUB_REF_NAME}-linux-x86_64.tar.gz
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server deb/usr/bin/
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism deb/usr/bin/
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import deb/usr/bin/
+          cp packaging/systemd/prismsearch.service deb/lib/systemd/system/
           cat > deb/DEBIAN/control <<EOF
           Package: prismsearch
           Version: ${VERSION}
@@ -199,8 +202,22 @@ jobs:
           Maintainer: mikalv <spam@mux.rs>
           Description: Hybrid search engine combining full-text and vector search for AI/RAG applications
           EOF
-          # Remove leading spaces from heredoc
           sed -i 's/^          //' deb/DEBIAN/control
+          cat > deb/DEBIAN/postinst <<'SCRIPT'
+          #!/bin/sh
+          set -e
+          if ! getent group prismsearch >/dev/null; then
+            groupadd --system prismsearch
+          fi
+          if ! getent passwd prismsearch >/dev/null; then
+            useradd --system --gid prismsearch --home-dir /var/lib/prismsearch --shell /usr/sbin/nologin prismsearch
+          fi
+          mkdir -p /var/lib/prismsearch
+          chown prismsearch:prismsearch /var/lib/prismsearch
+          systemctl daemon-reload
+          SCRIPT
+          sed -i 's/^          //' deb/DEBIAN/postinst
+          chmod 755 deb/DEBIAN/postinst
           dpkg-deb --build deb "prismsearch_${VERSION}_amd64.deb"
 
       - name: Build RPM package
@@ -208,9 +225,11 @@ jobs:
           sudo apt-get update && sudo apt-get install -y rpm
           mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin
+          mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/lib/systemd/system
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp packaging/systemd/prismsearch.service rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/lib/systemd/system/
           cat > rpmbuild/SPECS/prismsearch.spec <<EOF
           Name: prismsearch
           Version: ${VERSION}
@@ -220,10 +239,18 @@ jobs:
           URL: https://github.com/mikalv/prism
           %description
           Prism is a hybrid search engine combining full-text and vector search.
+          %pre
+          getent group prismsearch >/dev/null || groupadd -r prismsearch
+          getent passwd prismsearch >/dev/null || useradd -r -g prismsearch -d /var/lib/prismsearch -s /sbin/nologin prismsearch
+          mkdir -p /var/lib/prismsearch
+          chown prismsearch:prismsearch /var/lib/prismsearch
+          %post
+          systemctl daemon-reload
           %files
           /usr/bin/prism-server
           /usr/bin/prism
           /usr/bin/prism-import
+          /usr/lib/systemd/system/prismsearch.service
           EOF
           sed -i 's/^          //' rpmbuild/SPECS/prismsearch.spec
           rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/prismsearch.spec
