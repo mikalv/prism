@@ -1,17 +1,20 @@
 [package]
-name = "prism-importer"
+name = "prismsearch-importer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Import tool for migrating data from Elasticsearch and other sources to Prism"
 
+[lib]
+name = "prism_importer"
+
 [[bin]]
 name = "prism-import"
 path = "src/main.rs"
 
 [dependencies]
-prism = { path = "../prism" }
+prism = { path = "../prism", package = "prismsearch", version = "0.6.1" }
 reqwest = { workspace = true, features = ["json", "stream"] }
 tokio = { workspace = true }
 clap = { workspace = true }

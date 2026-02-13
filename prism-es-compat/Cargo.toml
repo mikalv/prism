@@ -1,5 +1,5 @@
 [package]
-name = "prism-es-compat"
+name = "prismsearch-es-compat"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,9 @@ repository.workspace = true
 description = "Elasticsearch API compatibility layer for Prism"
 keywords = ["elasticsearch", "kibana", "search", "compatibility"]
 categories = ["database", "web-programming"]
+
+[lib]
+name = "prism_es_compat"
 
 [features]
 default = []

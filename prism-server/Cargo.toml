@@ -1,11 +1,16 @@
 [package]
-name = "prism-server"
+name = "prismsearch-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Prism search server binary"
+publish = false
+
+[[bin]]
+name = "prism-server"
+path = "src/main.rs"
 
 [features]
 default = ["ui"]

@@ -1,9 +1,12 @@
 [package]
-name = "prism-ui"
+name = "prismsearch-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Embedded web UI for Prism search engine"
+
+[lib]
+name = "prism_ui"
 
 [dependencies]
 rust-embed = { version = "8", features = ["include-exclude"] }

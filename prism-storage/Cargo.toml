@@ -1,5 +1,5 @@
 [package]
-name = "prism-storage"
+name = "prismsearch-storage"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,9 @@ repository.workspace = true
 description = "Unified storage abstraction for Prism search engine"
 keywords = ["storage", "s3", "search", "prism"]
 categories = ["database", "filesystem"]
+
+[lib]
+name = "prism_storage"
 
 [dependencies]
 # Async

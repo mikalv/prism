@@ -1,11 +1,14 @@
 [package]
-name = "prism-treesitter"
+name = "prismsearch-treesitter"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Tree-sitter based code tokenizer for AST-aware code search in Prism"
+
+[lib]
+name = "prism_treesitter"
 
 [dependencies]
 tree-sitter = "0.24"

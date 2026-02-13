@@ -2465,7 +2465,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism"
+name = "prismsearch"
 version = "0.6.1"
 dependencies = [
  "aes-gcm",
@@ -2490,8 +2490,8 @@ dependencies = [
  "object_store",
  "ort",
  "parking_lot",
- "prism-storage",
- "prism-treesitter",
+ "prismsearch-storage",
+ "prismsearch-treesitter",
  "redis",
  "regex",
  "reqwest",
@@ -2522,13 +2522,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-cli"
+name = "prismsearch-cli"
 version = "0.6.1"
 dependencies = [
  "anyhow",
  "clap",
- "prism",
- "prism-storage",
+ "prismsearch",
+ "prismsearch-storage",
  "reqwest",
  "serde_json",
  "serde_yaml",
@@ -2540,7 +2540,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-cluster"
+name = "prismsearch-cluster"
 version = "0.6.1"
 dependencies = [
  "anyhow",
@@ -2549,7 +2549,7 @@ dependencies = [
  "futures",
  "metrics",
  "parking_lot",
- "prism",
+ "prismsearch",
  "quinn",
  "rustls",
  "rustls-native-certs",
@@ -2566,25 +2566,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-es-compat"
+name = "prismsearch-es-compat"
 version = "0.6.1"
 dependencies = [
  "async-trait",
  "axum",
  "chrono",
- "prism",
+ "http-body-util",
+ "hyper",
+ "prismsearch",
  "regex",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tower 0.5.3",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "prism-importer"
+name = "prismsearch-importer"
 version = "0.6.1"
 dependencies = [
  "anyhow",
@@ -2595,7 +2598,7 @@ dependencies = [
  "clap",
  "futures",
  "indicatif",
- "prism",
+ "prismsearch",
  "quick-xml",
  "regex",
  "reqwest",
@@ -2611,7 +2614,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-server"
+name = "prismsearch-server"
 version = "0.6.1"
 dependencies = [
  "anyhow",
@@ -2619,11 +2622,11 @@ dependencies = [
  "clap",
  "metrics",
  "metrics-exporter-prometheus",
- "prism",
- "prism-cluster",
- "prism-es-compat",
- "prism-storage",
- "prism-ui",
+ "prismsearch",
+ "prismsearch-cluster",
+ "prismsearch-es-compat",
+ "prismsearch-storage",
+ "prismsearch-ui",
  "serde",
  "serde_json",
  "tokio",
@@ -2632,7 +2635,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-storage"
+name = "prismsearch-storage"
 version = "0.6.1"
 dependencies = [
  "aes-gcm",
@@ -2655,7 +2658,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-treesitter"
+name = "prismsearch-treesitter"
 version = "0.6.1"
 dependencies = [
  "tantivy",
@@ -2679,7 +2682,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism-ui"
+name = "prismsearch-ui"
 version = "0.6.1"
 dependencies = [
  "axum",

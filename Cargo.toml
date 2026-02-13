@@ -106,10 +106,10 @@ tokio-util = { version = "0.7", features = ["codec"] }
 tokio-serde = { version = "0.9", features = ["bincode", "json"] }
 
 # Internal
-prism = { path = "prism" }
-prism-storage = { path = "prism-storage" }
-prism-importer = { path = "prism-importer" }
-prism-cluster = { path = "prism-cluster" }
-prism-es-compat = { path = "prism-es-compat" }
-prism-ui = { path = "prism-ui" }
-prism-treesitter = { path = "prism-treesitter" }
+prism = { path = "prism", package = "prismsearch", version = "0.6.1" }
+prism-storage = { path = "prism-storage", package = "prismsearch-storage", version = "0.6.1" }
+prism-importer = { path = "prism-importer", package = "prismsearch-importer", version = "0.6.1" }
+prism-cluster = { path = "prism-cluster", package = "prismsearch-cluster", version = "0.6.1" }
+prism-es-compat = { path = "prism-es-compat", package = "prismsearch-es-compat", version = "0.6.1" }
+prism-ui = { path = "prism-ui", package = "prismsearch-ui", version = "0.6.1" }
+prism-treesitter = { path = "prism-treesitter", package = "prismsearch-treesitter", version = "0.6.1" }
