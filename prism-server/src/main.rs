@@ -197,7 +197,8 @@ async fn main() -> Result<()> {
         pipeline_registry,
     )
     .with_metrics(metrics_handle)
-    .with_data_dir(&config.storage.data_dir);
+    .with_data_dir(&config.storage.data_dir)
+    .with_max_body_size(config.server.max_body_size);
 
     // Add ILM manager if available
     if let Some(ref ilm) = ilm_manager {

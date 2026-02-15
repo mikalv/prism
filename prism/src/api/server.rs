@@ -113,6 +113,7 @@ pub struct ApiServer {
     ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
     template_manager: Option<Arc<crate::templates::TemplateManager>>,
     data_dir: Option<std::path::PathBuf>,
+    max_body_size: usize,
 }
 
 impl ApiServer {
@@ -171,6 +172,7 @@ impl ApiServer {
             ilm_manager: None,
             template_manager: None,
             data_dir: None,
+            max_body_size: 100 * 1024 * 1024, // 100MB default
         }
     }
 
@@ -192,6 +194,12 @@ impl ApiServer {
     /// Set the data directory for export/import operations
     pub fn with_data_dir(mut self, data_dir: impl Into<std::path::PathBuf>) -> Self {
         self.data_dir = Some(data_dir.into());
+        self
+    }
+
+    /// Set the maximum request body size in bytes
+    pub fn with_max_body_size(mut self, max_body_size: usize) -> Self {
+        self.max_body_size = max_body_size;
         self
     }
 
@@ -680,6 +688,7 @@ impl ApiServer {
             .merge(template_routes)
             .merge(export_routes)
             .layer(cors)
+            .layer(axum::extract::DefaultBodyLimit::max(self.max_body_size))
             .layer(axum::middleware::from_fn(metrics_middleware))
             .layer(TraceLayer::new_for_http());
 

@@ -51,10 +51,17 @@ pub struct ServerConfig {
     pub cors: CorsConfig,
     #[serde(default)]
     pub tls: TlsConfig,
+    /// Maximum request body size in bytes (default: 100MB)
+    #[serde(default = "default_max_body_size")]
+    pub max_body_size: usize,
 }
 
 fn default_bind_addr() -> String {
     "127.0.0.1:8080".to_string()
+}
+
+fn default_max_body_size() -> usize {
+    100 * 1024 * 1024 // 100MB
 }
 
 impl Default for ServerConfig {
@@ -64,6 +71,7 @@ impl Default for ServerConfig {
             unix_socket: None,
             cors: CorsConfig::default(),
             tls: TlsConfig::default(),
+            max_body_size: default_max_body_size(),
         }
     }
 }
