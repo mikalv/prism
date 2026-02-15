@@ -83,7 +83,14 @@ async fn test_index_then_search() {
     let (_temp, backend) = setup_text_backend().await;
 
     let docs: Vec<Document> = (0..50)
-        .map(|i| make_doc(&format!("doc-{i}"), &format!("Title {i}"), "some body text", "cat-a"))
+        .map(|i| {
+            make_doc(
+                &format!("doc-{i}"),
+                &format!("Title {i}"),
+                "some body text",
+                "cat-a",
+            )
+        })
         .collect();
 
     backend.index("test_concurrent", docs).await.unwrap();
@@ -134,7 +141,14 @@ async fn test_interleaved_index_and_search() {
 
     // Seed some initial data
     let seed_docs: Vec<Document> = (0..10)
-        .map(|i| make_doc(&format!("seed-{i}"), "initial document", "seed body text", "seed"))
+        .map(|i| {
+            make_doc(
+                &format!("seed-{i}"),
+                "initial document",
+                "seed body text",
+                "seed",
+            )
+        })
         .collect();
     backend.index("test_concurrent", seed_docs).await.unwrap();
 
@@ -180,7 +194,14 @@ async fn test_concurrent_search_during_indexing() {
 
     // Seed data so searches have something to find
     let seed: Vec<Document> = (0..20)
-        .map(|i| make_doc(&format!("seed-{i}"), "concurrent test", "searchable body", "cat"))
+        .map(|i| {
+            make_doc(
+                &format!("seed-{i}"),
+                "concurrent test",
+                "searchable body",
+                "cat",
+            )
+        })
         .collect();
     backend.index("test_concurrent", seed).await.unwrap();
 
@@ -230,7 +251,14 @@ async fn test_delete_and_reindex() {
 
     // Index initial batch
     let docs: Vec<Document> = (0..20)
-        .map(|i| make_doc(&format!("del-{i}"), "deletable doc", "will be removed", "temp"))
+        .map(|i| {
+            make_doc(
+                &format!("del-{i}"),
+                "deletable doc",
+                "will be removed",
+                "temp",
+            )
+        })
         .collect();
     backend.index("test_concurrent", docs).await.unwrap();
 
@@ -243,7 +271,14 @@ async fn test_delete_and_reindex() {
 
     // Re-index new documents
     let new_docs: Vec<Document> = (0..20)
-        .map(|i| make_doc(&format!("new-{i}"), "replacement doc", "fresh content", "perm"))
+        .map(|i| {
+            make_doc(
+                &format!("new-{i}"),
+                "replacement doc",
+                "fresh content",
+                "perm",
+            )
+        })
         .collect();
     backend.index("test_concurrent", new_docs).await.unwrap();
 
