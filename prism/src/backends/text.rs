@@ -277,7 +277,7 @@ impl TextBackend {
 
         let reader = index
             .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
+            .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
 
         let writer = Arc::new(parking_lot::Mutex::new(index.writer(50_000_000)?));
@@ -442,6 +442,10 @@ impl SearchBackend for TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        // Reload reader to pick up any background merges that may have
+        // deleted old segment files. Without this, a stale reader can
+        // reference segments that the merge thread already garbage-collected.
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
 
         // Get searchable fields
@@ -650,6 +654,7 @@ impl SearchBackend for TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
         let id_field = coll.field_map.get("id").unwrap();
 
@@ -718,6 +723,7 @@ impl SearchBackend for TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
         let segment_readers = searcher.segment_readers();
 
@@ -746,6 +752,7 @@ impl SearchBackend for TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
 
         // Get searchable text fields
@@ -1628,6 +1635,7 @@ impl TextBackend {
             .get(field)
             .ok_or_else(|| Error::Schema(format!("Field '{}' not found", field)))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
         let mut term_counts: HashMap<String, u64> = HashMap::new();
 
@@ -1677,6 +1685,7 @@ impl TextBackend {
             .get(field)
             .ok_or_else(|| Error::Schema(format!("Field '{}' not found", field)))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
         let prefix_bytes = prefix.as_bytes();
         let mut term_counts: HashMap<String, u64> = HashMap::new();
@@ -1797,6 +1806,7 @@ impl TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
 
         // Determine source text: either from an existing document or from provided text
@@ -1999,6 +2009,7 @@ impl TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
         let mut segments = Vec::new();
         let mut total_docs: u64 = 0;
@@ -2048,6 +2059,7 @@ impl TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
+        coll.reader.reload()?;
         let searcher = coll.reader.searcher();
         let id_field = coll.field_map.get("id").unwrap();
 
