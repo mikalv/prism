@@ -2,6 +2,18 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.4] - 2026-02-15
+
+### Fixes
+
+- **Tantivy "Path not found" crash** — disable background merge threads (`NoMergePolicy`) to prevent segment file deletion races in `TantivyStorageAdapter`
+- **Stale reader segments** — switch to `ReloadPolicy::Manual` with explicit `reader.reload()` before every search
+- **413 Payload Too Large** — configurable `max_body_size` (default 100MB) via `ServerConfig`
+
+### Tests
+
+- 7 new concurrent text backend tests: interleaved index/search, parallel tasks, bulk indexing, delete+reindex
+
 ## [0.6.3] - 2026-02-13
 
 ### Highlights

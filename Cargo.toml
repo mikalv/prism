@@ -3,7 +3,7 @@ resolver = "2"
 members = ["prism", "prism-server", "prism-cli", "prism-storage", "prism-importer", "prism-cluster", "prism-es-compat", "prism-ui", "prism-treesitter", "xtask"]
 
 [workspace.package]
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 license = "MIT"
 authors = ["mikalv"]
@@ -106,10 +106,10 @@ tokio-util = { version = "0.7", features = ["codec"] }
 tokio-serde = { version = "0.9", features = ["bincode", "json"] }
 
 # Internal
-prism = { path = "prism", package = "prismsearch", version = "0.6.3" }
-prism-storage = { path = "prism-storage", package = "prismsearch-storage", version = "0.6.3" }
-prism-importer = { path = "prism-importer", package = "prismsearch-importer", version = "0.6.3" }
-prism-cluster = { path = "prism-cluster", package = "prismsearch-cluster", version = "0.6.3" }
-prism-es-compat = { path = "prism-es-compat", package = "prismsearch-es-compat", version = "0.6.3" }
-prism-ui = { path = "prism-ui", package = "prismsearch-ui", version = "0.6.3" }
-prism-treesitter = { path = "prism-treesitter", package = "prismsearch-treesitter", version = "0.6.3" }
+prism = { path = "prism", package = "prismsearch", version = "0.6.4" }
+prism-storage = { path = "prism-storage", package = "prismsearch-storage", version = "0.6.4" }
+prism-importer = { path = "prism-importer", package = "prismsearch-importer", version = "0.6.4" }
+prism-cluster = { path = "prism-cluster", package = "prismsearch-cluster", version = "0.6.4" }
+prism-es-compat = { path = "prism-es-compat", package = "prismsearch-es-compat", version = "0.6.4" }
+prism-ui = { path = "prism-ui", package = "prismsearch-ui", version = "0.6.4" }
+prism-treesitter = { path = "prism-treesitter", package = "prismsearch-treesitter", version = "0.6.4" }
