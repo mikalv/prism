@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
-    collector::TopDocs, query::QueryParser, schema::*, DateTime, DocSet, Index, IndexReader,
-    IndexWriter, ReloadPolicy, TantivyDocument, Term,
+    collector::TopDocs, indexer::NoMergePolicy, query::QueryParser, schema::*, DateTime, DocSet,
+    Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term,
 };
 
 pub struct TextBackend {
@@ -280,7 +280,13 @@ impl TextBackend {
             .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
 
-        let writer = Arc::new(parking_lot::Mutex::new(index.writer(50_000_000)?));
+        let writer = index.writer(50_000_000)?;
+        // Disable background merge threads. Our TantivyStorageAdapter doesn't
+        // support Unix unlink semantics (deleted files remaining accessible via
+        // open file handles), so background merges that delete old segment files
+        // cause "Path not found" crashes in concurrent readers/writers.
+        writer.set_merge_policy(Box::new(NoMergePolicy));
+        let writer = Arc::new(parking_lot::Mutex::new(writer));
 
         // Check if system fields exist in the loaded schema
         let indexed_at_enabled = existing_field_map.contains_key("_indexed_at");
