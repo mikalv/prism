@@ -119,7 +119,7 @@ pub async fn search(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
     Json(request): Json<SearchRequest>,
-) -> Result<Json<SearchResults>, StatusCode> {
+) -> Result<Json<SearchResults>, (StatusCode, String)> {
     let start = std::time::Instant::now();
 
     let qstr = if let Some(vec) = request.vector.clone() {
@@ -198,7 +198,7 @@ pub async fn search(
             )
             .increment(1);
             tracing::error!("Search error: {:?}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e)))
         }
     }
 }
@@ -284,7 +284,7 @@ pub async fn index_documents(
     axum::extract::Query(query): axum::extract::Query<IndexQuery>,
     State(state): State<AppState>,
     Json(request): Json<IndexRequest>,
-) -> Result<(StatusCode, Json<IndexResponse>), StatusCode> {
+) -> Result<(StatusCode, Json<IndexResponse>), (StatusCode, String)> {
     let start = std::time::Instant::now();
     let mut documents = request.documents;
     let total = documents.len();
@@ -299,7 +299,10 @@ pub async fn index_documents(
     if let Some(ref pipeline_name) = query.pipeline {
         let pipeline = state.pipeline_registry.get(pipeline_name).ok_or_else(|| {
             tracing::warn!("Unknown pipeline: {}", pipeline_name);
-            StatusCode::BAD_REQUEST
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Unknown pipeline: {}", pipeline_name),
+            )
         })?;
 
         let mut processed = Vec::with_capacity(documents.len());
@@ -327,7 +330,7 @@ pub async fn index_documents(
             .await
             .map_err(|e| {
                 tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
             })?;
     }
 
