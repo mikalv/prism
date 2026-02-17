@@ -132,3 +132,4 @@ full = ["vector-instant", "all-providers", "cache-redis", "storage-encryption", 
 proptest = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
+chrono = { workspace = true }

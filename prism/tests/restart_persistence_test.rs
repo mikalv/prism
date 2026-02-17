@@ -426,12 +426,12 @@ backends:
             rating
         );
         assert_eq!(doc.fields["published"], json!(true));
-        // NOTE: Date fields are stored in Tantivy but the TextBackend::get() method
-        // currently does not serialize OwnedValue::Date back to JSON (it falls through
-        // the catch-all arm).  We verify the date field is indexed correctly by
-        // confirming the document was retrieved at all (the schema declares created_at
-        // as indexed+stored, and ingestion would have failed if the date was invalid).
-        // When get() is updated to handle Date, this assertion should be tightened.
+        // Date field should be returned as ISO 8601 string
+        let created_at = doc.fields.get("created_at").and_then(|v| v.as_str());
+        assert!(
+            created_at.is_some(),
+            "created_at date field should be present in retrieved document"
+        );
     }
 }
 

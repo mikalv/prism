@@ -47,6 +47,36 @@ struct CollectionIndex {
     boosting_config: Option<crate::schema::BoostingConfig>,
 }
 
+/// Convert a Tantivy OwnedValue to a serde_json::Value.
+/// Handles all stored types: Str, U64, I64, F64, Bool, Date (→ ISO 8601), Bytes (→ base64).
+fn owned_value_to_json(value: &tantivy::schema::OwnedValue) -> Option<serde_json::Value> {
+    match value {
+        tantivy::schema::OwnedValue::Str(s) => Some(serde_json::Value::String(s.to_string())),
+        tantivy::schema::OwnedValue::U64(n) => Some(serde_json::Value::Number((*n).into())),
+        tantivy::schema::OwnedValue::I64(n) => Some(serde_json::Value::Number((*n).into())),
+        tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+            .map(serde_json::Value::Number)
+            .or(Some(serde_json::Value::Null)),
+        tantivy::schema::OwnedValue::Bool(b) => Some(serde_json::Value::Bool(*b)),
+        tantivy::schema::OwnedValue::Date(dt) => {
+            let micros = dt.into_timestamp_micros();
+            let secs = micros / 1_000_000;
+            let nsecs = ((micros % 1_000_000) * 1000) as u32;
+            if let Some(ndt) = chrono::DateTime::from_timestamp(secs, nsecs) {
+                Some(serde_json::Value::String(
+                    ndt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                ))
+            } else {
+                Some(serde_json::Value::Number(micros.into()))
+            }
+        }
+        tantivy::schema::OwnedValue::Bytes(b) => Some(serde_json::Value::String(
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b),
+        )),
+        _ => None,
+    }
+}
+
 impl TextBackend {
     /// Create a new TextBackend with local filesystem storage.
     ///
@@ -562,27 +592,9 @@ impl SearchBackend for TextBackend {
             for (field, entry) in coll.schema.fields() {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
-                        let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => {
-                                serde_json::Value::String(s.to_string())
-                            }
-                            tantivy::schema::OwnedValue::U64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::I64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null),
-                            tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
-                            tantivy::schema::OwnedValue::Date(dt) => {
-                                // Store DateTime as microseconds since epoch for ranking
-                                serde_json::Value::Number(dt.into_timestamp_micros().into())
-                            }
-                            _ => continue,
-                        };
-                        fields.insert(entry.name().to_string(), json_value);
+                        if let Some(json_value) = owned_value_to_json(value) {
+                            fields.insert(entry.name().to_string(), json_value);
+                        }
                     }
                 }
             }
@@ -709,23 +721,9 @@ impl SearchBackend for TextBackend {
             for (field, entry) in coll.schema.fields() {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
-                        let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => {
-                                serde_json::Value::String(s.to_string())
-                            }
-                            tantivy::schema::OwnedValue::U64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::I64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null),
-                            tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
-                            _ => continue,
-                        };
-                        fields.insert(entry.name().to_string(), json_value);
+                        if let Some(json_value) = owned_value_to_json(value) {
+                            fields.insert(entry.name().to_string(), json_value);
+                        }
                     }
                 }
             }
@@ -862,23 +860,9 @@ impl SearchBackend for TextBackend {
             for (field, entry) in coll.schema.fields() {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
-                        let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => {
-                                serde_json::Value::String(s.to_string())
-                            }
-                            tantivy::schema::OwnedValue::U64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::I64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null),
-                            tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
-                            _ => continue,
-                        };
-                        fields.insert(entry.name().to_string(), json_value);
+                        if let Some(json_value) = owned_value_to_json(value) {
+                            fields.insert(entry.name().to_string(), json_value);
+                        }
                     }
                 }
             }
@@ -978,6 +962,15 @@ fn collect_docs_per_bucket_terms(
                 tantivy::schema::OwnedValue::U64(n) => n.to_string(),
                 tantivy::schema::OwnedValue::I64(n) => n.to_string(),
                 tantivy::schema::OwnedValue::F64(n) => n.to_string(),
+                tantivy::schema::OwnedValue::Bool(b) => b.to_string(),
+                tantivy::schema::OwnedValue::Date(dt) => {
+                    let micros = dt.into_timestamp_micros();
+                    let secs = micros / 1_000_000;
+                    let nsecs = ((micros % 1_000_000) * 1000) as u32;
+                    chrono::DateTime::from_timestamp(secs, nsecs)
+                        .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                        .unwrap_or_else(|| micros.to_string())
+                }
                 _ => continue,
             };
             map.entry(key).or_default().push(doc_addr);
@@ -2027,26 +2020,9 @@ impl TextBackend {
             for (field, entry) in coll.schema.fields() {
                 if entry.is_stored() {
                     if let Some(value) = doc.get_first(field) {
-                        let json_value = match value {
-                            tantivy::schema::OwnedValue::Str(s) => {
-                                serde_json::Value::String(s.to_string())
-                            }
-                            tantivy::schema::OwnedValue::U64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::I64(n) => {
-                                serde_json::Value::Number((*n).into())
-                            }
-                            tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null),
-                            tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
-                            tantivy::schema::OwnedValue::Date(dt) => {
-                                serde_json::Value::Number(dt.into_timestamp_micros().into())
-                            }
-                            _ => continue,
-                        };
-                        fields_map.insert(entry.name().to_string(), json_value);
+                        if let Some(json_value) = owned_value_to_json(value) {
+                            fields_map.insert(entry.name().to_string(), json_value);
+                        }
                     }
                 }
             }
@@ -2150,23 +2126,9 @@ impl TextBackend {
         for (field, entry) in coll.schema.fields() {
             if entry.is_stored() {
                 if let Some(value) = doc.get_first(field) {
-                    let json_value = match value {
-                        tantivy::schema::OwnedValue::Str(s) => {
-                            serde_json::Value::String(s.to_string())
-                        }
-                        tantivy::schema::OwnedValue::U64(n) => {
-                            serde_json::Value::Number((*n).into())
-                        }
-                        tantivy::schema::OwnedValue::I64(n) => {
-                            serde_json::Value::Number((*n).into())
-                        }
-                        tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
-                            .map(serde_json::Value::Number)
-                            .unwrap_or(serde_json::Value::Null),
-                        tantivy::schema::OwnedValue::Bool(b) => serde_json::Value::Bool(*b),
-                        _ => continue,
-                    };
-                    stored_fields.insert(entry.name().to_string(), json_value);
+                    if let Some(json_value) = owned_value_to_json(value) {
+                        stored_fields.insert(entry.name().to_string(), json_value);
+                    }
                 }
             }
         }

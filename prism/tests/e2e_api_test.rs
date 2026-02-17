@@ -480,13 +480,13 @@ async fn test_index_with_all_field_types() {
         fields["bool_field"].is_boolean() || fields["bool_field"].is_number(),
         "bool_field should be boolean or numeric"
     );
-    // date field -- the text backend's `get` handler does not currently
-    // convert OwnedValue::Date back to JSON, so this field may be absent.
-    // We verify that the document was indexed and retrievable with all other
-    // field types. When the backend adds Date serialization in `get`, this
-    // assertion can be tightened.
-    // For now, just confirm the document was fetched successfully (already
-    // checked above with status 200 and id match).
+    // date field should now be returned as ISO 8601 string
+    let date_val = fields.get("date_field");
+    assert!(
+        date_val.is_some() && date_val.unwrap().is_string(),
+        "date_field should be present as a string, got {:?}",
+        date_val
+    );
 
     handle.abort();
 }

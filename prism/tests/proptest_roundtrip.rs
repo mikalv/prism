@@ -239,11 +239,23 @@ proptest! {
                 "bool_field mismatch"
             );
 
-            // Date and Bytes: the get() method currently skips Date/Bytes OwnedValues,
-            // so we just verify they don't cause errors. These fields are stored in
-            // Tantivy but not reconstructed by the current get() implementation.
-            // This is a known limitation; the test validates that the round-trip
-            // for the supported extraction types works correctly.
+            // Date: should now be returned as an ISO 8601 string.
+            // Tantivy stores dates at second precision, so we compare up to seconds.
+            let retrieved_date = retrieved.fields.get("date_field").and_then(|v| v.as_str());
+            assert!(
+                retrieved_date.is_some(),
+                "date_field should be present in retrieved document"
+            );
+            // Parse both to chrono DateTime and compare at second precision
+            let input_dt = chrono::DateTime::parse_from_rfc3339(&date_val).unwrap();
+            let output_dt = chrono::DateTime::parse_from_rfc3339(retrieved_date.unwrap()).unwrap();
+            assert_eq!(
+                input_dt.timestamp(),
+                output_dt.timestamp(),
+                "date_field second-precision mismatch: input={} output={}",
+                date_val,
+                retrieved_date.unwrap()
+            );
 
             // Delete and verify gone
             manager.delete("proptest-all", vec![doc_id.clone()]).await.unwrap();
@@ -451,7 +463,7 @@ proptest! {
             // Indexing a valid RFC 3339 date should not fail
             manager.index("proptest-all", vec![doc]).await.unwrap();
 
-            // The document should be retrievable (date is stored in Tantivy)
+            // The document should be retrievable with the date field
             let retrieved = manager.get("proptest-all", &doc_id).await.unwrap();
             assert!(
                 retrieved.is_some(),
@@ -459,11 +471,26 @@ proptest! {
                 date_val
             );
 
-            // Note: The current get() implementation skips Date OwnedValues
-            // in the field extraction loop (falls through to `_ => continue`).
-            // We verify the doc exists and other fields are intact -- the date
-            // is stored internally in Tantivy and can be used for sorting/filtering.
             let fields = &retrieved.unwrap().fields;
+
+            // Date field should now be returned as ISO 8601 string
+            let retrieved_date = fields.get("date_field").and_then(|v| v.as_str());
+            assert!(
+                retrieved_date.is_some(),
+                "date_field should be present in retrieved document for input '{}'",
+                date_val
+            );
+            let input_dt = chrono::DateTime::parse_from_rfc3339(&date_val).unwrap();
+            let output_dt = chrono::DateTime::parse_from_rfc3339(retrieved_date.unwrap()).unwrap();
+            assert_eq!(
+                input_dt.timestamp(),
+                output_dt.timestamp(),
+                "date_field round-trip mismatch: input={} output={}",
+                date_val,
+                retrieved_date.unwrap()
+            );
+
+            // Other fields should also be intact
             assert_eq!(
                 fields.get("string_field").and_then(|v| v.as_str()),
                 Some("datetest"),
