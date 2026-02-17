@@ -195,7 +195,7 @@ impl RolloverService {
             std::path::PathBuf::from("./schemas"),
             dirs::home_dir()
                 .unwrap_or_default()
-                .join(".engraph")
+                .join(".prismsearch")
                 .join("schemas"),
         ];
 

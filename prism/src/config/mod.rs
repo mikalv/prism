@@ -1,6 +1,6 @@
-//! Configuration management for engraph-core
+//! Configuration management for prismsearch
 //!
-//! Default config location: ~/.engraph/config.toml
+//! Default config location: ~/.prismsearch/config.toml
 
 mod storage;
 
@@ -194,7 +194,7 @@ pub struct StorageConfig {
 fn default_data_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".engraph")
+        .join(".prismsearch")
 }
 
 fn default_max_gb() -> f64 {
@@ -420,7 +420,7 @@ pub fn expand_tilde(path: &Path) -> Result<PathBuf> {
 }
 
 impl Config {
-    /// Load config from default location (~/.engraph/config.toml)
+    /// Load config from default location (~/.prismsearch/config.toml)
     pub fn load() -> Result<Self> {
         let data_dir = default_data_dir();
         Self::load_from(&data_dir)

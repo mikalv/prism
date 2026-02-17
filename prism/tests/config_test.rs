@@ -133,7 +133,7 @@ model = "other-model"
 
 [logging]
 level = "trace"
-file = "/var/log/engraph.log"
+file = "/var/log/prismsearch.log"
 "#;
 
     let config: Config = toml::from_str(toml_content).unwrap();
@@ -152,7 +152,7 @@ file = "/var/log/engraph.log"
     assert_eq!(config.logging.level, "trace");
     assert_eq!(
         config.logging.file,
-        Some(PathBuf::from("/var/log/engraph.log"))
+        Some(PathBuf::from("/var/log/prismsearch.log"))
     );
 }
 

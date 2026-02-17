@@ -94,7 +94,7 @@ impl McpHandler {
                     "tools": {}
                 },
                 "serverInfo": {
-                    "name": "engraph-core",
+                    "name": "prismsearch",
                     "version": env!("CARGO_PKG_VERSION")
                 }
             }),

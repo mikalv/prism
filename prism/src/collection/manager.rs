@@ -699,7 +699,16 @@ impl CollectionManager {
                 }
             }
         }
-        self.schemas.write().insert(name.clone(), schema);
+        self.schemas.write().insert(name.clone(), schema.clone());
+
+        // Persist schema to disk so it survives restarts
+        let schema_path = self.schemas_dir.join(format!("{}.yaml", name));
+        if let Err(e) = std::fs::write(
+            &schema_path,
+            serde_yaml::to_string(&schema).unwrap_or_default(),
+        ) {
+            tracing::error!("Failed to persist schema for '{}': {}", name, e);
+        }
 
         // Update gauge
         metrics::gauge!("prism_collections_count").set(self.schemas.read().len() as f64);

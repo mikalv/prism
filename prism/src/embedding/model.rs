@@ -19,7 +19,7 @@ mod _inner {
         pub fn new(model_name: impl Into<String>) -> Self {
             let cache_dir = dirs::cache_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("engraph")
+                .join("prismsearch")
                 .join("models");
 
             Self {

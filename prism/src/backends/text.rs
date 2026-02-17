@@ -336,6 +336,12 @@ impl SearchBackend for TextBackend {
 
             // Add ID
             let id_field = coll.field_map.get("id").unwrap();
+
+            // Upsert: delete existing document with same ID before adding new one.
+            // This ensures re-indexing replaces rather than duplicates.
+            let delete_term = Term::from_field_text(*id_field, &doc.id);
+            writer.delete_term(delete_term);
+
             tantivy_doc.add_text(*id_field, &doc.id);
 
             // Add system field: _indexed_at (auto-injected timestamp)
@@ -364,7 +370,34 @@ impl SearchBackend for TextBackend {
                     let field_type = field_entry.field_type();
 
                     let added = match (&value, field_type) {
-                        // String/text values
+                        // Date fields — parse ISO 8601 string or epoch micros
+                        (serde_json::Value::String(s), tantivy::schema::FieldType::Date(_)) => {
+                            // Try RFC 3339 / ISO 8601 parsing via chrono
+                            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                                let micros = dt.timestamp_micros();
+                                tantivy_doc
+                                    .add_date(*field, DateTime::from_timestamp_micros(micros));
+                                true
+                            } else {
+                                tracing::warn!(
+                                    "Document '{}': could not parse date string '{}' for field '{}'",
+                                    doc.id, s, field_name
+                                );
+                                false
+                            }
+                        }
+                        (serde_json::Value::Number(n), tantivy::schema::FieldType::Date(_)) => {
+                            // Treat number as epoch microseconds
+                            if let Some(micros) = n.as_i64() {
+                                tantivy_doc
+                                    .add_date(*field, DateTime::from_timestamp_micros(micros));
+                                true
+                            } else {
+                                false
+                            }
+                        }
+
+                        // String/text values (must come AFTER Date match)
                         (serde_json::Value::String(s), _) => {
                             tantivy_doc.add_text(*field, s);
                             true
