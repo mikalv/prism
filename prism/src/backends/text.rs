@@ -518,21 +518,22 @@ impl SearchBackend for TextBackend {
 
         let mut query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
 
-        // Apply field-level boosting from config
-        if let Some(boosting_config) = &coll.boosting_config {
-            for (field_name, boost) in &boosting_config.field_weights {
-                if let Some(&field) = coll.field_map.get(field_name) {
-                    // Only boost fields that are being searched
-                    if fields_to_search.contains(&field) {
-                        query_parser.set_field_boost(field, *boost);
-                    }
-                }
+        // Tantivy's query parser can panic on certain inputs (e.g., bare `*`
+        // triggers "Exist query without a field isn't allowed").  Catch panics
+        // so malicious/malformed queries don't crash the server.
+        let query_string = query.query_string.clone();
+        let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            query_parser.parse_query(&query_string)
+        })) {
+            Ok(Ok(q)) => q,
+            Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
+            Err(_) => {
+                return Err(Error::InvalidQuery(format!(
+                    "Query parser panicked on input: {:?}",
+                    query_string
+                )));
             }
-        }
-
-        let parsed_query = query_parser
-            .parse_query(&query.query_string)
-            .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+        };
 
         let top_docs = searcher.search(
             &parsed_query,
@@ -823,9 +824,19 @@ impl SearchBackend for TextBackend {
         }
 
         let query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
-        let parsed_query = query_parser
-            .parse_query(&query.query_string)
-            .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+        let query_string = query.query_string.clone();
+        let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            query_parser.parse_query(&query_string)
+        })) {
+            Ok(Ok(q)) => q,
+            Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
+            Err(_) => {
+                return Err(Error::InvalidQuery(format!(
+                    "Query parser panicked on input: {:?}",
+                    query_string
+                )));
+            }
+        };
 
         // Collect all matching docs for aggregations
         let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(10000))?;
@@ -1592,9 +1603,19 @@ fn resolve_filter_docs(
     parent_addrs: Option<&[tantivy::DocAddress]>,
 ) -> Result<Vec<tantivy::DocAddress>> {
     let qp = QueryParser::for_index(&coll.index, searchable_fields.to_vec());
-    let parsed = qp
-        .parse_query(query_str)
-        .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+    let qs = query_str.to_string();
+    let parsed = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        qp.parse_query(&qs)
+    })) {
+        Ok(Ok(q)) => q,
+        Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
+        Err(_) => {
+            return Err(Error::InvalidQuery(format!(
+                "Query parser panicked on input: {:?}",
+                qs
+            )));
+        }
+    };
 
     let results = searcher.search(&parsed, &TopDocs::with_limit(10000))?;
     let addrs: Vec<tantivy::DocAddress> = results.into_iter().map(|(_s, addr)| addr).collect();
@@ -1966,9 +1987,19 @@ impl TextBackend {
             .join(" ");
 
         let query_parser = QueryParser::for_index(&coll.index, resolve_fields);
-        let parsed_query = query_parser
-            .parse_query(&query_string)
-            .map_err(|e| Error::InvalidQuery(e.to_string()))?;
+        let qs = query_string.clone();
+        let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            query_parser.parse_query(&qs)
+        })) {
+            Ok(Ok(q)) => q,
+            Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
+            Err(_) => {
+                return Err(Error::InvalidQuery(format!(
+                    "Query parser panicked on input: {:?}",
+                    qs
+                )));
+            }
+        };
 
         // Search for size + 1 to allow excluding the source doc
         let fetch_limit = if exclude_id.is_some() { size + 1 } else { size };

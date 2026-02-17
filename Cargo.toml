@@ -85,6 +85,7 @@ bytes = "1.5"
 
 # Testing
 tempfile = "3"
+proptest = "1"
 
 # Export/archive
 tar = "0.4"

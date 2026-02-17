@@ -127,3 +127,8 @@ tokenizer-treesitter = ["dep:prism-treesitter"]
 
 # Full feature set
 full = ["vector-instant", "all-providers", "cache-redis", "storage-encryption", "storage-compression"]
+
+[dev-dependencies]
+proptest = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
