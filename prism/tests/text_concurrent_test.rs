@@ -320,6 +320,59 @@ async fn test_bulk_index() {
     assert!(results.total > 0);
 }
 
+/// Verify documents are immediately searchable and retrievable after each commit.
+/// This catches the bug where watch() no-op + OnCommitWithDelay meant readers
+/// never reloaded, and also verifies GC doesn't delete freshly committed segments.
+#[tokio::test]
+async fn test_documents_visible_after_commit() {
+    let (_temp, backend) = setup_text_backend().await;
+
+    // 10 separate commits — after each one, ALL previously indexed docs must be visible
+    for batch in 0..10 {
+        let docs = vec![make_doc(
+            &format!("vis-{batch}"),
+            &format!("Visible batch {batch}"),
+            "this should be findable",
+            "visible",
+        )];
+        backend.index("test_concurrent", docs).await.unwrap();
+
+        // GET by ID — must find the just-committed doc
+        let doc = backend
+            .get("test_concurrent", &format!("vis-{batch}"))
+            .await
+            .unwrap();
+        assert!(
+            doc.is_some(),
+            "doc vis-{batch} must be retrievable immediately after commit"
+        );
+
+        // Also verify all PREVIOUS docs are still accessible (GC didn't kill them)
+        for prev in 0..batch {
+            let prev_doc = backend
+                .get("test_concurrent", &format!("vis-{prev}"))
+                .await
+                .unwrap();
+            assert!(
+                prev_doc.is_some(),
+                "doc vis-{prev} must still exist after batch {batch} commit (GC must not delete it)"
+            );
+        }
+
+        // Search should find all docs from batch 0..=current
+        let results = backend
+            .search("test_concurrent", make_query("findable", 100))
+            .await
+            .unwrap();
+        assert_eq!(
+            results.total,
+            batch + 1,
+            "after batch {batch}, search should find {} docs",
+            batch + 1
+        );
+    }
+}
+
 /// Get by ID after multiple commits.
 #[tokio::test]
 async fn test_get_after_multiple_commits() {
