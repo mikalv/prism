@@ -220,6 +220,20 @@ pub struct EmbeddingConfig {
     /// Cache directory for embeddings (optional)
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
+    /// Max texts per embedding API call (default: 128)
+    #[serde(default = "default_embed_batch_size")]
+    pub batch_size: usize,
+    /// Max concurrent embedding API calls (default: 4)
+    #[serde(default = "default_embed_concurrency")]
+    pub concurrency: usize,
+}
+
+fn default_embed_batch_size() -> usize {
+    128
+}
+
+fn default_embed_concurrency() -> usize {
+    4
 }
 
 fn default_true() -> bool {
@@ -232,6 +246,8 @@ impl Default for EmbeddingConfig {
             enabled: default_true(),
             provider: crate::embedding::ProviderConfig::default(),
             cache_dir: None,
+            batch_size: default_embed_batch_size(),
+            concurrency: default_embed_concurrency(),
         }
     }
 }

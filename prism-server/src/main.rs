@@ -121,10 +121,12 @@ async fn main() -> Result<()> {
                     )
                     .expect("Failed to create embedding cache"),
                 );
-                let cached_provider = Arc::new(prism::embedding::CachedEmbeddingProvider::new(
+                let cached_provider = Arc::new(prism::embedding::CachedEmbeddingProvider::with_config(
                     provider,
                     cache,
                     prism::cache::KeyStrategy::ModelText,
+                    config.embedding.batch_size,
+                    config.embedding.concurrency,
                 ));
                 vector_backend.set_embedding_provider(cached_provider);
                 tracing::info!(

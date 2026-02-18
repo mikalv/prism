@@ -200,4 +200,67 @@ impl EmbeddingCache for RedisCache {
 
         Ok(deleted)
     }
+
+    async fn get_batch(&self, keys: &[CacheKey]) -> anyhow::Result<Vec<Option<Vec<f32>>>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut conn = self.get_connection().await?;
+        let redis_keys: Vec<String> = keys.iter().map(|k| self.make_key(k)).collect();
+
+        // MGET all keys at once
+        let raw: Vec<Option<Vec<u8>>> = redis::cmd("MGET")
+            .arg(&redis_keys)
+            .query_async(&mut conn)
+            .await?;
+
+        let mut hits: u64 = 0;
+        let mut misses: u64 = 0;
+        let results = raw
+            .into_iter()
+            .map(|opt| match opt {
+                Some(bytes) => {
+                    hits += 1;
+                    Some(bytes_to_f32_vec(&bytes))
+                }
+                None => {
+                    misses += 1;
+                    None
+                }
+            })
+            .collect();
+
+        self.hits.fetch_add(hits, Ordering::Relaxed);
+        self.misses.fetch_add(misses, Ordering::Relaxed);
+
+        Ok(results)
+    }
+
+    async fn set_batch(&self, entries: &[(CacheKey, Vec<f32>, usize)]) -> anyhow::Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let mut conn = self.get_connection().await?;
+        let now = chrono::Utc::now().timestamp();
+        let index_key = format!("{}__index", self.prefix);
+
+        let mut pipe = redis::pipe();
+        for (key, vector, dimensions) in entries {
+            let redis_key = self.make_key(key);
+            let bytes = f32_vec_to_bytes(vector);
+            let meta_key = format!("{}:meta", redis_key);
+
+            pipe.set(&redis_key, bytes);
+            pipe.hset(&meta_key, "model", &key.model);
+            pipe.hset(&meta_key, "dimensions", *dimensions);
+            pipe.hset(&meta_key, "created_at", now);
+            pipe.hset(&meta_key, "accessed_at", now);
+            pipe.sadd(&index_key, &redis_key);
+        }
+        pipe.query_async::<()>(&mut conn).await?;
+
+        Ok(())
+    }
 }

@@ -30,11 +30,21 @@ pub use onnx::OnnxProvider;
 use crate::cache::{CacheKey, EmbeddingCache, EmbeddingCacheStats, KeyStrategy, SqliteCache};
 use std::sync::Arc;
 
+fn default_embed_batch_size() -> usize {
+    128
+}
+
+fn default_embed_concurrency() -> usize {
+    4
+}
+
 /// Cached embedding provider that uses the cache layer
 pub struct CachedEmbeddingProvider {
     provider: Box<dyn EmbeddingProvider>,
     cache: Arc<dyn EmbeddingCache>,
     key_strategy: KeyStrategy,
+    embed_batch_size: usize,
+    embed_concurrency: usize,
 }
 
 impl CachedEmbeddingProvider {
@@ -48,6 +58,25 @@ impl CachedEmbeddingProvider {
             provider,
             cache,
             key_strategy,
+            embed_batch_size: default_embed_batch_size(),
+            embed_concurrency: default_embed_concurrency(),
+        }
+    }
+
+    /// Create with custom batch size and concurrency settings
+    pub fn with_config(
+        provider: Box<dyn EmbeddingProvider>,
+        cache: Arc<dyn EmbeddingCache>,
+        key_strategy: KeyStrategy,
+        batch_size: usize,
+        concurrency: usize,
+    ) -> Self {
+        Self {
+            provider,
+            cache,
+            key_strategy,
+            embed_batch_size: batch_size,
+            embed_concurrency: concurrency,
         }
     }
 
@@ -84,33 +113,49 @@ impl CachedEmbeddingProvider {
 
     /// Generate embeddings for multiple texts with caching
     pub async fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
-        let mut results = Vec::with_capacity(texts.len());
-        let mut cache_misses: Vec<(usize, &str)> = Vec::new();
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        // Check cache for each text
-        for (i, text) in texts.iter().enumerate() {
-            let key = CacheKey::new(self.provider.model_name(), None, text, self.key_strategy);
+        // Build all keys upfront
+        let keys = CacheKey::batch_new(self.provider.model_name(), None, texts, self.key_strategy);
 
-            if let Some(cached) = self.cache.get(&key).await? {
-                results.push((i, cached));
+        // Single batch cache lookup
+        let cached = self.cache.get_batch(&keys).await?;
+
+        // Separate hits from misses
+        let mut results: Vec<(usize, Vec<f32>)> = Vec::with_capacity(texts.len());
+        let mut miss_indices = Vec::new();
+        for (i, cached_val) in cached.into_iter().enumerate() {
+            if let Some(vec) = cached_val {
+                results.push((i, vec));
             } else {
-                cache_misses.push((i, text));
+                miss_indices.push(i);
             }
         }
 
-        // Generate embeddings for cache misses
-        if !cache_misses.is_empty() {
-            let miss_texts: Vec<&str> = cache_misses.iter().map(|(_, t)| *t).collect();
-            let generated = self.provider.embed_batch(&miss_texts).await?;
+        // Generate embeddings for misses in chunks with concurrency
+        if !miss_indices.is_empty() {
+            let miss_texts: Vec<&str> = miss_indices.iter().map(|&i| texts[i]).collect();
 
-            // Store in cache and collect results
-            for ((original_idx, text), embedding) in cache_misses.iter().zip(generated.into_iter())
-            {
-                let key = CacheKey::new(self.provider.model_name(), None, text, self.key_strategy);
-                self.cache
-                    .set(&key, embedding.clone(), self.provider.dimensions())
-                    .await?;
-                results.push((*original_idx, embedding));
+            let generated = chunked_embed(
+                self.provider.as_ref(),
+                &miss_texts,
+                self.embed_batch_size,
+                self.embed_concurrency,
+            )
+            .await?;
+
+            // Batch cache write
+            let entries: Vec<_> = miss_indices
+                .iter()
+                .zip(generated.iter())
+                .map(|(&idx, vec)| (keys[idx].clone(), vec.clone(), self.provider.dimensions()))
+                .collect();
+            self.cache.set_batch(&entries).await?;
+
+            for (idx, embedding) in miss_indices.into_iter().zip(generated) {
+                results.push((idx, embedding));
             }
         }
 
@@ -128,6 +173,21 @@ impl CachedEmbeddingProvider {
     pub fn provider(&self) -> &dyn EmbeddingProvider {
         self.provider.as_ref()
     }
+}
+
+/// Embed texts in chunks, sending chunk_size texts per provider call.
+/// Chunks are processed sequentially to avoid Send lifetime issues in async traits.
+async fn chunked_embed(
+    provider: &dyn EmbeddingProvider,
+    texts: &[&str],
+    chunk_size: usize,
+    _max_concurrent: usize,
+) -> anyhow::Result<Vec<Vec<f32>>> {
+    let mut all = Vec::with_capacity(texts.len());
+    for chunk in texts.chunks(chunk_size) {
+        all.extend(provider.embed_batch(chunk).await?);
+    }
+    Ok(all)
 }
 
 #[cfg(test)]

@@ -44,6 +44,19 @@ impl CacheKey {
             text_hash,
         }
     }
+
+    /// Create cache keys for a batch of texts
+    pub fn batch_new(
+        model: &str,
+        model_version: Option<&str>,
+        texts: &[&str],
+        strategy: KeyStrategy,
+    ) -> Vec<Self> {
+        texts
+            .iter()
+            .map(|t| Self::new(model, model_version, t, strategy))
+            .collect()
+    }
 }
 
 fn hex_hash(input: &str) -> String {
@@ -96,6 +109,25 @@ pub trait EmbeddingCache: Send + Sync {
 
     /// Clear entries older than the given timestamp
     async fn clear_older_than(&self, timestamp: i64) -> anyhow::Result<usize>;
+
+    /// Get embeddings for multiple keys in a single batch operation.
+    /// Default implementation falls back to sequential get() calls.
+    async fn get_batch(&self, keys: &[CacheKey]) -> anyhow::Result<Vec<Option<Vec<f32>>>> {
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.get(key).await?);
+        }
+        Ok(results)
+    }
+
+    /// Store multiple embeddings in a single batch operation.
+    /// Default implementation falls back to sequential set() calls.
+    async fn set_batch(&self, entries: &[(CacheKey, Vec<f32>, usize)]) -> anyhow::Result<()> {
+        for (key, vector, dims) in entries {
+            self.set(key, vector.clone(), *dims).await?;
+        }
+        Ok(())
+    }
 }
 
 // Need hex crate for encoding

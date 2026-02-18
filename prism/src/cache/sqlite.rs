@@ -49,6 +49,14 @@ impl SqliteCache {
             [],
         )?;
 
+        // WAL mode + performance pragmas
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA cache_size=-64000;
+             PRAGMA temp_store=MEMORY;",
+        )?;
+
         Ok(Self {
             conn: Mutex::new(conn),
             hits: AtomicU64::new(0),
@@ -77,6 +85,12 @@ impl SqliteCache {
         )?;
 
         conn.execute("CREATE INDEX idx_accessed ON embeddings(accessed_at)", [])?;
+
+        // Performance pragmas (WAL not needed for in-memory but cache_size helps)
+        conn.execute_batch(
+            "PRAGMA cache_size=-64000;
+             PRAGMA temp_store=MEMORY;",
+        )?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -210,6 +224,100 @@ impl EmbeddingCache for SqliteCache {
             params![timestamp],
         )?;
         Ok(deleted)
+    }
+
+    async fn get_batch(&self, keys: &[CacheKey]) -> anyhow::Result<Vec<Option<Vec<f32>>>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn.lock().await;
+
+        // Build SELECT ... WHERE key_hash IN (?, ?, ...)
+        let placeholders: Vec<&str> = keys.iter().map(|_| "?").collect();
+        let sql = format!(
+            "SELECT key_hash, vector FROM embeddings WHERE key_hash IN ({})",
+            placeholders.join(",")
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+
+        // Bind all key hashes as params
+        let params: Vec<&dyn rusqlite::types::ToSql> = keys
+            .iter()
+            .map(|k| &k.hash as &dyn rusqlite::types::ToSql)
+            .collect();
+
+        let mut found: std::collections::HashMap<String, Vec<f32>> = std::collections::HashMap::new();
+        let mut rows = stmt.query(params.as_slice())?;
+        while let Some(row) = rows.next()? {
+            let hash: String = row.get(0)?;
+            let bytes: Vec<u8> = row.get(1)?;
+            found.insert(hash, bytes_to_f32_vec(&bytes));
+        }
+
+        // Build results in original order, track hits/misses
+        let mut hits: u64 = 0;
+        let mut misses: u64 = 0;
+        let results = keys
+            .iter()
+            .map(|k| {
+                if let Some(vec) = found.remove(&k.hash) {
+                    hits += 1;
+                    Some(vec)
+                } else {
+                    misses += 1;
+                    None
+                }
+            })
+            .collect();
+
+        // Skip per-row access-time update for batch reads (perf optimization)
+        self.hits.fetch_add(hits, Ordering::Relaxed);
+        self.misses.fetch_add(misses, Ordering::Relaxed);
+        if hits > 0 {
+            metrics::counter!("prism_embedding_cache_hits_total", "layer" => "sqlite")
+                .increment(hits);
+        }
+        if misses > 0 {
+            metrics::counter!("prism_embedding_cache_misses_total", "layer" => "sqlite")
+                .increment(misses);
+        }
+
+        Ok(results)
+    }
+
+    async fn set_batch(&self, entries: &[(CacheKey, Vec<f32>, usize)]) -> anyhow::Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let conn = self.conn.lock().await;
+        let now = chrono::Utc::now().timestamp();
+
+        conn.execute_batch("BEGIN")?;
+        {
+            let mut stmt = conn.prepare(
+                r#"INSERT OR REPLACE INTO embeddings
+                   (key_hash, model, text_hash, vector, dimensions, created_at, accessed_at, access_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)"#,
+            )?;
+            for (key, vector, dims) in entries {
+                let bytes = f32_vec_to_bytes(vector);
+                stmt.execute(params![
+                    &key.hash,
+                    &key.model,
+                    &key.text_hash,
+                    &bytes,
+                    *dims as i64,
+                    now,
+                    now
+                ])?;
+            }
+        }
+        conn.execute_batch("COMMIT")?;
+
+        Ok(())
     }
 }
 
