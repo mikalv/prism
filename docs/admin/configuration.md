@@ -42,8 +42,8 @@ key_path = "./conf/tls/key.pem"
 |--------|---------|-------------|
 | `bind_addr` | `127.0.0.1:8080` | Address and port to bind |
 | `unix_socket` | — | Optional Unix socket path |
-| `cors.enabled` | `false` | Enable CORS headers |
-| `cors.origins` | `[]` | Allowed origins |
+| `cors.enabled` | `true` | Enable CORS headers |
+| `cors.origins` | dev ports | Allowed origins |
 | `tls.enabled` | `false` | Enable TLS |
 | `tls.bind_addr` | — | TLS bind address |
 | `tls.cert_path` | — | Path to TLS certificate |
@@ -59,7 +59,7 @@ max_local_gb = 5.0
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `data_dir` | `~/.engraph` | Base directory for all data |
+| `data_dir` | `~/.prismsearch` | Base directory for all data |
 | `max_local_gb` | — | Maximum local storage in GB |
 
 For advanced storage options (S3, caching), see [Storage Backends](storage-backends.md).
@@ -69,13 +69,26 @@ For advanced storage options (S3, caching), see [Storage Backends](storage-backe
 ```toml
 [embedding]
 enabled = true
-model = "all-MiniLM-L6-v2"
+batch_size = 128       # Max texts per embedding API call
+concurrency = 4        # Max concurrent embedding API calls
+cache_dir = "~/.prism/cache/embeddings.db"
+
+[embedding.provider]
+type = "ollama"
+url = "http://localhost:11434"
+model = "nomic-embed-text"
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `enabled` | `true` | Enable embedding generation |
-| `model` | `all-MiniLM-L6-v2` | Model name for local embeddings |
+| `batch_size` | `128` | Max texts per embedding API call |
+| `concurrency` | `4` | Max concurrent embedding API calls |
+| `cache_dir` | — | Embedding cache path (auto-detected if omitted) |
+| `provider.type` | `ollama` | Provider: `ollama`, `openai`, or `onnx` |
+| `provider.url` | `http://localhost:11434` | Provider API URL |
+| `provider.model` | `nomic-embed-text` | Embedding model name |
+| `provider.api_key` | — | API key (OpenAI provider only) |
 
 ### Logging Settings
 
@@ -103,7 +116,7 @@ metrics_enabled = true
 |--------|---------|-------------|
 | `log_format` | `pretty` | Format: `pretty` or `json` |
 | `log_level` | `info` | Rust-style log filter |
-| `metrics_enabled` | `false` | Expose Prometheus metrics |
+| `metrics_enabled` | `true` | Expose Prometheus metrics |
 
 See [Monitoring](monitoring.md) for metrics details.
 

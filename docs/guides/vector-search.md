@@ -38,6 +38,10 @@ In your server config (`prism.toml`), set up one of the supported providers:
 ```toml
 [embedding]
 enabled = true
+
+[embedding.provider]
+type = "ollama"
+url = "http://localhost:11434"
 model = "nomic-embed-text"
 ```
 
@@ -190,11 +194,11 @@ Most embedding models produce vectors where cosine similarity is the intended me
 
 ## Embedding cache
 
-Prism caches embeddings to avoid redundant API calls. Configure the cache in your server setup:
+Prism caches embeddings to avoid redundant API calls. The cache uses batch operations for bulk imports — a 500-document batch requires only 2 database operations instead of 1000.
 
 ### SQLite cache (default)
 
-Persistent, single-file, no external dependencies:
+Persistent, single-file, no external dependencies. Uses WAL mode for high write throughput:
 
 ```toml
 # In your embedding cache configuration
@@ -205,12 +209,24 @@ max_entries = 1000000
 
 ### Redis cache (optional)
 
-Distributed, shared across servers (requires `cache-redis` feature):
+Distributed, shared across servers (requires `cache-redis` feature). Uses MGET/pipeline for batch operations:
 
 ```toml
 backend = "redis"
 url = "redis://localhost:6379"
 ```
+
+### Bulk import tuning
+
+For large imports, adjust batch size and concurrency in `prism.toml`:
+
+```toml
+[embedding]
+batch_size = 128    # Texts per embedding API call (default: 128)
+concurrency = 4     # Concurrent API calls (default: 4)
+```
+
+Lower `batch_size` if your provider has request size limits. Increase `concurrency` if your provider supports parallel requests (e.g. OpenAI).
 
 ### Cache key strategies
 

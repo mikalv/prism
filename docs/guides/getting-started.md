@@ -74,7 +74,11 @@ max_local_gb = 5.0          # Max local storage in GB
 
 [embedding]
 enabled = true
-model = "all-MiniLM-L6-v2"
+
+[embedding.provider]
+type = "ollama"
+url = "http://localhost:11434"
+model = "nomic-embed-text"
 
 [logging]
 level = "info"              # debug | info | warn | error
