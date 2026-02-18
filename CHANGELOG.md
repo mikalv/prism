@@ -2,6 +2,26 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.5] - 2026-02-18
+
+### Performance
+
+- **Batch embedding cache ops** — `get_batch()`/`set_batch()` on `EmbeddingCache` trait reduce 500-doc bulk import from ~1000 DB operations to ~2
+- **SQLite WAL mode** — `journal_mode=WAL`, `synchronous=NORMAL`, 64MB page cache for 2-5x write throughput
+- **Chunked provider calls** — configurable `batch_size` (default 128) splits large embedding requests into provider-friendly chunks
+- **Redis batch ops** — `MGET` for batch reads, pipelined writes for Redis cache backend
+
+### Configuration
+
+- `embedding.batch_size` — max texts per embedding API call (default: 128)
+- `embedding.concurrency` — max concurrent embedding API calls (default: 4)
+
+### Documentation
+
+- Updated embedding config docs to match actual `[embedding.provider]` structure
+- Added bulk import tuning guide with `batch_size`/`concurrency` knobs
+- Fixed incorrect defaults for `cors.enabled`, `metrics_enabled`, `data_dir`
+
 ## [0.6.4] - 2026-02-15
 
 ### Fixes
