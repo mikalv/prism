@@ -215,18 +215,28 @@ impl ApiServer {
 
     /// Build router with additional routes merged in
     /// Used for integrating optional features like ES-compat
+    ///
+    /// Extension routes are merged BEFORE middleware is applied,
+    /// ensuring auth, audit, body limits, etc. cover all routes.
     pub async fn router_with_extension(&self, extension: Router) -> Router {
-        self.router().await.merge(extension)
+        let base = self.build_routes().await;
+        let merged = base.merge(extension);
+        self.apply_middleware(merged).await
     }
 
     /// Serve with additional routes merged in
+    ///
+    /// Extension routes are merged BEFORE middleware is applied,
+    /// ensuring auth, audit, body limits, etc. cover all routes.
     pub async fn serve_with_extension(
         self,
         addr: &str,
         tls_config: Option<&TlsConfig>,
         extension: Router,
     ) -> Result<()> {
-        let router = self.router().await.merge(extension);
+        let base = self.build_routes().await;
+        let merged = base.merge(extension);
+        let router = self.apply_middleware(merged).await;
         self.serve_router(router, addr, tls_config).await
     }
 
@@ -444,8 +454,15 @@ impl ApiServer {
     }
 
     pub async fn router(&self) -> Router {
-        let security_config = self.security_config.read().await.clone();
+        let routes = self.build_routes().await;
+        self.apply_middleware(routes).await
+    }
 
+    /// Build all application routes WITHOUT middleware layers.
+    /// Middleware is applied separately via `apply_middleware()` so that
+    /// extension routes (e.g. ES-compat) can be merged before middleware
+    /// is added, ensuring all routes are covered by auth/audit/limits.
+    async fn build_routes(&self) -> Router {
         let app_state = AppState {
             manager: self.manager.clone(),
             session_manager: self.session_manager.clone(),
@@ -679,18 +696,23 @@ impl ApiServer {
             Router::new()
         };
 
-        // CORS configuration from config file
-        // Dashboard runs on different port (e.g., localhost:5173)
-        let cors = self.build_cors_layer();
-
-        // Merge routers
-        let mut app = Router::new()
+        // Merge route groups (no middleware yet)
+        Router::new()
             .merge(legacy_routes)
             .merge(pipeline_routes)
             .merge(mcp_routes)
             .merge(ilm_routes)
             .merge(template_routes)
             .merge(export_routes)
+    }
+
+    /// Apply all middleware layers (CORS, body limits, metrics, audit, auth)
+    /// to a pre-built router. Called after extension routes have been merged.
+    async fn apply_middleware(&self, routes: Router) -> Router {
+        let security_config = self.security_config.read().await.clone();
+        let cors = self.build_cors_layer();
+
+        let mut app = routes
             .layer(cors)
             .layer(axum::extract::DefaultBodyLimit::max(self.max_body_size))
             .layer(axum::middleware::from_fn(metrics_middleware))
