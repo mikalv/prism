@@ -2,6 +2,43 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.6] - 2026-02-23
+
+### Security
+
+- **CRITICAL: Authentication bypass on ES-compat routes** — `Router::merge()` was not propagating auth/audit middleware to extension routes; refactored middleware to apply after route merging
+- **Bulk request limits** — `MAX_BULK_ACTIONS=10,000` rejects oversized bulk requests
+- **Query string length validation** — `MAX_QUERY_STRING_LENGTH=10,000` prevents DoS via passthrough queries
+- **Search result limits** — `MAX_SEARCH_LIMIT=10,000` caps across Lucene, Mnemos, and ES-compat endpoints
+- **Lucene parser stack overflow** — `MAX_PARSE_DEPTH=50` recursion limit prevents deeply nested query attacks
+- **Parenthesis underflow fix** — unbalanced `)` treated as literal instead of causing integer underflow
+- **Wildcard bulk index rejection** — `*`/`?` patterns in bulk index names now return error
+- **Error sanitization** — internal error details logged server-side, generic messages returned to clients
+
+### Fixes
+
+- **Segment merge race condition** — cache segment data in `StorageFileHandle` to eliminate file-not-found errors during concurrent merges
+- **ES-compat 404 for missing collections** — `CollectionNotFound` now returns HTTP 404 instead of 500
+- **Collection removal race** — all four write locks acquired atomically to prevent partial state
+
+### Performance
+
+- **LRU cache multi-eviction** — eviction now loops until enough space is freed for large entries
+- **parking_lot::RwLock** — LRU cache switched from `std::sync::RwLock` for better contention handling
+- **Zero-copy bool query translation** — `QueryList::iter()` eliminates cloning in ES-compat query translation
+
+### Added
+
+- **Synchronous segment merge** — `POST /collections/:name/optimize` endpoint for on-demand segment consolidation
+- Comprehensive test coverage across all crates
+
+### Housekeeping
+
+- Deduplicated `get_text_fields` between search.rs and msearch.rs
+- Replaced nightly-only `is_multiple_of` with stable modulo operator
+- Removed dead wrapper functions from Lucene parser
+- Removed unused `mut` warnings
+
 ## [0.6.5] - 2026-02-18
 
 ### Performance
