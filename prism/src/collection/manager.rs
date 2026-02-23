@@ -925,6 +925,11 @@ impl CollectionManager {
         self.text_backend.get_segments(collection)
     }
 
+    /// Synchronously merge segments for a collection to reduce search latency.
+    pub fn optimize(&self, collection: &str, max_segments: Option<usize>) -> Result<crate::backends::text::OptimizeResult> {
+        self.text_backend.optimize(collection, max_segments)
+    }
+
     /// Reconstruct a document showing stored fields and indexed terms.
     pub fn reconstruct_document(
         &self,
@@ -1171,6 +1176,62 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    /// Helper to create a basic collection manager with a text-only collection.
+    async fn setup_manager(
+        temp: &TempDir,
+        collection_name: &str,
+    ) -> (CollectionManager, PathBuf) {
+        let schemas_dir = temp.path().join("schemas");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+
+        fs::write(
+            schemas_dir.join(format!("{}.yaml", collection_name)),
+            format!(
+                r#"
+collection: {collection_name}
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+        stored: true
+      - name: content
+        type: text
+        indexed: true
+        stored: true
+"#
+            ),
+        )
+        .unwrap();
+
+        let text_backend = Arc::new(TextBackend::new(&data_dir).unwrap());
+        let vector_backend = Arc::new(VectorBackend::new(&data_dir).unwrap());
+        let manager =
+            CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap();
+        manager.initialize().await.unwrap();
+
+        (manager, schemas_dir)
+    }
+
+    fn make_query(q: &str, limit: usize) -> Query {
+        Query {
+            query_string: q.to_string(),
+            fields: vec![],
+            limit,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
+        }
+    }
+
     #[tokio::test]
     async fn test_collection_manager_search() -> Result<()> {
         let temp = TempDir::new()?;
@@ -1235,6 +1296,452 @@ backends:
         Ok(())
     }
 
+    // ========================================================================
+    // validate_collection_name tests
+    // ========================================================================
+
+    #[test]
+    fn test_validate_collection_name_valid() {
+        assert!(CollectionManager::validate_collection_name("articles").is_ok());
+        assert!(CollectionManager::validate_collection_name("my-collection").is_ok());
+        assert!(CollectionManager::validate_collection_name("my_collection").is_ok());
+        assert!(CollectionManager::validate_collection_name("logs-2026-01").is_ok());
+        assert!(CollectionManager::validate_collection_name("a").is_ok());
+        assert!(CollectionManager::validate_collection_name("A-B_c-123").is_ok());
+    }
+
+    #[test]
+    fn test_validate_collection_name_empty() {
+        let err = CollectionManager::validate_collection_name("").unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_validate_collection_name_special_chars() {
+        assert!(CollectionManager::validate_collection_name("has space").is_err());
+        assert!(CollectionManager::validate_collection_name("has.dot").is_err());
+        assert!(CollectionManager::validate_collection_name("has/slash").is_err());
+        assert!(CollectionManager::validate_collection_name("has@at").is_err());
+        assert!(CollectionManager::validate_collection_name("has!bang").is_err());
+        assert!(CollectionManager::validate_collection_name("has#hash").is_err());
+        assert!(CollectionManager::validate_collection_name("../escape").is_err());
+    }
+
+    // ========================================================================
+    // delete tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_delete_documents() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        // Index two documents
+        manager
+            .index(
+                "articles",
+                vec![
+                    Document {
+                        id: "d1".to_string(),
+                        fields: HashMap::from([("title".into(), json!("First"))]),
+                    },
+                    Document {
+                        id: "d2".to_string(),
+                        fields: HashMap::from([("title".into(), json!("Second"))]),
+                    },
+                ],
+            )
+            .await?;
+
+        // Delete one document
+        manager
+            .delete("articles", vec!["d1".to_string()])
+            .await?;
+
+        // Verify the deleted document is gone
+        let doc = manager.get("articles", "d1").await?;
+        assert!(doc.is_none(), "Deleted document should not be found");
+
+        // The other document should still exist
+        let doc2 = manager.get("articles", "d2").await?;
+        assert!(doc2.is_some(), "Non-deleted document should still exist");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_collection() {
+        let temp = TempDir::new().unwrap();
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let result = manager
+            .delete("nonexistent", vec!["d1".to_string()])
+            .await;
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // stats tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_stats_empty_collection() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let stats = manager.stats("articles").await?;
+        assert_eq!(stats.document_count, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_stats_after_indexing() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        manager
+            .index(
+                "articles",
+                vec![Document {
+                    id: "d1".to_string(),
+                    fields: HashMap::from([("title".into(), json!("Test"))]),
+                }],
+            )
+            .await?;
+
+        let stats = manager.stats("articles").await?;
+        assert_eq!(stats.document_count, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_stats_nonexistent_collection() {
+        let temp = TempDir::new().unwrap();
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let result = manager.stats("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // get tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_existing_document() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        manager
+            .index(
+                "articles",
+                vec![Document {
+                    id: "d1".to_string(),
+                    fields: HashMap::from([("title".into(), json!("Hello World"))]),
+                }],
+            )
+            .await?;
+
+        let doc = manager.get("articles", "d1").await?;
+        assert!(doc.is_some());
+        let doc = doc.unwrap();
+        assert_eq!(doc.id, "d1");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_missing_document() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let doc = manager.get("articles", "nonexistent").await?;
+        assert!(doc.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_collection() {
+        let temp = TempDir::new().unwrap();
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let result = manager.get("nonexistent", "d1").await;
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // search_with_aggs tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_search_with_aggs_nonexistent_collection() {
+        let temp = TempDir::new().unwrap();
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let q = make_query("test", 10);
+        let result = manager
+            .search_with_aggs("nonexistent", &q, vec![])
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_search_with_aggs_empty_aggregations() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        // Index a document
+        manager
+            .index(
+                "articles",
+                vec![Document {
+                    id: "d1".to_string(),
+                    fields: HashMap::from([("title".into(), json!("Test document"))]),
+                }],
+            )
+            .await?;
+
+        let q = make_query("test", 10);
+        let result = manager.search_with_aggs("articles", &q, vec![]).await?;
+        // With empty agg list, results should still have search results
+        assert!(result.results.len() <= result.total as usize);
+        Ok(())
+    }
+
+    // ========================================================================
+    // add_collection / remove_collection / persist_schema / remove_schema_file
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_add_and_remove_collection() -> Result<()> {
+        let temp = TempDir::new()?;
+        let schemas_dir = temp.path().join("schemas");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&schemas_dir)?;
+
+        let text_backend = Arc::new(TextBackend::new(&data_dir)?);
+        let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend, None)?;
+        manager.initialize().await?;
+
+        // Initially no collections
+        assert!(manager.list_collections().is_empty());
+
+        // Add a collection dynamically
+        let schema_yaml = r#"
+collection: dynamic
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+        stored: true
+"#;
+        let schema: crate::schema::CollectionSchema = serde_yaml::from_str(schema_yaml)?;
+        manager.add_collection(schema).await?;
+
+        // Verify it was added
+        assert!(manager.collection_exists("dynamic"));
+        assert_eq!(manager.list_collections().len(), 1);
+
+        // Index a document
+        manager
+            .index(
+                "dynamic",
+                vec![Document {
+                    id: "d1".to_string(),
+                    fields: HashMap::from([("title".into(), json!("Dynamic Doc"))]),
+                }],
+            )
+            .await?;
+
+        let results = manager.search("dynamic", make_query("dynamic", 10), None).await?;
+        assert!(results.total > 0);
+
+        // Remove the collection
+        manager.remove_collection("dynamic").await?;
+
+        assert!(!manager.collection_exists("dynamic"));
+        assert!(manager.list_collections().is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_remove_collection_nonexistent() {
+        let temp = TempDir::new().unwrap();
+        let schemas_dir = temp.path().join("schemas");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&schemas_dir).unwrap();
+
+        let text_backend = Arc::new(TextBackend::new(&data_dir).unwrap());
+        let vector_backend = Arc::new(VectorBackend::new(&data_dir).unwrap());
+        let manager =
+            CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap();
+        manager.initialize().await.unwrap();
+
+        let result = manager.remove_collection("nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_persist_schema_and_remove() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, schemas_dir) = setup_manager(&temp, "articles").await;
+
+        let schema = manager.get_schema("articles").unwrap();
+
+        // Persist the schema
+        let path = manager.persist_schema(&schema)?;
+        assert!(path.exists());
+        assert!(path.to_str().unwrap().ends_with("articles.yaml"));
+
+        // Verify file content is valid YAML
+        let content = fs::read_to_string(&path)?;
+        let _: crate::schema::CollectionSchema = serde_yaml::from_str(&content)?;
+
+        // Remove the schema file
+        manager.remove_schema_file("articles")?;
+        assert!(!schemas_dir.join("articles.yaml").exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_remove_schema_file_nonexistent() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        // Removing a schema file that does not exist should succeed (no-op)
+        let result = manager.remove_schema_file("nonexistent");
+        assert!(result.is_ok());
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // collection_exists / get_schema / list_collections / lint_schemas
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_collection_exists() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        assert!(manager.collection_exists("articles"));
+        assert!(!manager.collection_exists("nonexistent"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_schema() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let schema = manager.get_schema("articles");
+        assert!(schema.is_some());
+        assert_eq!(schema.unwrap().collection, "articles");
+
+        let missing = manager.get_schema("nonexistent");
+        assert!(missing.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_list_collections() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let collections = manager.list_collections();
+        assert_eq!(collections.len(), 1);
+        assert!(collections.contains(&"articles".to_string()));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_lint_schemas_clean() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let issues = manager.lint_schemas();
+        assert!(issues.is_empty(), "Valid schema should have no lint issues");
+        Ok(())
+    }
+
+    // ========================================================================
+    // merge_multi_collection_rrf tests
+    // ========================================================================
+
+    #[test]
+    fn test_merge_multi_collection_rrf_empty() {
+        let result = CollectionManager::merge_multi_collection_rrf(vec![], 60, 10);
+        assert_eq!(result.total, 0);
+        assert!(result.results.is_empty());
+    }
+
+    #[test]
+    fn test_merge_multi_collection_rrf_single_collection() {
+        let results = SearchResults {
+            results: vec![
+                crate::backends::SearchResult {
+                    id: "d1".to_string(),
+                    score: 1.0,
+                    fields: HashMap::new(),
+                    highlight: None,
+                },
+                crate::backends::SearchResult {
+                    id: "d2".to_string(),
+                    score: 0.5,
+                    fields: HashMap::new(),
+                    highlight: None,
+                },
+            ],
+            total: 2,
+            latency_ms: 0,
+        };
+
+        let merged = CollectionManager::merge_multi_collection_rrf(
+            vec![("col1".to_string(), results)],
+            60,
+            10,
+        );
+
+        assert_eq!(merged.total, 2);
+        assert_eq!(merged.results[0].collection, "col1");
+        assert_eq!(merged.results[1].collection, "col1");
+        // RRF score for rank 1 = 1/(60+1), rank 2 = 1/(60+2)
+        assert!(merged.results[0].score > merged.results[1].score);
+    }
+
+    #[test]
+    fn test_merge_multi_collection_rrf_limit_truncation() {
+        let results = SearchResults {
+            results: (0..20)
+                .map(|i| crate::backends::SearchResult {
+                    id: format!("d{}", i),
+                    score: 1.0 - (i as f32 * 0.01),
+                    fields: HashMap::new(),
+                    highlight: None,
+                })
+                .collect(),
+            total: 20,
+            latency_ms: 0,
+        };
+
+        let merged = CollectionManager::merge_multi_collection_rrf(
+            vec![("col1".to_string(), results)],
+            60,
+            5,
+        );
+
+        assert_eq!(merged.results.len(), 5);
+        assert_eq!(merged.total, 20);
+    }
+
+    // ========================================================================
+    // glob_match tests
+    // ========================================================================
+
     #[test]
     fn test_glob_match() {
         // Test exact match
@@ -1266,6 +1773,47 @@ backends:
         assert!(CollectionManager::glob_match("*", "anything"));
         assert!(CollectionManager::glob_match("*", ""));
     }
+
+    #[test]
+    fn test_glob_match_question_mark() {
+        assert!(CollectionManager::glob_match("a?c", "abc"));
+        assert!(!CollectionManager::glob_match("a?c", "ac"));
+        assert!(!CollectionManager::glob_match("a?c", "abdc"));
+    }
+
+    // ========================================================================
+    // expand_collection_patterns tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_expand_collection_patterns_exact() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let expanded = manager.expand_collection_patterns(&["articles".to_string()]);
+        assert_eq!(expanded, vec!["articles".to_string()]);
+
+        // Non-existent exact name should not be returned
+        let expanded = manager.expand_collection_patterns(&["nonexistent".to_string()]);
+        assert!(expanded.is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_expand_collection_patterns_no_duplicates() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let expanded =
+            manager.expand_collection_patterns(&["articles".to_string(), "articles".to_string()]);
+        assert_eq!(expanded.len(), 1);
+        Ok(())
+    }
+
+    // ========================================================================
+    // multi_search tests
+    // ========================================================================
 
     #[tokio::test]
     async fn test_multi_search() -> Result<()> {
@@ -1366,6 +1914,19 @@ backends:
     }
 
     #[tokio::test]
+    async fn test_multi_search_empty_patterns() -> Result<()> {
+        let temp = TempDir::new()?;
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let results = manager
+            .multi_search(&["nonexistent-*".to_string()], make_query("test", 10), None)
+            .await?;
+        assert_eq!(results.total, 0);
+        assert!(results.collections_searched.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_multi_search_with_wildcard() -> Result<()> {
         let temp = TempDir::new()?;
         let schemas_dir = temp.path().join("schemas");
@@ -1407,5 +1968,71 @@ backends:
         assert!(empty.is_empty());
 
         Ok(())
+    }
+
+    // ========================================================================
+    // resolve_rerank_config tests
+    // ========================================================================
+
+    #[test]
+    fn test_resolve_rerank_config_none_when_no_config() {
+        let schema_yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+"#;
+        let schema: crate::schema::CollectionSchema = serde_yaml::from_str(schema_yaml).unwrap();
+        let result = CollectionManager::resolve_rerank_config(&schema, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_rerank_config_override_disables() {
+        let schema_yaml = r#"
+collection: test
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+reranking:
+  type: score_function
+  score_function: "_score * 2"
+  candidates: 50
+"#;
+        let schema: crate::schema::CollectionSchema = serde_yaml::from_str(schema_yaml).unwrap();
+        let override_opts = crate::ranking::reranker::RerankOptions {
+            enabled: false,
+            candidates: 100,
+            text_fields: vec![],
+        };
+        let result = CollectionManager::resolve_rerank_config(&schema, Some(&override_opts));
+        assert!(result.is_none());
+    }
+
+    // ========================================================================
+    // index error paths
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_index_nonexistent_collection() {
+        let temp = TempDir::new().unwrap();
+        let (manager, _) = setup_manager(&temp, "articles").await;
+
+        let result = manager
+            .index(
+                "nonexistent",
+                vec![Document {
+                    id: "d1".to_string(),
+                    fields: HashMap::new(),
+                }],
+            )
+            .await;
+        assert!(result.is_err());
     }
 }

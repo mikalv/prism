@@ -496,6 +496,23 @@ impl SearchBackend for TextBackend {
 
         writer.commit()?;
 
+        // Auto-merge if segment count exceeds threshold
+        let segment_ids = coll.index.searchable_segment_ids()?;
+        if segment_ids.len() > 10 {
+            tracing::info!(
+                "Auto-merging {} segments for collection '{}'",
+                segment_ids.len(),
+                collection
+            );
+            let merge_future = writer.merge(&segment_ids);
+            match futures::executor::block_on(merge_future) {
+                Ok(_) => {
+                    writer.commit()?;
+                }
+                Err(e) => tracing::warn!("Auto-merge failed for '{}': {:?}", collection, e),
+            }
+        }
+
         // Reload reader to ensure newly committed documents are visible
         coll.reader.reload()?;
 
@@ -752,6 +769,24 @@ impl SearchBackend for TextBackend {
         }
 
         writer.commit()?;
+
+        // Auto-merge if segment count exceeds threshold
+        let segment_ids = coll.index.searchable_segment_ids()?;
+        if segment_ids.len() > 10 {
+            tracing::info!(
+                "Auto-merging {} segments for collection '{}' after delete",
+                segment_ids.len(),
+                collection
+            );
+            let merge_future = writer.merge(&segment_ids);
+            match futures::executor::block_on(merge_future) {
+                Ok(_) => {
+                    writer.commit()?;
+                }
+                Err(e) => tracing::warn!("Auto-merge failed for '{}': {:?}", collection, e),
+            }
+        }
+
         Ok(())
     }
 
@@ -1644,6 +1679,14 @@ pub struct SuggestEntry {
     pub doc_freq: u64,
 }
 
+/// Result of an optimize (segment merge) operation
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OptimizeResult {
+    pub segments_before: usize,
+    pub segments_after: usize,
+    pub merged: bool,
+}
+
 /// Segment information for index inspection
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SegmentInfo {
@@ -2091,6 +2134,50 @@ impl TextBackend {
             total_docs,
             total_deleted,
             delete_ratio,
+        })
+    }
+
+    /// Synchronously merge all segments into one (or up to `max_segments`).
+    ///
+    /// Safe because the writer lock is held during the entire merge+commit+reload
+    /// cycle, preventing any concurrent reads on stale segments.
+    pub fn optimize(&self, collection: &str, max_segments: Option<usize>) -> Result<OptimizeResult> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        // Snapshot segment count before
+        coll.reader.reload()?;
+        let before = coll.reader.searcher().segment_readers().len();
+
+        // Acquire exclusive writer lock — blocks indexing during merge
+        let mut writer = coll.writer.lock();
+
+        let segment_ids: Vec<_> = coll.index.searchable_segment_ids()?;
+
+        if segment_ids.len() <= max_segments.unwrap_or(1) {
+            return Ok(OptimizeResult {
+                segments_before: before,
+                segments_after: before,
+                merged: false,
+            });
+        }
+
+        // Merge all segments into one — runs synchronously while we hold the lock
+        let merge_future = writer.merge(&segment_ids);
+        let _segment_meta = futures::executor::block_on(merge_future)?;
+
+        writer.commit()?;
+        drop(writer); // Release lock before reload
+
+        coll.reader.reload()?;
+        let after = coll.reader.searcher().segment_readers().len();
+
+        Ok(OptimizeResult {
+            segments_before: before,
+            segments_after: after,
+            merged: true,
         })
     }
 

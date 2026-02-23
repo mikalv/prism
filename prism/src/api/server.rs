@@ -523,6 +523,10 @@ impl ApiServer {
                 get(crate::api::routes::get_segments),
             )
             .route(
+                "/collections/:collection/optimize",
+                post(crate::api::routes::optimize_collection),
+            )
+            .route(
                 "/collections/:collection/doc/:id/reconstruct",
                 get(crate::api::routes::reconstruct_document),
             )

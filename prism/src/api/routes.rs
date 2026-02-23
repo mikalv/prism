@@ -736,7 +736,7 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
 // ============================================================================
 
 use crate::aggregations::{AggregationRequest as AggRequest, AggregationResult as AggResult};
-use crate::backends::text::{ReconstructedDocument, SegmentsInfo, TermInfo};
+use crate::backends::text::{ReconstructedDocument, SegmentsInfo, TermInfo, OptimizeResult};
 
 /// Aggregation API request
 #[derive(Deserialize)]
@@ -873,6 +873,33 @@ pub async fn get_segments(
     })?;
 
     Ok(Json(segments))
+}
+
+/// Query params for optimize endpoint
+#[derive(Deserialize)]
+pub struct OptimizeParams {
+    #[serde(default)]
+    pub max_segments: Option<usize>,
+}
+
+/// POST /collections/:collection/optimize
+pub async fn optimize_collection(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    Json(params): Json<Option<OptimizeParams>>,
+) -> Result<Json<OptimizeResult>, (StatusCode, String)> {
+    if manager.get_schema(&collection).is_none() {
+        return Err((StatusCode::NOT_FOUND, format!("Collection '{}' not found", collection)));
+    }
+
+    let max_segments = params.and_then(|p| p.max_segments);
+
+    let result = manager.optimize(&collection, max_segments).map_err(|e| {
+        tracing::error!("Failed to optimize '{}': {:?}", collection, e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+    })?;
+
+    Ok(Json(result))
 }
 
 /// GET /collections/:collection/doc/:id/reconstruct
