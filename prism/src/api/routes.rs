@@ -554,8 +554,35 @@ pub async fn delete_collection(
     ))
 }
 
-pub async fn health() -> StatusCode {
-    StatusCode::OK
+/// Health check response
+#[derive(Serialize)]
+pub struct HealthResponse {
+    pub status: &'static str,
+    pub version: &'static str,
+    pub collections: usize,
+    pub uptime_secs: u64,
+}
+
+static SERVER_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// Call once at server startup to record the start time.
+pub fn record_start_time() {
+    let _ = SERVER_START.set(std::time::Instant::now());
+}
+
+pub async fn health(
+    State(manager): State<Arc<CollectionManager>>,
+) -> Json<HealthResponse> {
+    let uptime = SERVER_START
+        .get()
+        .map(|t| t.elapsed().as_secs())
+        .unwrap_or(0);
+    Json(HealthResponse {
+        status: "ok",
+        version: env!("CARGO_PKG_VERSION"),
+        collections: manager.list_collections().len(),
+        uptime_secs: uptime,
+    })
 }
 
 /// Root endpoint response

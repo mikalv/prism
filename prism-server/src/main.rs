@@ -217,6 +217,7 @@ async fn main() -> Result<()> {
     };
 
     tracing::info!("Listening on {}", addr);
+    prism::api::routes::record_start_time();
     if tls.is_some() {
         tracing::info!("TLS enabled");
     }
@@ -600,11 +601,27 @@ fn cluster_routes(
     }
 
     async fn cluster_health(
-        State(_fed): State<Arc<prism_cluster::FederatedSearch>>,
+        State(state): State<Arc<prism_cluster::ClusterState>>,
     ) -> Json<serde_json::Value> {
+        let nodes = state.get_nodes();
+        let healthy = nodes.iter().filter(|n| n.reachable).count();
+        let node_list: Vec<serde_json::Value> = nodes
+            .iter()
+            .map(|n| {
+                serde_json::json!({
+                    "node_id": n.info.node_id,
+                    "address": n.info.address,
+                    "healthy": n.reachable,
+                    "draining": n.draining,
+                })
+            })
+            .collect();
         Json(serde_json::json!({
-            "status": "ok",
+            "status": if healthy == nodes.len() { "green" } else if healthy > 0 { "yellow" } else { "red" },
             "federated": true,
+            "total_nodes": nodes.len(),
+            "healthy_nodes": healthy,
+            "nodes": node_list,
         }))
     }
 
@@ -694,11 +711,11 @@ fn cluster_routes(
             "/cluster/collections/:collection/documents",
             post(federated_index),
         )
-        .route("/cluster/health", get(cluster_health))
         .with_state(federation);
 
-    // Drain/upgrade routes (with cluster_state)
+    // Drain/upgrade/health routes (with cluster_state)
     let cluster_mgmt_routes = axum::Router::new()
+        .route("/cluster/health", get(cluster_health))
         .route("/cluster/nodes/:node_id/drain", post(drain_node))
         .route("/cluster/nodes/:node_id/undrain", post(undrain_node))
         .route("/cluster/upgrade/status", get(upgrade_status))
