@@ -40,6 +40,71 @@ pub struct Config {
     /// Index Lifecycle Management configuration
     #[serde(default)]
     pub ilm: crate::ilm::IlmConfig,
+
+    /// Background segment optimize configuration
+    #[serde(default)]
+    pub optimize: OptimizeConfig,
+}
+
+/// Background segment optimize configuration
+///
+/// Periodically merges Tantivy segments across all collections to keep
+/// search latency low when using `NoMergePolicy`.
+///
+/// ```toml
+/// [optimize]
+/// enabled = true
+/// interval_secs = 3600
+/// max_segments = 5
+/// max_segment_size = "1GB"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizeConfig {
+    /// Enable background optimize
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Interval in seconds between optimize cycles
+    #[serde(default = "default_optimize_interval")]
+    pub interval_secs: u64,
+
+    /// Target max segments per collection
+    #[serde(default = "default_max_segments")]
+    pub max_segments: usize,
+
+    /// Max size per segment (e.g. "1GB", "500MB"). Segments above this are
+    /// left alone and the effective max_segments is raised so merging
+    /// never produces segments larger than this. Default: no limit.
+    #[serde(default)]
+    pub max_segment_size: Option<String>,
+}
+
+fn default_optimize_interval() -> u64 {
+    3600
+}
+
+fn default_max_segments() -> usize {
+    5
+}
+
+impl Default for OptimizeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_secs: default_optimize_interval(),
+            max_segments: default_max_segments(),
+            max_segment_size: None,
+        }
+    }
+}
+
+impl OptimizeConfig {
+    /// Parse `max_segment_size` to bytes, returns None when unset or unparsable.
+    pub fn max_segment_size_bytes(&self) -> Option<u64> {
+        self.max_segment_size
+            .as_ref()
+            .and_then(|s| crate::ilm::config::parse_size(s))
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

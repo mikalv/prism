@@ -276,6 +276,64 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Start background optimize service if enabled
+    if config.optimize.enabled {
+        let optimize_manager = server.manager();
+        let interval_secs = config.optimize.interval_secs;
+        let max_segments = config.optimize.max_segments;
+        let max_segment_size_bytes = config.optimize.max_segment_size_bytes();
+        if let Some(bytes) = max_segment_size_bytes {
+            tracing::info!(
+                "Background optimize: max_segment_size = {} bytes",
+                bytes,
+            );
+        }
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+            // First tick completes immediately; skip it so we don't optimize on startup
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                tracing::info!("Background optimize cycle starting (max_segments={})", max_segments);
+                let mgr = optimize_manager.clone();
+                let max_seg = max_segments;
+                let max_size = max_segment_size_bytes;
+                match tokio::task::spawn_blocking(move || mgr.optimize_all(max_seg, max_size)).await {
+                    Ok(results) => {
+                        for (name, result) in &results {
+                            match result {
+                                Ok(r) => {
+                                    if r.merged {
+                                        tracing::info!(
+                                            "Optimized '{}': {} -> {} segments",
+                                            name,
+                                            r.segments_before,
+                                            r.segments_after,
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Optimize failed for '{}': {}", name, e);
+                                }
+                            }
+                        }
+                        if results.is_empty() {
+                            tracing::debug!("Background optimize: all collections already optimal");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Background optimize task panicked: {}", e);
+                    }
+                }
+            }
+        });
+        tracing::info!(
+            "Background optimize service started (interval: {}s, max_segments: {})",
+            config.optimize.interval_secs,
+            config.optimize.max_segments,
+        );
+    }
+
     // Build extension router with optional features
     #[allow(unused_mut)]
     let mut extension_router: axum::Router<()> = axum::Router::new();

@@ -937,6 +937,60 @@ impl CollectionManager {
         self.text_backend.optimize(collection, max_segments)
     }
 
+    /// Optimize all collections, skipping those already at or below max_segments.
+    ///
+    /// When `max_segment_size_bytes` is set, the effective max_segments is raised
+    /// so that merging never produces segments larger than the threshold.
+    pub fn optimize_all(
+        &self,
+        max_segments: usize,
+        max_segment_size_bytes: Option<u64>,
+    ) -> Vec<(String, std::result::Result<crate::backends::text::OptimizeResult, crate::Error>)> {
+        let collections = self.list_collections();
+        let mut results = Vec::new();
+
+        for name in collections {
+            // Check current segment count and sizes
+            let info = match self.text_backend.get_segments(&name) {
+                Ok(info) => info,
+                Err(e) => {
+                    tracing::warn!("Optimize: failed to get segments for '{}': {}", name, e);
+                    results.push((name, Err(e)));
+                    continue;
+                }
+            };
+
+            // Compute effective max_segments respecting size cap
+            let effective_max = if let Some(max_bytes) = max_segment_size_bytes {
+                let total_bytes: u64 = info.segments.iter().map(|s| s.size_bytes).sum();
+                if total_bytes > 0 && max_bytes > 0 {
+                    // Need at least ceil(total / max_bytes) segments to stay under the cap
+                    let size_min = ((total_bytes + max_bytes - 1) / max_bytes) as usize;
+                    max_segments.max(size_min)
+                } else {
+                    max_segments
+                }
+            } else {
+                max_segments
+            };
+
+            if info.segments.len() <= effective_max {
+                tracing::debug!(
+                    "Optimize skip '{}': {} segments <= effective max {}",
+                    name,
+                    info.segments.len(),
+                    effective_max,
+                );
+                continue;
+            }
+
+            let result = self.text_backend.optimize(&name, Some(effective_max));
+            results.push((name, result));
+        }
+
+        results
+    }
+
     /// Reconstruct a document showing stored fields and indexed terms.
     pub fn reconstruct_document(
         &self,

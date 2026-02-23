@@ -168,6 +168,67 @@ skip_verify = false
 
 See [Clustering & Federation](../guides/clustering.md) for the full guide.
 
+### Background Optimize
+
+Prism uses `NoMergePolicy` by default, which means Tantivy segments accumulate over time. The background optimize service periodically merges segments across all collections to keep search latency low.
+
+```toml
+[optimize]
+enabled = true
+interval_secs = 3600       # Run every hour
+max_segments = 5            # Target max segments per collection
+max_segment_size = "1GB"    # Don't merge beyond this segment size
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | `false` | Enable background segment merging |
+| `interval_secs` | `3600` | Seconds between optimize cycles |
+| `max_segments` | `5` | Target max segments per collection |
+| `max_segment_size` | — | Max segment size (e.g. `"1GB"`, `"500MB"`). When set, the effective segment count is raised so no merged segment exceeds this size |
+
+Collections already at or below the target segment count are skipped. When `max_segment_size` is set and the total index data exceeds `max_segments * max_segment_size`, the optimizer will keep more segments to respect the size cap.
+
+You can also trigger a one-off merge via the API:
+
+```bash
+curl -X POST http://localhost:3080/collections/my-collection/optimize
+```
+
+### Index Lifecycle Management (ILM)
+
+```toml
+[ilm]
+enabled = true
+check_interval_secs = 60
+
+[ilm.policies.logs]
+description = "Log retention policy"
+rollover_max_size = "50GB"
+rollover_max_age = "1d"
+
+[ilm.policies.logs.phases.warm]
+min_age = "7d"
+readonly = true
+
+[ilm.policies.logs.phases.delete]
+min_age = "90d"
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | `false` | Enable ILM processing |
+| `check_interval_secs` | `60` | Seconds between ILM policy checks |
+| `policies.<name>.rollover_max_size` | — | Rollover threshold (e.g. `"50GB"`) |
+| `policies.<name>.rollover_max_age` | — | Rollover age (e.g. `"1d"`, `"7d"`) |
+| `policies.<name>.rollover_max_docs` | — | Rollover document count |
+| `policies.<name>.phases.<phase>.min_age` | `"0d"` | Minimum age to enter phase |
+| `policies.<name>.phases.<phase>.readonly` | `false` | Make index read-only |
+| `policies.<name>.phases.<phase>.storage` | — | Storage tier: `"local"` or `"s3"` |
+| `policies.<name>.phases.<phase>.force_merge_segments` | — | Force merge to N segments |
+
+Phases: `hot`, `warm`, `cold`, `frozen`, `delete`.
+
 ## Environment Variables
 
 Prism supports configuration via environment variables. These override CLI flags and config file settings.
