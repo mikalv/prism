@@ -541,7 +541,7 @@ impl SearchBackend for TextBackend {
             });
         }
 
-        let mut query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
+        let query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
 
         // Tantivy's query parser can panic on certain inputs (e.g., bare `*`
         // triggers "Exist query without a field isn't allowed").  Catch panics

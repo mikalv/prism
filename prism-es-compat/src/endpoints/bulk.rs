@@ -16,6 +16,11 @@ use uuid::Uuid;
 
 /// POST /_elastic/_bulk - Bulk indexing
 /// POST /_elastic/{index}/_bulk - Bulk indexing with default index
+///
+/// Rejects wildcard patterns in index names and limits total actions
+/// to prevent resource exhaustion.
+const MAX_BULK_ACTIONS: usize = 10_000;
+
 pub async fn bulk_handler(
     State(state): State<EsCompatState>,
     default_index: Option<Path<String>>,
@@ -26,6 +31,14 @@ pub async fn bulk_handler(
 
     // Parse NDJSON bulk body
     let actions = parse_bulk_body(&body, default_index.as_deref())?;
+
+    if actions.len() > MAX_BULK_ACTIONS {
+        return Err(EsCompatError::InvalidRequestBody(format!(
+            "Bulk request contains {} actions, max allowed is {}",
+            actions.len(),
+            MAX_BULK_ACTIONS
+        )));
+    }
 
     let mut items = Vec::with_capacity(actions.len());
     let mut has_errors = false;
@@ -78,7 +91,31 @@ pub async fn bulk_handler(
 
     // Process index/create actions
     for (index, docs) in by_index {
-        // Check if collection exists (sync)
+        // Reject wildcard patterns in index names
+        if index.contains('*') || index.contains('?') {
+            for (doc_id, _) in docs {
+                items.push(BulkItemResponse {
+                    index: Some(BulkItemResult {
+                        index: index.clone(),
+                        id: doc_id,
+                        version: 1,
+                        result: "error".to_string(),
+                        shards: ShardStats::default(),
+                        status: 400,
+                        error: Some(EsError {
+                            error_type: "invalid_index_name_exception".to_string(),
+                            reason: format!("Wildcard patterns not allowed in bulk index name: [{}]", index),
+                        }),
+                    }),
+                    create: None,
+                    delete: None,
+                });
+                has_errors = true;
+            }
+            continue;
+        }
+
+        // Check if collection exists (use exact name, not pattern expansion)
         let collections = state
             .manager
             .expand_collection_patterns(std::slice::from_ref(&index));

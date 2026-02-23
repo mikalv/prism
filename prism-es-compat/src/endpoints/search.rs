@@ -81,7 +81,7 @@ pub async fn search_handler(
 }
 
 /// Get text field names from collection schema
-fn get_text_fields(manager: &CollectionManager, collection: &str) -> Vec<String> {
+pub(crate) fn get_text_fields(manager: &CollectionManager, collection: &str) -> Vec<String> {
     manager
         .get_schema(collection)
         .map(|schema| {

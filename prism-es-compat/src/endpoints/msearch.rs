@@ -1,6 +1,6 @@
 //! ES-compatible _msearch endpoint
 
-use crate::endpoints::search::EsCompatState;
+use crate::endpoints::search::{get_text_fields, EsCompatState};
 use crate::error::EsCompatError;
 use crate::query::{EsSearchRequest, MSearchHeader, QueryTranslator};
 use crate::response::{EsError, EsMSearchItem, EsMSearchResponse, ResponseMapper};
@@ -46,7 +46,7 @@ fn parse_msearch_body(
 
     let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
 
-    if !lines.len().is_multiple_of(2) {
+    if lines.len() % 2 != 0 {
         return Err(EsCompatError::InvalidRequestBody(
             "msearch body must have header/body pairs".to_string(),
         ));
@@ -157,20 +157,6 @@ async fn execute_single_search(
     let took_ms = start.elapsed().as_millis() as u64;
     let response = ResponseMapper::map_search_results(&index_name, results, took_ms);
     EsMSearchItem::Success(response)
-}
-
-fn get_text_fields(manager: &CollectionManager, collection: &str) -> Vec<String> {
-    manager
-        .get_schema(collection)
-        .map(|schema| {
-            schema
-                .backends
-                .text
-                .as_ref()
-                .map(|t| t.fields.iter().map(|f| f.name.clone()).collect())
-                .unwrap_or_default()
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

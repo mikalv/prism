@@ -221,6 +221,15 @@ impl QueryList {
             QueryList::Multiple(v) => v,
         }
     }
+
+    /// Iterate over queries by reference without cloning
+    pub fn iter(&self) -> impl Iterator<Item = &EsQuery> {
+        let slice: &[EsQuery] = match self {
+            QueryList::Single(q) => std::slice::from_ref(q.as_ref()),
+            QueryList::Multiple(v) => v.as_slice(),
+        };
+        slice.iter()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

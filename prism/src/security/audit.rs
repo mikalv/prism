@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_extract_client_ip_from_xff() {
-        let mut req = Request::builder()
+        let req = Request::builder()
             .header("x-forwarded-for", "203.0.113.50, 70.41.3.18")
             .body(axum::body::Body::empty())
             .unwrap();

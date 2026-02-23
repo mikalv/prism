@@ -55,6 +55,9 @@ pub struct LuceneSearchRequest {
     pub vector_weight: Option<f32>,
 }
 
+/// Maximum allowed search result limit to prevent OOM from unbounded requests
+const MAX_SEARCH_LIMIT: usize = 10_000;
+
 fn default_limit() -> usize {
     10
 }
@@ -168,7 +171,7 @@ pub async fn search_lucene(
     let query = crate::backends::Query {
         query_string: req.query.clone(),
         fields: vec![],
-        limit: req.limit,
+        limit: req.limit.min(MAX_SEARCH_LIMIT),
         offset: req.offset,
         merge_strategy: req.merge_strategy.clone(),
         text_weight: req.text_weight,

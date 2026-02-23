@@ -7,8 +7,14 @@ use prism::backends::{HighlightConfig, Query};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Maximum allowed search result limit
+const MAX_SEARCH_LIMIT: usize = 10_000;
+
 /// Translates Elasticsearch Query DSL to Prism query format
 pub struct QueryTranslator;
+
+/// Maximum length for passthrough query strings to prevent DoS
+const MAX_QUERY_STRING_LENGTH: usize = 10_000;
 
 impl QueryTranslator {
     /// Translate an ES search request to Prism Query + aggregations
@@ -34,7 +40,7 @@ impl QueryTranslator {
         let query = Query {
             query_string,
             fields: default_fields.to_vec(),
-            limit: request.size.unwrap_or(10),
+            limit: request.size.unwrap_or(10).min(MAX_SEARCH_LIMIT),
             offset: request.from.unwrap_or(0),
             merge_strategy: None,
             text_weight: None,
@@ -131,11 +137,25 @@ impl QueryTranslator {
             EsQuery::Exists(exists) => Ok(format!("{field}:*", field = exists.field)),
 
             EsQuery::QueryString(qs) => {
-                // Already in query string format, pass through
+                // Validate length to prevent DoS from crafted queries
+                if qs.query.len() > MAX_QUERY_STRING_LENGTH {
+                    return Err(EsCompatError::InvalidQuery(format!(
+                        "query_string exceeds maximum length of {} characters",
+                        MAX_QUERY_STRING_LENGTH
+                    )));
+                }
                 Ok(qs.query.clone())
             }
 
-            EsQuery::SimpleQueryString(qs) => Ok(qs.query.clone()),
+            EsQuery::SimpleQueryString(qs) => {
+                if qs.query.len() > MAX_QUERY_STRING_LENGTH {
+                    return Err(EsCompatError::InvalidQuery(format!(
+                        "simple_query_string exceeds maximum length of {} characters",
+                        MAX_QUERY_STRING_LENGTH
+                    )));
+                }
+                Ok(qs.query.clone())
+            }
 
             EsQuery::Wildcard(fields) => {
                 let mut parts = vec![];
@@ -213,43 +233,34 @@ impl QueryTranslator {
 
         // must → AND
         if let Some(must) = &bool_query.must {
-            let must_queries = must.clone().into_vec();
-            for q in must_queries {
-                parts.push(format!("({})", Self::translate_query(&q)?));
+            for q in must.iter() {
+                parts.push(format!("({})", Self::translate_query(q)?));
             }
         }
 
         // filter → AND (same as must for scoring purposes in Prism)
         if let Some(filter) = &bool_query.filter {
-            let filter_queries = filter.clone().into_vec();
-            for q in filter_queries {
-                parts.push(format!("({})", Self::translate_query(&q)?));
+            for q in filter.iter() {
+                parts.push(format!("({})", Self::translate_query(q)?));
             }
         }
 
         // must_not → NOT
         if let Some(must_not) = &bool_query.must_not {
-            let must_not_queries = must_not.clone().into_vec();
-            for q in must_not_queries {
-                parts.push(format!("NOT ({})", Self::translate_query(&q)?));
+            for q in must_not.iter() {
+                parts.push(format!("NOT ({})", Self::translate_query(q)?));
             }
         }
 
         // should → OR
         if let Some(should) = &bool_query.should {
-            let should_queries = should.clone().into_vec();
-            if !should_queries.is_empty() {
-                let should_parts: Vec<String> = should_queries
-                    .iter()
-                    .map(Self::translate_query)
-                    .collect::<Result<Vec<_>, _>>()?;
+            let should_parts: Vec<String> = should
+                .iter()
+                .map(Self::translate_query)
+                .collect::<Result<Vec<_>, _>>()?;
+            if !should_parts.is_empty() {
                 // If there are no must/filter, should becomes the main query
-                if parts.is_empty() {
-                    parts.push(format!("({})", should_parts.join(" OR ")));
-                } else {
-                    // With must/filter, should is optional boost
-                    parts.push(format!("({})", should_parts.join(" OR ")));
-                }
+                parts.push(format!("({})", should_parts.join(" OR ")));
             }
         }
 

@@ -67,7 +67,10 @@ impl EsCompatError {
             Self::MissingField(_) => "parsing_exception",
             Self::InvalidRequestBody(_) => "parse_exception",
             Self::ParseError(_) => "parse_exception",
-            Self::PrismError(_) => "search_phase_execution_exception",
+            Self::PrismError(e) => match e {
+                prism::Error::CollectionNotFound(_) => "index_not_found_exception",
+                _ => "search_phase_execution_exception",
+            },
             Self::Internal(_) => "internal_server_error",
         }
     }
@@ -81,7 +84,11 @@ impl EsCompatError {
             | Self::MissingField(_)
             | Self::InvalidRequestBody(_)
             | Self::ParseError(_) => StatusCode::BAD_REQUEST,
-            Self::PrismError(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::PrismError(e) => match e {
+                prism::Error::CollectionNotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -90,7 +97,15 @@ impl IntoResponse for EsCompatError {
     fn into_response(self) -> Response {
         let status = self.status_code();
         let error_type = self.error_type().to_string();
-        let reason = self.to_string();
+
+        // Sanitize error details: log internal details, return generic message to client
+        let reason = match &self {
+            Self::PrismError(_) | Self::Internal(_) => {
+                tracing::error!(error = %self, "Internal error in ES compat layer");
+                "An internal error occurred".to_string()
+            }
+            _ => self.to_string(),
+        };
 
         let body = EsErrorResponse {
             error: EsErrorDetail {
@@ -219,10 +234,10 @@ mod tests {
     fn test_from_prism_error() {
         let prism_err = prism::Error::CollectionNotFound("test".into());
         let es_err: EsCompatError = prism_err.into();
-        assert_eq!(es_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(es_err.status_code(), StatusCode::NOT_FOUND);
         assert_eq!(
             es_err.error_type(),
-            "search_phase_execution_exception"
+            "index_not_found_exception"
         );
     }
 }

@@ -1,10 +1,11 @@
 //! LRU cache for object storage files
 
 use crate::cache::stats::ObjectCacheStats;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// LRU cache entry with access tracking
 #[derive(Clone, Debug)]
@@ -43,7 +44,7 @@ impl LruCache {
 
     #[allow(dead_code)]
     pub(crate) fn get(&self, key: &PathBuf) -> Option<Arc<LruEntry>> {
-        let entries = self.entries.read().ok()?;
+        let entries = self.entries.read();
 
         if let Some(entry) = entries.get(key) {
             self.stats.hit();
@@ -58,27 +59,26 @@ impl LruCache {
 
     #[allow(dead_code)]
     pub(crate) fn put(&self, key: PathBuf, size: u64) -> Option<PathBuf> {
-        let mut entries = match self.entries.write() {
-            Ok(guard) => guard,
-            Err(_) => return None,
-        };
+        let mut entries = self.entries.write();
 
         // Check if already exists
         if entries.contains_key(&key) {
             return None;
         }
 
-        // Check if we need to evict
-        let current_size = self.current_size_bytes.load(Ordering::Relaxed);
-        let mut evicted = None;
-        if current_size + size > self.max_size_bytes {
-            evicted = Self::evict_lru(&mut entries, &self.current_size_bytes, &self.stats);
+        // Evict entries until we have enough space
+        let mut last_evicted = None;
+        while self.current_size_bytes.load(Ordering::Relaxed) + size > self.max_size_bytes {
+            match Self::evict_lru(&mut entries, &self.current_size_bytes, &self.stats) {
+                Some(evicted_key) => last_evicted = Some(evicted_key),
+                None => break, // Nothing left to evict
+            }
         }
 
-        // Double-check after eviction
+        // Check if we have enough space after eviction
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
         if current_size + size > self.max_size_bytes {
-            return evicted;
+            return last_evicted;
         }
 
         // Insert new entry
@@ -91,11 +91,11 @@ impl LruCache {
 
         entries.insert(key, entry);
         self.current_size_bytes.fetch_add(size, Ordering::Relaxed);
-        evicted
+        last_evicted
     }
 
     pub fn remove(&self, key: &PathBuf) -> Option<u64> {
-        let mut entries = self.entries.write().ok()?;
+        let mut entries = self.entries.write();
         let entry = entries.remove(key)?;
         self.current_size_bytes
             .fetch_sub(entry.size, Ordering::Relaxed);
@@ -103,10 +103,9 @@ impl LruCache {
     }
 
     pub fn clear(&self) {
-        if let Ok(mut entries) = self.entries.write() {
-            entries.clear();
-            self.current_size_bytes.store(0, Ordering::Relaxed);
-        }
+        let mut entries = self.entries.write();
+        entries.clear();
+        self.current_size_bytes.store(0, Ordering::Relaxed);
     }
 
     pub fn size_bytes(&self) -> u64 {
@@ -114,7 +113,7 @@ impl LruCache {
     }
 
     pub fn entry_count(&self) -> usize {
-        self.entries.read().map(|e| e.len()).unwrap_or(0)
+        self.entries.read().len()
     }
 
     pub fn size_mb(&self) -> f64 {

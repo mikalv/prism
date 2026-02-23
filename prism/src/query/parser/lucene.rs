@@ -3,6 +3,9 @@ use crate::query::{QueryError, Result};
 
 pub struct LuceneParser;
 
+/// Maximum recursion depth for nested queries to prevent stack overflow
+const MAX_PARSE_DEPTH: usize = 50;
+
 impl LuceneParser {
     pub fn parse(query: &str) -> Result<QueryNode> {
         let trimmed = query.trim();
@@ -10,45 +13,71 @@ impl LuceneParser {
             return Err(QueryError::ParseError("Empty query".to_string()));
         }
 
-        Self::parse_or(trimmed)
+        Self::parse_or_depth(trimmed, 0)
     }
 
     // Precedence: OR (lowest) > AND > NOT > primary (highest)
-    fn parse_or(input: &str) -> Result<QueryNode> {
+    fn parse_or_depth(input: &str, depth: usize) -> Result<QueryNode> {
+        if depth > MAX_PARSE_DEPTH {
+            return Err(QueryError::ParseError(
+                "Query exceeds maximum nesting depth".to_string(),
+            ));
+        }
         let parts = Self::split_by_operator(input, " OR ");
         if parts.len() > 1 {
-            let children: Result<Vec<_>> = parts.iter().map(|p| Self::parse_and(p)).collect();
+            let children: Result<Vec<_>> = parts
+                .iter()
+                .map(|p| Self::parse_and_depth(p, depth + 1))
+                .collect();
             return Ok(QueryNode::Or(children?));
         }
-        Self::parse_and(input)
+        Self::parse_and_depth(input, depth + 1)
     }
 
-    fn parse_and(input: &str) -> Result<QueryNode> {
+    fn parse_and_depth(input: &str, depth: usize) -> Result<QueryNode> {
+        if depth > MAX_PARSE_DEPTH {
+            return Err(QueryError::ParseError(
+                "Query exceeds maximum nesting depth".to_string(),
+            ));
+        }
         let parts = Self::split_by_operator(input, " AND ");
         if parts.len() > 1 {
-            let children: Result<Vec<_>> = parts.iter().map(|p| Self::parse_not(p)).collect();
+            let children: Result<Vec<_>> = parts
+                .iter()
+                .map(|p| Self::parse_not_depth(p, depth + 1))
+                .collect();
             return Ok(QueryNode::And(children?));
         }
-        Self::parse_not(input)
+        Self::parse_not_depth(input, depth + 1)
     }
 
-    fn parse_not(input: &str) -> Result<QueryNode> {
+    fn parse_not_depth(input: &str, depth: usize) -> Result<QueryNode> {
+        if depth > MAX_PARSE_DEPTH {
+            return Err(QueryError::ParseError(
+                "Query exceeds maximum nesting depth".to_string(),
+            ));
+        }
         let trimmed = input.trim();
         if trimmed.starts_with("NOT ") {
             let rest = trimmed.strip_prefix("NOT ").unwrap();
-            let child = Self::parse_primary(rest)?;
+            let child = Self::parse_primary_depth(rest, depth + 1)?;
             return Ok(QueryNode::Not(Box::new(child)));
         }
-        Self::parse_primary(input)
+        Self::parse_primary_depth(input, depth + 1)
     }
 
-    fn parse_primary(input: &str) -> Result<QueryNode> {
+    fn parse_primary_depth(input: &str, depth: usize) -> Result<QueryNode> {
+        if depth > MAX_PARSE_DEPTH {
+            return Err(QueryError::ParseError(
+                "Query exceeds maximum nesting depth".to_string(),
+            ));
+        }
         let trimmed = input.trim();
 
         // Handle parentheses
         if trimmed.starts_with('(') && trimmed.ends_with(')') {
             let inner = &trimmed[1..trimmed.len() - 1];
-            return Self::parse_or(inner);
+            return Self::parse_or_depth(inner, depth + 1);
         }
 
         // Handle boost (term^2.0)
@@ -100,6 +129,12 @@ impl LuceneParser {
                 current.push('(');
                 i += 1;
             } else if bytes[i] == b')' {
+                if paren_depth == 0 {
+                    // Unbalanced closing paren, treat as literal
+                    current.push(')');
+                    i += 1;
+                    continue;
+                }
                 paren_depth -= 1;
                 current.push(')');
                 i += 1;

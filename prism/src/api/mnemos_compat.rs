@@ -225,7 +225,7 @@ pub async fn search(
     State(manager): State<Arc<CollectionManager>>,
     Json(req): Json<MnemosSearchRequest>,
 ) -> Result<Json<ApiResponse<MnemosSearchResponse>>, StatusCode> {
-    let limit = req.limit.unwrap_or(10) as usize;
+    let limit = (req.limit.unwrap_or(10) as usize).min(10_000);
 
     let query = Query {
         query_string: req.query,

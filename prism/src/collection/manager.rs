@@ -611,11 +611,18 @@ impl CollectionManager {
         self.text_backend.remove_collection(name);
         self.vector_backend.remove_collection(name).await?;
 
-        // Remove from manager maps
-        self.per_collection_backends.write().remove(name);
-        self.per_collection_rerankers.write().remove(name);
-        self.per_collection_graphs.write().remove(name);
-        self.schemas.write().remove(name);
+        // Remove from all manager maps atomically to prevent race conditions
+        // where another thread sees a partial removal state
+        {
+            let mut backends = self.per_collection_backends.write();
+            let mut rerankers = self.per_collection_rerankers.write();
+            let mut graphs = self.per_collection_graphs.write();
+            let mut schemas = self.schemas.write();
+            backends.remove(name);
+            rerankers.remove(name);
+            graphs.remove(name);
+            schemas.remove(name);
+        }
 
         // Update gauge
         metrics::gauge!("prism_collections_count").set(self.schemas.read().len() as f64);
