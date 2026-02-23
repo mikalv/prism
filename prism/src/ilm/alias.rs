@@ -480,4 +480,440 @@ mod tests {
             assert_eq!(target, "test-000001");
         }
     }
+
+    // ========================================================================
+    // resolve tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_resolve_existing_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_read_alias(
+                "logs",
+                vec!["logs-001".to_string(), "logs-002".to_string()],
+            )
+            .await
+            .unwrap();
+
+        let targets = manager.resolve("logs-read").await.unwrap();
+        assert_eq!(targets, vec!["logs-001", "logs-002"]);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_nonexistent_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        let result = manager.resolve("nonexistent").await;
+        assert!(result.is_err());
+        // Should be AliasNotFound
+        match result.unwrap_err() {
+            crate::Error::AliasNotFound(name) => assert_eq!(name, "nonexistent"),
+            other => panic!("Expected AliasNotFound, got: {:?}", other),
+        }
+    }
+
+    // ========================================================================
+    // list_aliases / list_for_index
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_list_empty() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        let aliases = manager.list().await;
+        assert!(aliases.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_with_aliases() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_write_alias("logs", "logs-001")
+            .await
+            .unwrap();
+        manager
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string()])
+            .await
+            .unwrap();
+        manager
+            .get_or_create_write_alias("metrics", "metrics-001")
+            .await
+            .unwrap();
+
+        let aliases = manager.list().await;
+        assert_eq!(aliases.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_list_for_index() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_write_alias("logs", "logs-001")
+            .await
+            .unwrap();
+        manager
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string()])
+            .await
+            .unwrap();
+        manager
+            .get_or_create_write_alias("metrics", "metrics-001")
+            .await
+            .unwrap();
+
+        let log_aliases = manager.list_for_index("logs").await;
+        assert_eq!(log_aliases.len(), 2);
+
+        let metric_aliases = manager.list_for_index("metrics").await;
+        assert_eq!(metric_aliases.len(), 1);
+
+        let empty = manager.list_for_index("nonexistent").await;
+        assert!(empty.is_empty());
+    }
+
+    // ========================================================================
+    // add_alias (upsert) / remove_alias (delete)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_upsert_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        let alias = IndexAlias::write("my-alias", "target-001");
+        manager.upsert(alias).await.unwrap();
+
+        let retrieved = manager.get("my-alias").await;
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().targets, vec!["target-001"]);
+    }
+
+    #[tokio::test]
+    async fn test_delete_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_write_alias("logs", "logs-001")
+            .await
+            .unwrap();
+
+        // Delete it
+        let removed = manager.delete("logs-write").await.unwrap();
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().name, "logs-write");
+
+        // Verify it's gone
+        let check = manager.get("logs-write").await;
+        assert!(check.is_none());
+
+        // Deleting again returns None
+        let removed_again = manager.delete("logs-write").await.unwrap();
+        assert!(removed_again.is_none());
+    }
+
+    // ========================================================================
+    // atomic_update
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_atomic_update() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        // Set up initial state
+        manager
+            .get_or_create_write_alias("logs", "logs-001")
+            .await
+            .unwrap();
+        manager
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string()])
+            .await
+            .unwrap();
+
+        // Atomic rollover: write alias -> logs-002, read alias adds logs-002
+        manager
+            .atomic_update(
+                vec![
+                    ("logs-write".to_string(), "logs-002".to_string()),
+                    ("logs-read".to_string(), "logs-002".to_string()),
+                ],
+                vec![],
+            )
+            .await
+            .unwrap();
+
+        // Verify write alias now points to logs-002
+        let write_target = manager.resolve_write_target("logs").await.unwrap();
+        assert_eq!(write_target, "logs-002");
+
+        // Read alias should have both targets
+        let read_targets = manager.resolve_read_targets("logs").await.unwrap();
+        assert_eq!(read_targets.len(), 2);
+        assert!(read_targets.contains(&"logs-001".to_string()));
+        assert!(read_targets.contains(&"logs-002".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_atomic_update_with_removes() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        // Set up read alias with multiple targets
+        manager
+            .get_or_create_read_alias(
+                "logs",
+                vec!["logs-001".to_string(), "logs-002".to_string()],
+            )
+            .await
+            .unwrap();
+
+        // Remove logs-001 from read alias
+        manager
+            .atomic_update(
+                vec![],
+                vec![("logs-read".to_string(), "logs-001".to_string())],
+            )
+            .await
+            .unwrap();
+
+        let targets = manager.resolve_read_targets("logs").await.unwrap();
+        assert_eq!(targets, vec!["logs-002"]);
+    }
+
+    // ========================================================================
+    // is_alias / expand
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_is_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        assert!(!manager.is_alias("logs-write").await);
+
+        manager
+            .get_or_create_write_alias("logs", "logs-001")
+            .await
+            .unwrap();
+
+        assert!(manager.is_alias("logs-write").await);
+        assert!(!manager.is_alias("nonexistent").await);
+    }
+
+    #[tokio::test]
+    async fn test_expand_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        // Expand a non-alias returns itself
+        let result = manager.expand("some-collection").await;
+        assert_eq!(result, vec!["some-collection".to_string()]);
+
+        // Expand an alias returns its targets
+        manager
+            .get_or_create_read_alias(
+                "logs",
+                vec!["logs-001".to_string(), "logs-002".to_string()],
+            )
+            .await
+            .unwrap();
+
+        let result = manager.expand("logs-read").await;
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&"logs-001".to_string()));
+        assert!(result.contains(&"logs-002".to_string()));
+    }
+
+    // ========================================================================
+    // remove_read_target
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_remove_read_target() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_read_alias(
+                "logs",
+                vec![
+                    "logs-001".to_string(),
+                    "logs-002".to_string(),
+                    "logs-003".to_string(),
+                ],
+            )
+            .await
+            .unwrap();
+
+        manager.remove_read_target("logs", "logs-002").await.unwrap();
+
+        let targets = manager.resolve_read_targets("logs").await.unwrap();
+        assert_eq!(targets.len(), 2);
+        assert!(!targets.contains(&"logs-002".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_remove_read_target_nonexistent_target() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string()])
+            .await
+            .unwrap();
+
+        // Removing a target that doesn't exist should succeed (no-op)
+        manager
+            .remove_read_target("logs", "logs-999")
+            .await
+            .unwrap();
+
+        let targets = manager.resolve_read_targets("logs").await.unwrap();
+        assert_eq!(targets, vec!["logs-001"]);
+    }
+
+    // ========================================================================
+    // add_read_target creates alias if not exists
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_add_read_target_creates_alias() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        // No alias exists yet, add_read_target should create one
+        manager.add_read_target("logs", "logs-001").await.unwrap();
+
+        let targets = manager.resolve_read_targets("logs").await.unwrap();
+        assert_eq!(targets, vec!["logs-001"]);
+    }
+
+    #[tokio::test]
+    async fn test_add_read_target_no_duplicates() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        manager
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string()])
+            .await
+            .unwrap();
+
+        // Adding the same target again should not duplicate
+        manager.add_read_target("logs", "logs-001").await.unwrap();
+
+        let targets = manager.resolve_read_targets("logs").await.unwrap();
+        assert_eq!(targets.len(), 1);
+    }
+
+    // ========================================================================
+    // get_or_create returns existing
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_or_create_returns_existing() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        let first = manager
+            .get_or_create_write_alias("logs", "logs-001")
+            .await
+            .unwrap();
+        let second = manager
+            .get_or_create_write_alias("logs", "logs-002")
+            .await
+            .unwrap();
+
+        // Second call should return the existing alias (not create a new one with logs-002)
+        assert_eq!(first.name, second.name);
+        assert_eq!(second.targets, vec!["logs-001"]);
+    }
+
+    // ========================================================================
+    // IndexAlias unit tests
+    // ========================================================================
+
+    #[test]
+    fn test_index_alias_write_target() {
+        let alias = IndexAlias::write("test-write", "target-001");
+        assert_eq!(alias.write_target(), Some("target-001"));
+
+        let read_alias = IndexAlias::read("test-read", vec!["t1".into(), "t2".into()]);
+        assert_eq!(read_alias.write_target(), None);
+    }
+
+    #[test]
+    fn test_index_alias_add_target() {
+        let mut alias = IndexAlias::read("test-read", vec!["t1".into()]);
+        alias.add_target("t2");
+        assert_eq!(alias.targets, vec!["t1", "t2"]);
+
+        // Adding duplicate should not change anything
+        alias.add_target("t2");
+        assert_eq!(alias.targets, vec!["t1", "t2"]);
+    }
+
+    #[test]
+    fn test_index_alias_remove_target() {
+        let mut alias = IndexAlias::read("test", vec!["t1".into(), "t2".into(), "t3".into()]);
+
+        assert!(alias.remove_target("t2"));
+        assert_eq!(alias.targets, vec!["t1", "t3"]);
+
+        // Removing nonexistent returns false
+        assert!(!alias.remove_target("t99"));
+    }
+
+    #[test]
+    fn test_index_alias_set_target() {
+        let mut alias = IndexAlias::write("test-write", "old-target");
+        alias.set_target("new-target");
+        assert_eq!(alias.targets, vec!["new-target"]);
+    }
+
+    // ========================================================================
+    // AliasType display
+    // ========================================================================
+
+    #[test]
+    fn test_alias_type_display() {
+        assert_eq!(AliasType::Write.to_string(), "write");
+        assert_eq!(AliasType::Read.to_string(), "read");
+    }
+
+    // ========================================================================
+    // update_write_target error path
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_update_write_target_nonexistent() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        let result = manager
+            .update_write_target("nonexistent", "new-target")
+            .await;
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // resolve_write_target error path
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_resolve_write_target_nonexistent() {
+        let temp = TempDir::new().unwrap();
+        let manager = AliasManager::new(temp.path()).await.unwrap();
+
+        let result = manager.resolve_write_target("nonexistent").await;
+        assert!(result.is_err());
+    }
 }

@@ -600,4 +600,368 @@ mod tests {
             HealthState::Suspect
         );
     }
+
+    // --- HealthState ---
+
+    #[test]
+    fn test_health_state_as_str() {
+        assert_eq!(HealthState::Alive.as_str(), "alive");
+        assert_eq!(HealthState::Suspect.as_str(), "suspect");
+        assert_eq!(HealthState::Dead.as_str(), "dead");
+    }
+
+    #[test]
+    fn test_health_state_serde() {
+        let state = HealthState::Suspect;
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(json, "\"suspect\"");
+        let deserialized: HealthState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, HealthState::Suspect);
+    }
+
+    // --- HealthChecker creation ---
+
+    #[test]
+    fn test_health_checker_creation() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        assert!(!checker.is_running());
+        let health = checker.cluster_health();
+        assert_eq!(health.total_count, 0);
+        assert_eq!(health.alive_count, 0);
+    }
+
+    // --- Register/Unregister ---
+
+    #[test]
+    fn test_register_node_idempotent() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        checker.register_node("node-1");
+        checker.register_node("node-1"); // Register again
+
+        let health = checker.cluster_health();
+        assert_eq!(health.total_count, 1); // Should still be 1
+    }
+
+    #[test]
+    fn test_register_multiple_nodes() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        checker.register_node("node-1");
+        checker.register_node("node-2");
+        checker.register_node("node-3");
+
+        let health = checker.cluster_health();
+        assert_eq!(health.total_count, 3);
+        assert_eq!(health.alive_count, 3);
+        assert!(health.quorum_available);
+    }
+
+    #[test]
+    fn test_unregister_nonexistent_node() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        // Should not panic
+        checker.unregister_node("nonexistent");
+    }
+
+    #[test]
+    fn test_node_health_nonexistent() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        assert!(checker.node_health("nonexistent").is_none());
+    }
+
+    // --- ClusterHealth ---
+
+    #[test]
+    fn test_cluster_health_all_alive() {
+        let mut nodes = HashMap::new();
+        nodes.insert("n1".to_string(), NodeHealthInfo::default());
+        nodes.insert("n2".to_string(), NodeHealthInfo::default());
+        nodes.insert("n3".to_string(), NodeHealthInfo::default());
+
+        let health = ClusterHealth::from_nodes(&nodes);
+        assert_eq!(health.alive_count, 3);
+        assert_eq!(health.suspect_count, 0);
+        assert_eq!(health.dead_count, 0);
+        assert_eq!(health.total_count, 3);
+        assert!(health.quorum_available);
+    }
+
+    #[test]
+    fn test_cluster_health_empty() {
+        let nodes = HashMap::new();
+        let health = ClusterHealth::from_nodes(&nodes);
+        assert_eq!(health.total_count, 0);
+        assert_eq!(health.alive_count, 0);
+        assert!(!health.quorum_available); // 0 > 0/2 = 0 > 0 = false
+    }
+
+    #[test]
+    fn test_cluster_health_majority_alive() {
+        let mut nodes = HashMap::new();
+        nodes.insert("n1".to_string(), NodeHealthInfo::default());
+        nodes.insert("n2".to_string(), NodeHealthInfo::default());
+        nodes.insert(
+            "n3".to_string(),
+            NodeHealthInfo {
+                state: HealthState::Dead,
+                ..Default::default()
+            },
+        );
+        nodes.insert(
+            "n4".to_string(),
+            NodeHealthInfo {
+                state: HealthState::Dead,
+                ..Default::default()
+            },
+        );
+        nodes.insert(
+            "n5".to_string(),
+            NodeHealthInfo {
+                state: HealthState::Suspect,
+                ..Default::default()
+            },
+        );
+
+        let health = ClusterHealth::from_nodes(&nodes);
+        assert_eq!(health.alive_count, 2);
+        assert_eq!(health.suspect_count, 1);
+        assert_eq!(health.dead_count, 2);
+        assert!(!health.quorum_available); // 2 > 5/2 = 2 > 2 = false
+    }
+
+    // --- Health state transitions ---
+
+    #[test]
+    fn test_suspect_to_alive_on_heartbeat() {
+        let (mut health_config, cluster_config) = make_config();
+        health_config.failure_threshold = 1;
+        let cluster_state = Arc::new(ClusterState::new());
+
+        // Register node in cluster state so heartbeat update works
+        let node_info = NodeInfo {
+            node_id: "node-1".to_string(),
+            address: "127.0.0.1:9080".to_string(),
+            topology: NodeTopology::default(),
+            healthy: true,
+            shard_count: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            index_size_bytes: 0,
+            draining: false,
+        };
+        cluster_state.register_node(node_info);
+
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+        checker.register_node("node-1");
+
+        // Transition to suspect
+        checker.record_missed_heartbeat("node-1");
+        assert_eq!(
+            checker.node_health("node-1").unwrap().state,
+            HealthState::Suspect
+        );
+
+        // Record heartbeat should transition back to alive
+        checker.record_heartbeat("node-1", 5);
+        assert_eq!(
+            checker.node_health("node-1").unwrap().state,
+            HealthState::Alive
+        );
+        assert_eq!(checker.node_health("node-1").unwrap().missed_heartbeats, 0);
+    }
+
+    #[test]
+    fn test_missed_heartbeat_nonexistent_node() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        // Should not panic
+        checker.record_missed_heartbeat("nonexistent");
+    }
+
+    #[test]
+    fn test_heartbeat_nonexistent_node() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        // Should not panic
+        checker.record_heartbeat("nonexistent", 10);
+    }
+
+    // --- Stop/Start ---
+
+    #[test]
+    fn test_stop_not_running() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        assert!(!checker.is_running());
+        checker.stop();
+        assert!(!checker.is_running());
+    }
+
+    // --- Subscribe ---
+
+    #[test]
+    fn test_subscribe() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        let _rx = checker.subscribe();
+        // Should not panic
+    }
+
+    // --- HealthEvent ---
+
+    #[test]
+    fn test_health_event_fields() {
+        let event = HealthEvent {
+            node_id: "node-1".to_string(),
+            previous_state: HealthState::Alive,
+            new_state: HealthState::Suspect,
+            timestamp: Instant::now(),
+        };
+        assert_eq!(event.node_id, "node-1");
+        assert_eq!(event.previous_state, HealthState::Alive);
+        assert_eq!(event.new_state, HealthState::Suspect);
+    }
+
+    // --- State transitions (suspect -> dead) ---
+
+    #[test]
+    fn test_suspect_to_dead_transition() {
+        let (mut health_config, cluster_config) = make_config();
+        health_config.failure_threshold = 1;
+        health_config.suspect_timeout_ms = 0; // Immediate transition
+        let cluster_state = Arc::new(ClusterState::new());
+
+        let node_info = NodeInfo {
+            node_id: "node-1".to_string(),
+            address: "127.0.0.1:9080".to_string(),
+            topology: NodeTopology::default(),
+            healthy: true,
+            shard_count: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            index_size_bytes: 0,
+            draining: false,
+        };
+        cluster_state.register_node(node_info);
+
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+        checker.register_node("node-1");
+
+        // Move to suspect
+        checker.record_missed_heartbeat("node-1");
+        assert_eq!(
+            checker.node_health("node-1").unwrap().state,
+            HealthState::Suspect
+        );
+
+        // With suspect_timeout_ms = 0, update_state_transitions should transition to dead
+        // Need a small sleep to ensure state_since is in the past
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        checker.update_state_transitions();
+        assert_eq!(
+            checker.node_health("node-1").unwrap().state,
+            HealthState::Dead
+        );
+    }
+
+    // --- handle_node_failure coverage ---
+
+    #[test]
+    fn test_handle_failure_rebalance_action() {
+        let health_config = HealthConfig {
+            on_failure: FailureAction::Rebalance,
+            ..Default::default()
+        };
+        let cluster_config = ClusterConfig::default();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        // Should not panic
+        checker.handle_node_failure("node-1");
+    }
+
+    #[test]
+    fn test_handle_failure_alert_only() {
+        let health_config = HealthConfig {
+            on_failure: FailureAction::AlertOnly,
+            ..Default::default()
+        };
+        let cluster_config = ClusterConfig::default();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        checker.handle_node_failure("node-1");
+    }
+
+    #[test]
+    fn test_handle_failure_manual() {
+        let health_config = HealthConfig {
+            on_failure: FailureAction::Manual,
+            ..Default::default()
+        };
+        let cluster_config = ClusterConfig::default();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+
+        checker.handle_node_failure("node-1");
+    }
+
+    // --- emit_metrics ---
+
+    #[test]
+    fn test_emit_metrics() {
+        let (health_config, cluster_config) = make_config();
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+        checker.register_node("node-1");
+
+        // Should not panic
+        checker.emit_metrics();
+    }
+
+    // --- Multiple missed heartbeats accumulate ---
+
+    #[test]
+    fn test_multiple_missed_heartbeats_accumulate() {
+        let (mut health_config, cluster_config) = make_config();
+        health_config.failure_threshold = 5;
+        let cluster_state = Arc::new(ClusterState::new());
+        let checker = HealthChecker::new(health_config, cluster_config, cluster_state);
+        checker.register_node("node-1");
+
+        for i in 1..=4 {
+            checker.record_missed_heartbeat("node-1");
+            let info = checker.node_health("node-1").unwrap();
+            assert_eq!(info.missed_heartbeats, i);
+            assert_eq!(info.state, HealthState::Alive);
+        }
+
+        // 5th miss triggers suspect
+        checker.record_missed_heartbeat("node-1");
+        let info = checker.node_health("node-1").unwrap();
+        assert_eq!(info.missed_heartbeats, 5);
+        assert_eq!(info.state, HealthState::Suspect);
+    }
 }

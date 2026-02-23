@@ -297,3 +297,153 @@ impl Default for StorageConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_storage_config_default() {
+        let config = StorageConfig::default();
+        match config {
+            StorageConfig::Local { path } => {
+                assert_eq!(path, std::path::PathBuf::from("./data"));
+            }
+            _ => panic!("Expected Local config"),
+        }
+    }
+
+    #[test]
+    fn test_create_storage_local() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Local {
+            path: dir.path().to_path_buf(),
+        };
+        let storage = create_storage(&config).unwrap();
+        assert_eq!(storage.backend_name(), "local");
+    }
+
+    #[test]
+    fn test_create_storage_compressed_lz4() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Compressed {
+            algorithm: "lz4".to_string(),
+            min_size: 512,
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let storage = create_storage(&config).unwrap();
+        assert_eq!(storage.backend_name(), "compressed");
+    }
+
+    #[test]
+    fn test_create_storage_compressed_zstd() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Compressed {
+            algorithm: "zstd".to_string(),
+            min_size: 0,
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let storage = create_storage(&config).unwrap();
+        assert_eq!(storage.backend_name(), "compressed");
+    }
+
+    #[test]
+    fn test_create_storage_compressed_zstd_with_level() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Compressed {
+            algorithm: "zstd:9".to_string(),
+            min_size: 0,
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let storage = create_storage(&config).unwrap();
+        assert_eq!(storage.backend_name(), "compressed");
+    }
+
+    #[test]
+    fn test_create_storage_compressed_none() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Compressed {
+            algorithm: "none".to_string(),
+            min_size: 0,
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let storage = create_storage(&config).unwrap();
+        assert_eq!(storage.backend_name(), "compressed");
+    }
+
+    #[test]
+    fn test_create_storage_compressed_invalid_algorithm() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Compressed {
+            algorithm: "snappy".to_string(),
+            min_size: 0,
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let result = create_storage(&config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_storage_compressed_invalid_zstd_level() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Compressed {
+            algorithm: "zstd:abc".to_string(),
+            min_size: 0,
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let result = create_storage(&config);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_storage_cached() {
+        let l1_dir = tempfile::TempDir::new().unwrap();
+        let l2_dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Cached {
+            l1_path: l1_dir.path().to_path_buf(),
+            l1_max_size_gb: 1,
+            l2: Box::new(StorageConfig::Local {
+                path: l2_dir.path().to_path_buf(),
+            }),
+        };
+        let storage = create_storage(&config).unwrap();
+        assert_eq!(storage.backend_name(), "cached");
+    }
+
+    #[cfg(not(feature = "s3"))]
+    #[test]
+    fn test_create_storage_s3_disabled() {
+        let config = StorageConfig::S3(S3ConfigPlaceholder { _private: () });
+        let result = create_storage(&config);
+        assert!(result.is_err());
+    }
+
+    #[cfg(not(feature = "encryption"))]
+    #[test]
+    fn test_create_storage_encrypted_disabled() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = StorageConfig::Encrypted {
+            key_source: EncryptionKeySource::Hex {
+                key: "0".repeat(64),
+                key_id: "test".into(),
+            },
+            inner: Box::new(StorageConfig::Local {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let result = create_storage(&config);
+        assert!(result.is_err());
+    }
+}

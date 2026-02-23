@@ -164,3 +164,209 @@ pub async fn audit_middleware(
 
     response
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- classify_event tests ---
+
+    #[test]
+    fn test_classify_admin_route() {
+        assert_eq!(
+            classify_event(&axum::http::Method::GET, "/admin/settings"),
+            "admin"
+        );
+        assert_eq!(
+            classify_event(&axum::http::Method::POST, "/admin/reload"),
+            "admin"
+        );
+    }
+
+    #[test]
+    fn test_classify_search() {
+        assert_eq!(
+            classify_event(&axum::http::Method::POST, "/collections/test/search"),
+            "search"
+        );
+        assert_eq!(
+            classify_event(&axum::http::Method::GET, "/collections/test/_suggest"),
+            "search"
+        );
+        assert_eq!(
+            classify_event(&axum::http::Method::POST, "/collections/test/_mlt"),
+            "search"
+        );
+    }
+
+    #[test]
+    fn test_classify_aggregate() {
+        assert_eq!(
+            classify_event(
+                &axum::http::Method::POST,
+                "/collections/test/aggregate"
+            ),
+            "aggregate"
+        );
+    }
+
+    #[test]
+    fn test_classify_index() {
+        assert_eq!(
+            classify_event(
+                &axum::http::Method::POST,
+                "/collections/test/documents"
+            ),
+            "index"
+        );
+    }
+
+    #[test]
+    fn test_classify_delete() {
+        assert_eq!(
+            classify_event(
+                &axum::http::Method::DELETE,
+                "/collections/test/documents/1"
+            ),
+            "delete"
+        );
+    }
+
+    #[test]
+    fn test_classify_read() {
+        assert_eq!(
+            classify_event(
+                &axum::http::Method::GET,
+                "/collections/test/documents/1"
+            ),
+            "read"
+        );
+        assert_eq!(
+            classify_event(&axum::http::Method::PUT, "/collections/test"),
+            "read"
+        );
+    }
+
+    // --- extract_collection tests ---
+
+    #[test]
+    fn test_extract_collection_valid() {
+        assert_eq!(
+            extract_collection("/collections/my_index/documents"),
+            Some("my_index".to_string())
+        );
+        assert_eq!(
+            extract_collection("/collections/test/search"),
+            Some("test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_collection_root() {
+        assert_eq!(
+            extract_collection("/collections/products"),
+            Some("products".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_collection_none() {
+        assert_eq!(extract_collection("/health"), None);
+        assert_eq!(extract_collection("/admin/settings"), None);
+    }
+
+    // --- extract_client_ip tests ---
+
+    #[test]
+    fn test_extract_client_ip_from_xff() {
+        let mut req = Request::builder()
+            .header("x-forwarded-for", "203.0.113.50, 70.41.3.18")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(extract_client_ip(&req), "203.0.113.50");
+    }
+
+    #[test]
+    fn test_extract_client_ip_single() {
+        let req = Request::builder()
+            .header("x-forwarded-for", "192.168.1.1")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(extract_client_ip(&req), "192.168.1.1");
+    }
+
+    #[test]
+    fn test_extract_client_ip_missing() {
+        let req = Request::builder()
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(extract_client_ip(&req), "unknown");
+    }
+
+    // --- AuditEvent::to_document tests ---
+
+    #[test]
+    fn test_audit_event_to_document() {
+        let event = AuditEvent {
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            event_type: "search".to_string(),
+            user: Some("admin".to_string()),
+            roles: vec!["admin".to_string(), "viewer".to_string()],
+            collection: Some("products".to_string()),
+            action: "GET /collections/products/search".to_string(),
+            status_code: 200,
+            client_ip: "10.0.0.1".to_string(),
+            duration_ms: 42,
+        };
+
+        let doc = event.to_document();
+        assert!(!doc.id.is_empty());
+        assert_eq!(
+            doc.fields.get("event_type"),
+            Some(&serde_json::Value::String("search".to_string()))
+        );
+        assert_eq!(
+            doc.fields.get("user"),
+            Some(&serde_json::Value::String("admin".to_string()))
+        );
+        assert_eq!(
+            doc.fields.get("roles"),
+            Some(&serde_json::Value::String("admin,viewer".to_string()))
+        );
+        assert_eq!(
+            doc.fields.get("collection"),
+            Some(&serde_json::Value::String("products".to_string()))
+        );
+        assert_eq!(doc.fields.get("status_code"), Some(&serde_json::json!(200)));
+        assert_eq!(doc.fields.get("duration_ms"), Some(&serde_json::json!(42)));
+    }
+
+    #[test]
+    fn test_audit_event_to_document_none_fields() {
+        let event = AuditEvent {
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            event_type: "read".to_string(),
+            user: None,
+            roles: vec![],
+            collection: None,
+            action: "GET /health".to_string(),
+            status_code: 200,
+            client_ip: "unknown".to_string(),
+            duration_ms: 1,
+        };
+
+        let doc = event.to_document();
+        assert_eq!(
+            doc.fields.get("user"),
+            Some(&serde_json::Value::String("".to_string()))
+        );
+        assert_eq!(
+            doc.fields.get("collection"),
+            Some(&serde_json::Value::String("".to_string()))
+        );
+        assert_eq!(
+            doc.fields.get("roles"),
+            Some(&serde_json::Value::String("".to_string()))
+        );
+    }
+}

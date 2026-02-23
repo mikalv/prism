@@ -324,3 +324,290 @@ fn parse_bulk_body(
 
     Ok(actions)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Bytes;
+    use crate::query::BulkAction;
+
+    fn make_bytes(s: &str) -> Bytes {
+        Bytes::from(s.to_string())
+    }
+
+    // ===================================================================
+    // parse_bulk_body — index action
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_index_action() {
+        let body = make_bytes(
+            r#"{"index":{"_index":"products","_id":"1"}}
+{"title":"Widget","price":9.99}
+"#,
+        );
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            BulkAction::Index { index, id, doc } => {
+                assert_eq!(index, "products");
+                assert_eq!(id.as_deref(), Some("1"));
+                assert_eq!(doc["title"], "Widget");
+            }
+            _ => panic!("Expected Index action"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_index_no_id() {
+        let body = make_bytes(
+            r#"{"index":{"_index":"logs"}}
+{"message":"hello"}
+"#,
+        );
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            BulkAction::Index { index, id, .. } => {
+                assert_eq!(index, "logs");
+                assert!(id.is_none());
+            }
+            _ => panic!("Expected Index action"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_index_default_index() {
+        let body = make_bytes(
+            r#"{"index":{}}
+{"message":"hello"}
+"#,
+        );
+        let actions = parse_bulk_body(&body, Some("default_idx")).unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            BulkAction::Index { index, .. } => {
+                assert_eq!(index, "default_idx");
+            }
+            _ => panic!("Expected Index"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_index_missing_index_error() {
+        let body = make_bytes(
+            r#"{"index":{}}
+{"message":"hello"}
+"#,
+        );
+        let result = parse_bulk_body(&body, None);
+        assert!(result.is_err());
+    }
+
+    // ===================================================================
+    // parse_bulk_body — create action
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_create_action() {
+        let body = make_bytes(
+            r#"{"create":{"_index":"products","_id":"2"}}
+{"title":"Gadget"}
+"#,
+        );
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            BulkAction::Create { index, id, doc } => {
+                assert_eq!(index, "products");
+                assert_eq!(id.as_deref(), Some("2"));
+                assert_eq!(doc["title"], "Gadget");
+            }
+            _ => panic!("Expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_create_default_index() {
+        let body = make_bytes(
+            r#"{"create":{}}
+{"title":"Thing"}
+"#,
+        );
+        let actions = parse_bulk_body(&body, Some("my_index")).unwrap();
+        match &actions[0] {
+            BulkAction::Create { index, .. } => {
+                assert_eq!(index, "my_index");
+            }
+            _ => panic!("Expected Create"),
+        }
+    }
+
+    // ===================================================================
+    // parse_bulk_body — delete action
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_delete_action() {
+        let body = make_bytes(r#"{"delete":{"_index":"products","_id":"3"}}"#);
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            BulkAction::Delete { index, id } => {
+                assert_eq!(index, "products");
+                assert_eq!(id, "3");
+            }
+            _ => panic!("Expected Delete action"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_delete_no_id_error() {
+        let body = make_bytes(r#"{"delete":{"_index":"products"}}"#);
+        let result = parse_bulk_body(&body, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_bulk_delete_default_index() {
+        let body = make_bytes(r#"{"delete":{"_id":"5"}}"#);
+        let actions = parse_bulk_body(&body, Some("logs")).unwrap();
+        match &actions[0] {
+            BulkAction::Delete { index, id } => {
+                assert_eq!(index, "logs");
+                assert_eq!(id, "5");
+            }
+            _ => panic!("Expected Delete"),
+        }
+    }
+
+    // ===================================================================
+    // parse_bulk_body — missing doc body
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_missing_doc_body() {
+        // Index action requires a body on the next line
+        let body = make_bytes(r#"{"index":{"_index":"products","_id":"1"}}"#);
+        let result = parse_bulk_body(&body, None);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Missing document body"));
+    }
+
+    #[test]
+    fn test_parse_bulk_create_missing_body() {
+        let body = make_bytes(r#"{"create":{"_index":"products","_id":"1"}}"#);
+        let result = parse_bulk_body(&body, None);
+        assert!(result.is_err());
+    }
+
+    // ===================================================================
+    // parse_bulk_body — invalid JSON
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_invalid_action_json() {
+        let body = make_bytes("not valid json\n");
+        let result = parse_bulk_body(&body, None);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Invalid action"));
+    }
+
+    #[test]
+    fn test_parse_bulk_invalid_doc_json() {
+        let body = make_bytes(
+            r#"{"index":{"_index":"test","_id":"1"}}
+not valid json
+"#,
+        );
+        let result = parse_bulk_body(&body, None);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Invalid doc"));
+    }
+
+    // ===================================================================
+    // parse_bulk_body — update action (skipped)
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_update_skipped() {
+        let body = make_bytes(
+            r#"{"update":{"_index":"products","_id":"1"}}
+{"doc":{"price":19.99}}
+"#,
+        );
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert!(actions.is_empty(), "Update should be skipped");
+    }
+
+    // ===================================================================
+    // parse_bulk_body — multiple actions
+    // ===================================================================
+
+    #[test]
+    fn test_parse_bulk_multiple_actions() {
+        let body = make_bytes(
+            r#"{"index":{"_index":"logs","_id":"1"}}
+{"message":"first"}
+{"index":{"_index":"logs","_id":"2"}}
+{"message":"second"}
+{"delete":{"_index":"logs","_id":"3"}}
+"#,
+        );
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert_eq!(actions.len(), 3);
+        assert!(matches!(&actions[0], BulkAction::Index { .. }));
+        assert!(matches!(&actions[1], BulkAction::Index { .. }));
+        assert!(matches!(&actions[2], BulkAction::Delete { .. }));
+    }
+
+    #[test]
+    fn test_parse_bulk_mixed_actions_with_default_index() {
+        let body = make_bytes(
+            r#"{"index":{"_id":"1"}}
+{"title":"A"}
+{"create":{"_id":"2"}}
+{"title":"B"}
+{"delete":{"_id":"3"}}
+"#,
+        );
+        let actions = parse_bulk_body(&body, Some("myidx")).unwrap();
+        assert_eq!(actions.len(), 3);
+        match &actions[0] {
+            BulkAction::Index { index, .. } => assert_eq!(index, "myidx"),
+            _ => panic!("Expected Index"),
+        }
+        match &actions[1] {
+            BulkAction::Create { index, .. } => assert_eq!(index, "myidx"),
+            _ => panic!("Expected Create"),
+        }
+        match &actions[2] {
+            BulkAction::Delete { index, .. } => assert_eq!(index, "myidx"),
+            _ => panic!("Expected Delete"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_empty_body() {
+        let body = make_bytes("");
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_parse_bulk_blank_lines_ignored() {
+        let body = make_bytes(
+            r#"
+{"index":{"_index":"test","_id":"1"}}
+
+{"msg":"hello"}
+
+"#,
+        );
+        let actions = parse_bulk_body(&body, None).unwrap();
+        assert_eq!(actions.len(), 1);
+    }
+}

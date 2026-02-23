@@ -716,4 +716,350 @@ mod tests {
         // Should not panic
         update_cluster_state_metrics(&state);
     }
+
+    // --- RPC metrics ---
+
+    #[test]
+    fn test_record_rpc_duration() {
+        // Should not panic
+        record_rpc_duration("search", "node-1:9200", Duration::from_millis(50));
+    }
+
+    #[test]
+    fn test_record_rpc_success() {
+        record_rpc_success("search", "node-1:9200");
+    }
+
+    #[test]
+    fn test_record_rpc_error() {
+        record_rpc_error("search", "node-1:9200", "timeout");
+    }
+
+    #[test]
+    fn test_record_rpc_handler_duration() {
+        record_rpc_handler_duration("index", Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_record_rpc_handler_success() {
+        record_rpc_handler_success("index");
+    }
+
+    #[test]
+    fn test_record_rpc_handler_error() {
+        record_rpc_handler_error("index", "backend_error");
+    }
+
+    // --- Rebalance metrics ---
+
+    #[test]
+    fn test_record_rebalance_operation() {
+        record_rebalance_operation("node_failure");
+        record_rebalance_operation("manual");
+    }
+
+    #[test]
+    fn test_record_rebalance_completion_success() {
+        record_rebalance_completion(true, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_record_rebalance_completion_failure() {
+        record_rebalance_completion(false, Duration::from_secs(30));
+    }
+
+    // --- Shard transfer metrics ---
+
+    #[test]
+    fn test_record_shard_transfer() {
+        record_shard_transfer("shard-0", "node-1", "node-2");
+    }
+
+    #[test]
+    fn test_record_shard_transfer_complete_success() {
+        record_shard_transfer_complete("shard-0", true, 1024 * 1024, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_record_shard_transfer_complete_failure() {
+        // On failure, duration and bytes histograms should not be recorded
+        record_shard_transfer_complete("shard-0", false, 0, Duration::from_secs(1));
+    }
+
+    // --- Replication lag ---
+
+    #[test]
+    fn test_record_replication_lag() {
+        record_replication_lag("shard-0", "node-2", 0.5);
+        record_replication_lag("shard-1", "node-3", 120.0);
+    }
+
+    // --- Node state metrics ---
+
+    #[test]
+    fn test_update_node_state_alive() {
+        update_node_state("node-1", true, true);
+    }
+
+    #[test]
+    fn test_update_node_state_suspect() {
+        update_node_state("node-1", true, false);
+    }
+
+    #[test]
+    fn test_update_node_state_dead() {
+        update_node_state("node-1", false, false);
+    }
+
+    // --- Shard status metrics ---
+
+    #[test]
+    fn test_update_shard_status_all_states() {
+        use crate::placement::ReplicaRole;
+
+        update_shard_status("shard-0", &ShardState::Initializing, &ReplicaRole::Primary);
+        update_shard_status("shard-1", &ShardState::Active, &ReplicaRole::Primary);
+        update_shard_status("shard-2", &ShardState::Relocating, &ReplicaRole::Replica);
+        update_shard_status("shard-3", &ShardState::Syncing, &ReplicaRole::Replica);
+        update_shard_status("shard-4", &ShardState::Deleting, &ReplicaRole::Primary);
+        update_shard_status("shard-5", &ShardState::Error, &ReplicaRole::Primary);
+    }
+
+    // --- Connection pool metrics ---
+
+    #[test]
+    fn test_record_connection_pool_size() {
+        record_connection_pool_size(5);
+        record_connection_pool_size(0);
+    }
+
+    #[test]
+    fn test_record_connection_established() {
+        record_connection_established("node-1:9200");
+    }
+
+    #[test]
+    fn test_record_connection_failed() {
+        record_connection_failed("node-1:9200", "tls_handshake");
+    }
+
+    // --- Partition metrics ---
+
+    #[test]
+    fn test_record_partition_event() {
+        record_partition_event("detected");
+        record_partition_event("healed");
+        record_partition_event("quorum_lost");
+        record_partition_event("quorum_restored");
+    }
+
+    #[test]
+    fn test_update_partition_state_healthy() {
+        update_partition_state("healthy", true);
+    }
+
+    #[test]
+    fn test_update_partition_state_partitioned() {
+        update_partition_state("partitioned", false);
+    }
+
+    #[test]
+    fn test_update_partition_state_healing() {
+        update_partition_state("healing", true);
+    }
+
+    #[test]
+    fn test_update_partition_state_unknown() {
+        // Unknown state should get value 0.0
+        update_partition_state("unknown", false);
+    }
+
+    #[test]
+    fn test_record_partition_duration() {
+        record_partition_duration(Duration::from_secs(45));
+    }
+
+    // --- Federation metrics ---
+
+    #[test]
+    fn test_record_federated_query() {
+        record_federated_query("products", "search", 3, Duration::from_millis(150));
+    }
+
+    #[test]
+    fn test_record_federated_partial_results() {
+        record_federated_partial_results("products", 2, 1);
+    }
+
+    #[test]
+    fn test_record_shard_query_latency() {
+        record_shard_query_latency("shard-0", "node-1", Duration::from_millis(25));
+    }
+
+    #[test]
+    fn test_record_shard_query_failure() {
+        record_shard_query_failure("shard-0", "node-1", "connection_refused", false);
+        record_shard_query_failure("shard-1", "node-2", "timeout", true);
+    }
+
+    #[test]
+    fn test_record_merge_operation() {
+        record_merge_operation("simple", 42, Duration::from_millis(5));
+        record_merge_operation("rrf", 100, Duration::from_millis(10));
+    }
+
+    #[test]
+    fn test_record_routing_decision() {
+        record_routing_decision("products", "broadcast", 3);
+        record_routing_decision("products", "hash_routing", 1);
+    }
+
+    #[test]
+    fn test_record_scatter_gather_timing() {
+        record_scatter_gather_timing("products", 10, 25, 5);
+    }
+
+    #[test]
+    fn test_update_concurrent_queries() {
+        update_concurrent_queries(5);
+        update_concurrent_queries(0);
+    }
+
+    // --- FederatedQueryTimer ---
+
+    #[test]
+    fn test_federated_query_timer_success_full() {
+        let timer = FederatedQueryTimer::new("products", "search", 3);
+        std::thread::sleep(Duration::from_millis(1));
+        timer.success(false);
+    }
+
+    #[test]
+    fn test_federated_query_timer_success_partial() {
+        let timer = FederatedQueryTimer::new("products", "search", 3);
+        timer.success(true);
+    }
+
+    #[test]
+    fn test_federated_query_timer_error() {
+        let timer = FederatedQueryTimer::new("products", "search", 3);
+        timer.error("timeout");
+    }
+
+    // --- RPC timer edge cases ---
+
+    #[test]
+    fn test_rpc_timer_error() {
+        let timer = RpcTimer::new("search", "node-1:9200");
+        timer.error("connection_refused");
+    }
+
+    #[test]
+    fn test_rpc_handler_timer_error() {
+        let timer = RpcHandlerTimer::new("index");
+        timer.error("backend_failure");
+    }
+
+    // --- Schema propagation metrics ---
+
+    #[test]
+    fn test_record_schema_propagation() {
+        record_schema_propagation("products", 3, 5, 1, Duration::from_millis(200));
+    }
+
+    #[test]
+    fn test_record_schema_node_propagation_success() {
+        record_schema_node_propagation("products", "node-1", true, Duration::from_millis(50));
+    }
+
+    #[test]
+    fn test_record_schema_node_propagation_failure() {
+        record_schema_node_propagation("products", "node-2", false, Duration::from_millis(5000));
+    }
+
+    #[test]
+    fn test_record_schema_change() {
+        record_schema_change("products", "field_added", false);
+        record_schema_change("products", "field_removed", true);
+    }
+
+    #[test]
+    fn test_update_schema_registry_metrics() {
+        update_schema_registry_metrics(5, 15);
+    }
+
+    // --- Rebalance status metrics ---
+
+    #[test]
+    fn test_update_rebalance_status_metrics_idle() {
+        use crate::rebalance::RebalanceStatus;
+        let status = RebalanceStatus::default();
+        update_rebalance_status_metrics(&status);
+    }
+
+    #[test]
+    fn test_update_rebalance_status_metrics_in_progress() {
+        use crate::rebalance::RebalanceStatus;
+        use crate::rebalance::RebalancePhase;
+        let status = RebalanceStatus {
+            in_progress: true,
+            phase: RebalancePhase::Executing,
+            shards_in_transit: 2,
+            total_shards_to_move: 5,
+            completed_moves: 3,
+            failed_moves: 0,
+            ..Default::default()
+        };
+        update_rebalance_status_metrics(&status);
+    }
+
+    // --- Cluster state metrics with multiple nodes ---
+
+    #[test]
+    fn test_update_cluster_state_metrics_multi_node() {
+        let state = ClusterState::new();
+
+        // Node 1: healthy
+        state.register_node(NodeInfo {
+            node_id: "node-1".to_string(),
+            address: "127.0.0.1:9200".to_string(),
+            topology: NodeTopology::default(),
+            healthy: true,
+            shard_count: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            index_size_bytes: 0,
+            draining: false,
+        });
+
+        // Node 2: unreachable
+        state.register_node(NodeInfo {
+            node_id: "node-2".to_string(),
+            address: "127.0.0.1:9201".to_string(),
+            topology: NodeTopology::default(),
+            healthy: true,
+            shard_count: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            index_size_bytes: 0,
+            draining: false,
+        });
+        state.mark_unreachable("node-2");
+
+        // Add shards in various states
+        let mut shard_active = ShardAssignment::new("products", 0, "node-1");
+        shard_active.state = ShardState::Active;
+        state.assign_shard(shard_active);
+
+        let mut shard_relocating = ShardAssignment::new("products", 1, "node-1");
+        shard_relocating.state = ShardState::Relocating;
+        state.assign_shard(shard_relocating);
+
+        let mut shard_init = ShardAssignment::new("products", 2, "node-2");
+        shard_init.state = ShardState::Initializing;
+        state.assign_shard(shard_init);
+
+        // Should not panic, exercises all branches
+        update_cluster_state_metrics(&state);
+    }
 }

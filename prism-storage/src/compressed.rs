@@ -518,4 +518,71 @@ mod tests {
         assert!((stats.compression_ratio() - 0.3).abs() < 0.001);
         assert!((stats.space_savings_percent() - 70.0).abs() < 0.1);
     }
+
+    #[test]
+    fn test_compression_stats_zero_bytes() {
+        let stats = CompressionStats::default();
+        assert!((stats.compression_ratio() - 1.0).abs() < f64::EPSILON);
+        assert!((stats.space_savings_percent() - 0.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_zstd_level_clamping() {
+        let low = CompressionAlgorithm::zstd_level(-5);
+        assert!(matches!(low, CompressionAlgorithm::Zstd { level: 1 }));
+
+        let high = CompressionAlgorithm::zstd_level(100);
+        assert!(matches!(high, CompressionAlgorithm::Zstd { level: 22 }));
+    }
+
+    #[test]
+    fn test_min_size_builder() {
+        let config = CompressionConfig::lz4().with_min_size(4096);
+        assert_eq!(config.min_size, 4096);
+    }
+
+    #[tokio::test]
+    async fn test_decompress_unknown_algorithm() {
+        let dir = TempDir::new().unwrap();
+        let inner = Arc::new(LocalStorage::new(dir.path()));
+
+        // Write raw data with a compression header but unknown algorithm byte
+        let path = StoragePath::vector("test", "shard_0", "bad.bin");
+        let mut bad_data = vec![0xC0u8, 0xFF, 0x00, 0x00]; // magic + unknown algo
+        bad_data.extend_from_slice(b"some payload");
+        inner
+            .write(&path, Bytes::from(bad_data))
+            .await
+            .unwrap();
+
+        let storage = CompressedStorage::new(inner, CompressionConfig::lz4());
+        let result = storage.read(&path).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown compression"));
+    }
+
+    #[tokio::test]
+    async fn test_decompress_non_compressed_passthrough() {
+        let dir = TempDir::new().unwrap();
+        let inner = Arc::new(LocalStorage::new(dir.path()));
+
+        // Write raw data without compression header (no magic byte)
+        let path = StoragePath::vector("test", "shard_0", "raw.bin");
+        let raw_data = Bytes::from("plain uncompressed data");
+        inner.write(&path, raw_data.clone()).await.unwrap();
+
+        let storage = CompressedStorage::new(inner, CompressionConfig::lz4());
+        let read = storage.read(&path).await.unwrap();
+        assert_eq!(read, raw_data);
+    }
+
+    #[test]
+    fn test_debug_output() {
+        let dir = TempDir::new().unwrap();
+        let inner = Arc::new(LocalStorage::new(dir.path()));
+        let storage = CompressedStorage::new(inner, CompressionConfig::lz4());
+        let debug = format!("{:?}", storage);
+        assert!(debug.contains("CompressedStorage"));
+        assert!(debug.contains("Lz4"));
+    }
 }

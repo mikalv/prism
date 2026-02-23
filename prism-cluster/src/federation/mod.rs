@@ -599,6 +599,33 @@ mod tests {
     }
 
     #[test]
+    fn test_federation_config_serde_roundtrip() {
+        let config = FederationConfig {
+            allow_partial_results: false,
+            partial_results_timeout_ms: 10000,
+            min_successful_shards: 3,
+            max_concurrent_requests: 20,
+            default_merge_strategy: MergeStrategy::ScoreNormalized,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: FederationConfig = serde_json::from_str(&json).unwrap();
+        assert!(!deserialized.allow_partial_results);
+        assert_eq!(deserialized.partial_results_timeout_ms, 10000);
+        assert_eq!(deserialized.min_successful_shards, 3);
+        assert_eq!(deserialized.max_concurrent_requests, 20);
+    }
+
+    #[test]
+    fn test_federation_config_serde_defaults() {
+        let config: FederationConfig = serde_json::from_str("{}").unwrap();
+        assert!(config.allow_partial_results);
+        assert_eq!(config.partial_results_timeout_ms, 5000);
+    }
+
+    // --- ShardStatus ---
+
+    #[test]
     fn test_shard_status() {
         let mut status = ShardStatus::new(3);
         assert_eq!(status.total, 3);
@@ -618,5 +645,175 @@ mod tests {
         assert_eq!(status.failed, 1);
         assert!(status.has_minimum(2));
         assert!(!status.all_succeeded());
+    }
+
+    #[test]
+    fn test_shard_status_all_succeeded() {
+        let mut status = ShardStatus::new(2);
+        status.record_success();
+        status.record_success();
+
+        assert!(status.all_succeeded());
+        assert!(status.has_minimum(1));
+        assert!(status.has_minimum(2));
+        assert!(!status.has_minimum(3));
+    }
+
+    #[test]
+    fn test_shard_status_all_failed() {
+        let mut status = ShardStatus::new(2);
+        status.record_failure(ShardFailure {
+            shard_id: "s1".into(),
+            node: "n1".into(),
+            reason: "err".into(),
+            is_timeout: false,
+        });
+        status.record_failure(ShardFailure {
+            shard_id: "s2".into(),
+            node: "n2".into(),
+            reason: "err".into(),
+            is_timeout: true,
+        });
+
+        assert!(!status.all_succeeded());
+        assert!(!status.has_minimum(1));
+        assert_eq!(status.failures.len(), 2);
+        assert!(status.failures[0].shard_id == "s1");
+        assert!(status.failures[1].is_timeout);
+    }
+
+    #[test]
+    fn test_shard_status_empty() {
+        let status = ShardStatus::new(0);
+        assert!(status.all_succeeded());
+        assert!(status.has_minimum(0));
+        assert!(!status.has_minimum(1));
+    }
+
+    // --- ShardFailure ---
+
+    #[test]
+    fn test_shard_failure_fields() {
+        let failure = ShardFailure {
+            shard_id: "test-shard-0".into(),
+            node: "node-1:9080".into(),
+            reason: "Connection refused".into(),
+            is_timeout: false,
+        };
+        assert_eq!(failure.shard_id, "test-shard-0");
+        assert!(!failure.is_timeout);
+    }
+
+    #[test]
+    fn test_shard_failure_serde() {
+        let failure = ShardFailure {
+            shard_id: "s1".into(),
+            node: "n1".into(),
+            reason: "timeout".into(),
+            is_timeout: true,
+        };
+        let json = serde_json::to_string(&failure).unwrap();
+        let deserialized: ShardFailure = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.shard_id, "s1");
+        assert!(deserialized.is_timeout);
+    }
+
+    // --- FederatedResults ---
+
+    #[test]
+    fn test_federated_results_to_rpc_results() {
+        let result = FederatedResults {
+            results: vec![RpcSearchResult {
+                id: "doc-1".into(),
+                score: 0.95,
+                fields: std::collections::HashMap::new(),
+                highlight: None,
+            }],
+            total: 1,
+            latency_ms: 50,
+            shard_status: ShardStatus::new(1),
+            is_partial: false,
+            merge_strategy: MergeStrategy::Simple,
+        };
+
+        let rpc = result.to_rpc_results();
+        assert_eq!(rpc.results.len(), 1);
+        assert_eq!(rpc.total, 1);
+        assert_eq!(rpc.latency_ms, 50);
+    }
+
+    #[test]
+    fn test_federated_results_empty() {
+        let result = FederatedResults {
+            results: vec![],
+            total: 0,
+            latency_ms: 0,
+            shard_status: ShardStatus::new(0),
+            is_partial: false,
+            merge_strategy: MergeStrategy::Simple,
+        };
+
+        let rpc = result.to_rpc_results();
+        assert!(rpc.results.is_empty());
+        assert_eq!(rpc.total, 0);
+    }
+
+    // --- IndexStatus / DeleteStatus ---
+
+    #[test]
+    fn test_index_status_serde() {
+        let status = IndexStatus {
+            total_docs: 100,
+            successful_docs: 95,
+            failed_docs: 5,
+            latency_ms: 200,
+            shard_status: ShardStatus::new(3),
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: IndexStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.total_docs, 100);
+        assert_eq!(deserialized.failed_docs, 5);
+    }
+
+    #[test]
+    fn test_delete_status_serde() {
+        let status = DeleteStatus {
+            total_ids: 50,
+            successful_deletes: 48,
+            failed_deletes: 2,
+            latency_ms: 150,
+            shard_status: ShardStatus::new(2),
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: DeleteStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.total_ids, 50);
+        assert_eq!(deserialized.successful_deletes, 48);
+    }
+
+    // --- AggregatedStats ---
+
+    #[test]
+    fn test_aggregated_stats_serde() {
+        let stats = AggregatedStats {
+            total_documents: 1000,
+            total_size_bytes: 1024 * 1024,
+            shard_count: 3,
+            shard_stats: vec![
+                ShardStats {
+                    shard_id: "s1".into(),
+                    document_count: 500,
+                    size_bytes: 512 * 1024,
+                },
+                ShardStats {
+                    shard_id: "s2".into(),
+                    document_count: 500,
+                    size_bytes: 512 * 1024,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&stats).unwrap();
+        let deserialized: AggregatedStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.total_documents, 1000);
+        assert_eq!(deserialized.shard_stats.len(), 2);
     }
 }

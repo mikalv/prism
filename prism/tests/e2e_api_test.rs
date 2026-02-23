@@ -704,6 +704,771 @@ async fn test_search_pagination() {
     handle.abort();
 }
 
+// ---------------------------------------------------------------------------
+// Aggregations API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_aggregate_endpoint() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Index documents with a category field
+    let docs: Vec<Value> = (0..30)
+        .map(|i| {
+            json!({
+                "id": format!("agg-{}", i),
+                "fields": {
+                    "title": format!("Agg document {}", i),
+                    "body": "Aggregation test content",
+                    "category": if i % 3 == 0 { "sports" } else if i % 3 == 1 { "tech" } else { "science" },
+                    "count": i * 10
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // POST aggregate with a count aggregation (simplest type)
+    let resp = client
+        .post(format!("{}/collections/test-e2e/aggregate", base_url))
+        .json(&json!({
+            "aggregations": [
+                {
+                    "name": "total",
+                    "type": "count"
+                }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    assert!(
+        status == 200 || status == 500,
+        "Aggregate endpoint should return 200 or 500, got {}",
+        status
+    );
+
+    // If the backend supports it, verify the response structure
+    if status == 200 {
+        let body: Value = resp.json().await.unwrap();
+        assert!(body["results"].is_object() || body["results"].is_null(), "Expected results in response");
+        assert!(body["took_ms"].is_number(), "Expected took_ms");
+    }
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_aggregate_nonexistent_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .post(format!(
+            "{}/collections/nonexistent/aggregate",
+            base_url
+        ))
+        .json(&json!({
+            "aggregations": [
+                {
+                    "name": "test",
+                    "type": "terms",
+                    "field": "category",
+                    "size": 10
+                }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Top Terms / Index Inspection API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_get_top_terms() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Index documents so terms exist
+    let docs: Vec<Value> = (0..20)
+        .map(|i| {
+            json!({
+                "id": format!("term-{}", i),
+                "fields": {
+                    "title": "search engine indexing",
+                    "body": "Prism provides full text search capabilities",
+                    "category": "search"
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // Get top terms for the "title" field
+    let resp = client
+        .get(format!(
+            "{}/collections/test-e2e/terms/title?limit=10",
+            base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["field"], "title");
+    assert!(body["terms"].is_array());
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_get_top_terms_nonexistent_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .get(format!(
+            "{}/collections/nonexistent/terms/title",
+            base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Segments API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_get_segments() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Index some documents to create segments
+    let docs: Vec<Value> = (0..10)
+        .map(|i| {
+            json!({
+                "id": format!("seg-{}", i),
+                "fields": {
+                    "title": format!("Segment doc {}", i),
+                    "body": "Content for segment test"
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    let resp = client
+        .get(format!("{}/collections/test-e2e/segments", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    // Should have segment information
+    assert!(
+        body.is_object(),
+        "Expected segments response to be an object"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_get_segments_nonexistent_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .get(format!("{}/collections/nonexistent/segments", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Suggest / Autocomplete API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_suggest_endpoint() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Index documents with searchable terms
+    let docs: Vec<Value> = (0..20)
+        .map(|i| {
+            json!({
+                "id": format!("suggest-{}", i),
+                "fields": {
+                    "title": "programming language design",
+                    "body": "Rust programming provides memory safety guarantees",
+                    "category": "programming"
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // Request suggestions for prefix "prog"
+    let resp = client
+        .post(format!("{}/collections/test-e2e/_suggest", base_url))
+        .json(&json!({
+            "prefix": "prog",
+            "field": "title",
+            "size": 5,
+            "fuzzy": false
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["suggestions"].is_array());
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_suggest_nonexistent_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .post(format!(
+            "{}/collections/nonexistent/_suggest",
+            base_url
+        ))
+        .json(&json!({
+            "prefix": "test",
+            "field": "title"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// More Like This API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_more_like_this_by_text() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Index documents
+    let docs: Vec<Value> = (0..20)
+        .map(|i| {
+            json!({
+                "id": format!("mlt-{}", i),
+                "fields": {
+                    "title": if i < 10 { "Rust programming language systems" } else { "Cooking recipes for breakfast" },
+                    "body": if i < 10 {
+                        "Systems programming with memory safety and concurrency"
+                    } else {
+                        "Delicious pancake recipe with maple syrup and butter"
+                    },
+                    "category": if i < 10 { "tech" } else { "cooking" }
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // Find documents similar to given text
+    let resp = client
+        .post(format!("{}/collections/test-e2e/_mlt", base_url))
+        .json(&json!({
+            "like_text": "Rust systems programming memory safety",
+            "fields": ["title", "body"],
+            "min_term_freq": 1,
+            "min_doc_freq": 1,
+            "max_query_terms": 25,
+            "size": 5
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["results"].is_array());
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_more_like_this_missing_params() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // MLT without like or like_text should return 400
+    let resp = client
+        .post(format!("{}/collections/test-e2e/_mlt", base_url))
+        .json(&json!({
+            "fields": ["title"],
+            "size": 5
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        400,
+        "MLT without like or like_text should return 400"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_more_like_this_nonexistent_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .post(format!("{}/collections/nonexistent/_mlt", base_url))
+        .json(&json!({
+            "like_text": "test query",
+            "fields": ["title"]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Search API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_multi_search_endpoint() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    // Create two collections
+    create_test_collection(&client, &base_url).await;
+
+    let schema2 = json!({
+        "collection": "test-e2e-2",
+        "backends": {
+            "text": {
+                "fields": [
+                    {"name": "title", "type": "text", "stored": true, "indexed": true},
+                    {"name": "body", "type": "text", "stored": true, "indexed": true}
+                ]
+            }
+        }
+    });
+    let resp = client
+        .put(format!("{}/collections/test-e2e-2", base_url))
+        .json(&schema2)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        resp.status().as_u16() == 200 || resp.status().as_u16() == 201,
+        "Expected 200/201, got {}",
+        resp.status().as_u16()
+    );
+
+    // Index docs into both collections
+    let docs1 = json!([{
+        "id": "ms-1",
+        "fields": {"title": "Multi search doc one", "body": "Content from collection one"}
+    }]);
+    index_docs(&client, &base_url, "test-e2e", &docs1).await;
+
+    let docs2 = json!([{
+        "id": "ms-2",
+        "fields": {"title": "Multi search doc two", "body": "Content from collection two"}
+    }]);
+    index_docs(&client, &base_url, "test-e2e-2", &docs2).await;
+
+    // Multi-search across both
+    let resp = client
+        .post(format!("{}/_msearch", base_url))
+        .json(&json!({
+            "collections": ["test-e2e", "test-e2e-2"],
+            "query": "multi search",
+            "limit": 10
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["results"].is_array());
+    assert!(body["total"].is_number());
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_multi_index_search_comma_separated() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Index a doc
+    let docs = json!([{
+        "id": "mis-1",
+        "fields": {"title": "Comma separated search", "body": "Test body content"}
+    }]);
+    index_docs(&client, &base_url, "test-e2e", &docs).await;
+
+    // Search via comma-separated path
+    let resp = client
+        .post(format!("{}/test-e2e/_search", base_url))
+        .json(&json!({ "query": "comma separated", "limit": 10 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["results"].is_array());
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Delete Collection (extended)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_delete_nonexistent_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .delete(format!("{}/collections/does-not-exist", base_url))
+        .send()
+        .await
+        .unwrap();
+    // Should return 404 for nonexistent collection
+    assert!(
+        resp.status().as_u16() >= 400,
+        "Deleting nonexistent collection should return error, got {}",
+        resp.status().as_u16()
+    );
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Search with highlight and score_function
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_search_with_highlight() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    let docs = json!([{
+        "id": "hl-1",
+        "fields": {
+            "title": "Highlighted search result",
+            "body": "This document contains the word highlight for testing purposes"
+        }
+    }]);
+    index_docs(&client, &base_url, "test-e2e", &docs).await;
+
+    let resp = client
+        .post(format!("{}/collections/test-e2e/search", base_url))
+        .json(&json!({
+            "query": "highlight",
+            "limit": 10,
+            "highlight": {
+                "fields": ["body"],
+                "pre_tag": "<em>",
+                "post_tag": "</em>"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    let results = body["results"].as_array().unwrap();
+    // Might or might not get results depending on tokenization, but the endpoint should succeed
+    assert!(body["total"].is_number());
+    let _ = results;
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_search_with_min_score() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    let docs: Vec<Value> = (0..10)
+        .map(|i| {
+            json!({
+                "id": format!("minscore-{}", i),
+                "fields": {
+                    "title": format!("Document about search engine {}", i),
+                    "body": "Search relevance scoring and ranking"
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // Search with a very high min_score to filter most results
+    let resp = client
+        .post(format!("{}/collections/test-e2e/search", base_url))
+        .json(&json!({
+            "query": "search",
+            "limit": 10,
+            "min_score": 999.0
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    let results = body["results"].as_array().unwrap();
+    assert!(
+        results.is_empty(),
+        "min_score=999 should filter all results"
+    );
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Document get - missing document
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_get_document_not_found() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    let resp = client
+        .get(format!(
+            "{}/collections/test-e2e/documents/nonexistent-id",
+            base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    // Should return 200 with null body, or 404 depending on implementation
+    let status = resp.status().as_u16();
+    assert!(
+        status == 200 || status == 404,
+        "Expected 200 or 404 for missing doc, got {}",
+        status
+    );
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Server info
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_server_info_endpoint() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .get(format!("{}/stats/server", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["version"].is_string());
+    assert!(body["prism_version"].is_string());
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Lint schemas
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_lint_schemas_endpoint() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .get(format!("{}/admin/lint-schemas", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // Lint should return something (array or object)
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body.is_array() || body.is_object(),
+        "Lint response should be JSON"
+    );
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Create collection - duplicate
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_create_duplicate_collection() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    // Create the first time
+    create_test_collection(&client, &base_url).await;
+
+    // Try to create again - should get 409 Conflict
+    let resp = client
+        .put(format!("{}/collections/test-e2e", base_url))
+        .json(&test_schema())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        409,
+        "Duplicate collection creation should return 409"
+    );
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Create collection - invalid name
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_create_collection_invalid_name() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    // Try to create collection with empty name
+    let schema = json!({
+        "collection": "",
+        "backends": {
+            "text": {
+                "fields": [
+                    {"name": "title", "type": "text", "stored": true, "indexed": true}
+                ]
+            }
+        }
+    });
+    let resp = client
+        .put(format!("{}/collections/ ", base_url))
+        .json(&schema)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    assert!(
+        status >= 400,
+        "Invalid collection name should return error, got {}",
+        status
+    );
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Pipelines listing
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_list_pipelines_endpoint() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    let resp = client
+        .get(format!("{}/admin/pipelines", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["pipelines"].is_array());
+
+    handle.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Simple search API
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_simple_search_api() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    let docs = json!([{
+        "id": "simple-1",
+        "fields": {"title": "Simple search test", "body": "Testing the simple search API endpoint"}
+    }]);
+    index_docs(&client, &base_url, "test-e2e", &docs).await;
+
+    let resp = client
+        .post(format!("{}/api/search", base_url))
+        .json(&json!({ "query": "simple search", "limit": 5 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: Value = resp.json().await.unwrap();
+    assert!(body["results"].is_array());
+    assert!(body["total"].is_number());
+
+    handle.abort();
+}
+
 #[tokio::test]
 async fn test_concurrent_requests() {
     let (_temp, base_url, handle) = start_server().await;

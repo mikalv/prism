@@ -107,3 +107,122 @@ impl IntoResponse for EsCompatError {
         (status, axum::Json(body)).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_type_all_variants() {
+        let cases: Vec<(EsCompatError, &str)> = vec![
+            (
+                EsCompatError::IndexNotFound("test".into()),
+                "index_not_found_exception",
+            ),
+            (
+                EsCompatError::InvalidQuery("bad".into()),
+                "query_shard_exception",
+            ),
+            (
+                EsCompatError::UnsupportedQueryType("geo".into()),
+                "parsing_exception",
+            ),
+            (
+                EsCompatError::UnsupportedAggregation("composite".into()),
+                "parsing_exception",
+            ),
+            (
+                EsCompatError::MissingField("query".into()),
+                "parsing_exception",
+            ),
+            (
+                EsCompatError::InvalidRequestBody("malformed".into()),
+                "parse_exception",
+            ),
+            (
+                EsCompatError::ParseError("bad json".into()),
+                "parse_exception",
+            ),
+            (
+                EsCompatError::Internal("panic".into()),
+                "internal_server_error",
+            ),
+        ];
+
+        for (err, expected) in cases {
+            assert_eq!(err.error_type(), expected, "Failed for: {}", err);
+        }
+    }
+
+    #[test]
+    fn test_status_code_not_found() {
+        let err = EsCompatError::IndexNotFound("test".into());
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_status_code_bad_request() {
+        let bad_request_errors = vec![
+            EsCompatError::InvalidQuery("x".into()),
+            EsCompatError::UnsupportedQueryType("x".into()),
+            EsCompatError::UnsupportedAggregation("x".into()),
+            EsCompatError::MissingField("x".into()),
+            EsCompatError::InvalidRequestBody("x".into()),
+            EsCompatError::ParseError("x".into()),
+        ];
+
+        for err in bad_request_errors {
+            assert_eq!(
+                err.status_code(),
+                StatusCode::BAD_REQUEST,
+                "Expected BAD_REQUEST for: {}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_status_code_internal() {
+        assert_eq!(
+            EsCompatError::Internal("x".into()).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn test_display_impl() {
+        assert_eq!(
+            EsCompatError::IndexNotFound("products".into()).to_string(),
+            "Index not found: products"
+        );
+        assert_eq!(
+            EsCompatError::InvalidQuery("syntax error".into()).to_string(),
+            "Invalid query: syntax error"
+        );
+    }
+
+    #[test]
+    fn test_into_response() {
+        let err = EsCompatError::IndexNotFound("test_index".into());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_into_response_bad_request() {
+        let err = EsCompatError::InvalidQuery("bad".into());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_from_prism_error() {
+        let prism_err = prism::Error::CollectionNotFound("test".into());
+        let es_err: EsCompatError = prism_err.into();
+        assert_eq!(es_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            es_err.error_type(),
+            "search_phase_execution_exception"
+        );
+    }
+}

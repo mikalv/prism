@@ -92,3 +92,116 @@ impl From<bincode::Error> for ClusterError {
 }
 
 pub type Result<T> = std::result::Result<T, ClusterError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_type_all_variants() {
+        let cases: Vec<(ClusterError, &str)> = vec![
+            (ClusterError::Connection("".into()), "connection"),
+            (ClusterError::Transport("".into()), "transport"),
+            (ClusterError::Tls("".into()), "tls"),
+            (ClusterError::Serialization("".into()), "serialization"),
+            (
+                ClusterError::CollectionNotFound("".into()),
+                "collection_not_found",
+            ),
+            (ClusterError::Backend("".into()), "backend"),
+            (ClusterError::InvalidQuery("".into()), "invalid_query"),
+            (ClusterError::Timeout("".into()), "timeout"),
+            (ClusterError::NodeUnavailable("".into()), "node_unavailable"),
+            (ClusterError::Config("".into()), "config"),
+            (ClusterError::Internal("".into()), "internal"),
+            (ClusterError::NotImplemented("".into()), "not_implemented"),
+            (ClusterError::Discovery("".into()), "discovery"),
+        ];
+
+        for (err, expected) in cases {
+            assert_eq!(err.error_type(), expected, "Failed for variant {:?}", err);
+        }
+    }
+
+    #[test]
+    fn test_display_impl() {
+        let err = ClusterError::Connection("host unreachable".into());
+        assert_eq!(err.to_string(), "Connection error: host unreachable");
+
+        let err = ClusterError::CollectionNotFound("test_idx".into());
+        assert_eq!(err.to_string(), "Collection not found: test_idx");
+
+        let err = ClusterError::Timeout("5s elapsed".into());
+        assert_eq!(err.to_string(), "Timeout: 5s elapsed");
+    }
+
+    #[test]
+    fn test_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
+        let cluster_err: ClusterError = io_err.into();
+        assert_eq!(cluster_err.error_type(), "transport");
+        assert!(cluster_err.to_string().contains("refused"));
+    }
+
+    #[test]
+    fn test_from_prism_error_collection_not_found() {
+        let prism_err = prism::Error::CollectionNotFound("my_col".into());
+        let cluster_err: ClusterError = prism_err.into();
+        match cluster_err {
+            ClusterError::CollectionNotFound(name) => assert_eq!(name, "my_col"),
+            _ => panic!("Expected CollectionNotFound"),
+        }
+    }
+
+    #[test]
+    fn test_from_prism_error_backend() {
+        let prism_err = prism::Error::Backend("disk full".into());
+        let cluster_err: ClusterError = prism_err.into();
+        match cluster_err {
+            ClusterError::Backend(msg) => assert_eq!(msg, "disk full"),
+            _ => panic!("Expected Backend"),
+        }
+    }
+
+    #[test]
+    fn test_from_prism_error_invalid_query() {
+        let prism_err = prism::Error::InvalidQuery("bad syntax".into());
+        let cluster_err: ClusterError = prism_err.into();
+        match cluster_err {
+            ClusterError::InvalidQuery(msg) => assert_eq!(msg, "bad syntax"),
+            _ => panic!("Expected InvalidQuery"),
+        }
+    }
+
+    #[test]
+    fn test_from_prism_error_config() {
+        let prism_err = prism::Error::Config("missing key".into());
+        let cluster_err: ClusterError = prism_err.into();
+        match cluster_err {
+            ClusterError::Config(msg) => assert_eq!(msg, "missing key"),
+            _ => panic!("Expected Config"),
+        }
+    }
+
+    #[test]
+    fn test_from_prism_error_other_becomes_internal() {
+        let prism_err = prism::Error::Schema("bad schema".into());
+        let cluster_err: ClusterError = prism_err.into();
+        assert_eq!(cluster_err.error_type(), "internal");
+    }
+
+    #[test]
+    fn test_serde_roundtrip() {
+        let err = ClusterError::Timeout("deadline exceeded".into());
+        let json = serde_json::to_string(&err).unwrap();
+        let deserialized: ClusterError = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.to_string(), err.to_string());
+    }
+
+    #[test]
+    fn test_clone() {
+        let err = ClusterError::NodeUnavailable("node-3".into());
+        let cloned = err.clone();
+        assert_eq!(cloned.to_string(), err.to_string());
+    }
+}

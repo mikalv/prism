@@ -172,3 +172,163 @@ fn get_text_fields(manager: &CollectionManager, collection: &str) -> Vec<String>
         })
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Bytes;
+
+    fn make_bytes(s: &str) -> Bytes {
+        Bytes::from(s.to_string())
+    }
+
+    // ===================================================================
+    // parse_msearch_body — valid header/body pairs
+    // ===================================================================
+
+    #[test]
+    fn test_parse_msearch_single_pair() {
+        let body = make_bytes(
+            r#"{"index":"my_index"}
+{"query":{"match_all":{}}}
+"#,
+        );
+        let searches = parse_msearch_body(&body).unwrap();
+        assert_eq!(searches.len(), 1);
+        assert_eq!(searches[0].0.index, Some("my_index".to_string()));
+        assert!(searches[0].1.query.is_some());
+    }
+
+    #[test]
+    fn test_parse_msearch_multiple_pairs() {
+        let body = make_bytes(
+            r#"{"index":"index_a"}
+{"query":{"match_all":{}}}
+{"index":"index_b"}
+{"query":{"term":{"status":"active"}},"size":5}
+"#,
+        );
+        let searches = parse_msearch_body(&body).unwrap();
+        assert_eq!(searches.len(), 2);
+        assert_eq!(searches[0].0.index, Some("index_a".to_string()));
+        assert_eq!(searches[1].0.index, Some("index_b".to_string()));
+        assert_eq!(searches[1].1.size, Some(5));
+    }
+
+    #[test]
+    fn test_parse_msearch_empty_header() {
+        let body = make_bytes(
+            r#"{}
+{"query":{"match_all":{}}}
+"#,
+        );
+        let searches = parse_msearch_body(&body).unwrap();
+        assert_eq!(searches.len(), 1);
+        assert!(searches[0].0.index.is_none());
+    }
+
+    #[test]
+    fn test_parse_msearch_with_preference_routing() {
+        let body = make_bytes(
+            r#"{"index":"logs","preference":"_local","routing":"user123"}
+{"query":{"match_all":{}}}
+"#,
+        );
+        let searches = parse_msearch_body(&body).unwrap();
+        assert_eq!(searches[0].0.preference, Some("_local".to_string()));
+        assert_eq!(searches[0].0.routing, Some("user123".to_string()));
+    }
+
+    // ===================================================================
+    // parse_msearch_body — odd line count error
+    // ===================================================================
+
+    #[test]
+    fn test_parse_msearch_odd_lines_error() {
+        let body = make_bytes(
+            r#"{"index":"my_index"}
+{"query":{"match_all":{}}}
+{"index":"another"}
+"#,
+        );
+        let result = parse_msearch_body(&body);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("header/body pairs"));
+    }
+
+    #[test]
+    fn test_parse_msearch_single_line_error() {
+        let body = make_bytes(r#"{"index":"my_index"}"#);
+        let result = parse_msearch_body(&body);
+        assert!(result.is_err());
+    }
+
+    // ===================================================================
+    // parse_msearch_body — invalid JSON
+    // ===================================================================
+
+    #[test]
+    fn test_parse_msearch_invalid_header() {
+        let body = make_bytes(
+            r#"not valid json
+{"query":{"match_all":{}}}
+"#,
+        );
+        let result = parse_msearch_body(&body);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Invalid header"));
+    }
+
+    #[test]
+    fn test_parse_msearch_invalid_body() {
+        let body = make_bytes(
+            r#"{"index":"test"}
+not valid json
+"#,
+        );
+        let result = parse_msearch_body(&body);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Invalid body"));
+    }
+
+    // ===================================================================
+    // parse_msearch_body — empty body
+    // ===================================================================
+
+    #[test]
+    fn test_parse_msearch_empty() {
+        let body = make_bytes("");
+        let searches = parse_msearch_body(&body).unwrap();
+        assert!(searches.is_empty());
+    }
+
+    #[test]
+    fn test_parse_msearch_blank_lines_filtered() {
+        // Blank lines are filtered out; remaining must be even count
+        let body = make_bytes(
+            r#"
+{"index":"test"}
+
+{"query":{"match_all":{}}}
+
+"#,
+        );
+        let searches = parse_msearch_body(&body).unwrap();
+        assert_eq!(searches.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_msearch_no_query_in_body() {
+        let body = make_bytes(
+            r#"{"index":"test"}
+{}
+"#,
+        );
+        let searches = parse_msearch_body(&body).unwrap();
+        assert_eq!(searches.len(), 1);
+        assert!(searches[0].1.query.is_none());
+    }
+}

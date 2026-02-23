@@ -155,3 +155,167 @@ impl LruCache {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_cache_is_empty() {
+        let cache = LruCache::new(10);
+        assert_eq!(cache.entry_count(), 0);
+        assert_eq!(cache.size_bytes(), 0);
+        assert_eq!(cache.size_mb(), 0.0);
+        assert_eq!(cache.max_size_mb(), 10.0);
+    }
+
+    #[test]
+    fn test_put_and_get() {
+        let cache = LruCache::new(10);
+        let key = PathBuf::from("/tmp/test.bin");
+        cache.put(key.clone(), 1024);
+        assert_eq!(cache.entry_count(), 1);
+        assert_eq!(cache.size_bytes(), 1024);
+
+        let entry = cache.get(&key);
+        assert!(entry.is_some());
+    }
+
+    #[test]
+    fn test_get_missing_key() {
+        let cache = LruCache::new(10);
+        let key = PathBuf::from("/tmp/missing.bin");
+        let entry = cache.get(&key);
+        assert!(entry.is_none());
+    }
+
+    #[test]
+    fn test_put_duplicate_returns_none() {
+        let cache = LruCache::new(10);
+        let key = PathBuf::from("/tmp/test.bin");
+        cache.put(key.clone(), 1024);
+        let result = cache.put(key, 2048);
+        assert!(result.is_none());
+        assert_eq!(cache.entry_count(), 1);
+        assert_eq!(cache.size_bytes(), 1024);
+    }
+
+    #[test]
+    fn test_eviction_on_capacity() {
+        // 1 MB cache
+        let cache = LruCache::new(1);
+        let max = 1024 * 1024;
+
+        // Fill the cache
+        let key1 = PathBuf::from("/tmp/a.bin");
+        cache.put(key1.clone(), max / 2);
+
+        let key2 = PathBuf::from("/tmp/b.bin");
+        cache.put(key2.clone(), max / 2);
+
+        // This should trigger eviction of key1 (LRU)
+        let key3 = PathBuf::from("/tmp/c.bin");
+        let evicted = cache.put(key3, max / 2);
+        assert_eq!(evicted, Some(key1));
+    }
+
+    #[test]
+    fn test_lru_ordering() {
+        // 1 MB cache
+        let cache = LruCache::new(1);
+        let chunk = 300 * 1024; // 300 KB each, 3 fit in 1 MB
+
+        let key1 = PathBuf::from("/tmp/1.bin");
+        let key2 = PathBuf::from("/tmp/2.bin");
+        let key3 = PathBuf::from("/tmp/3.bin");
+
+        cache.put(key1.clone(), chunk);
+        cache.put(key2.clone(), chunk);
+        cache.put(key3.clone(), chunk);
+
+        // Access key1 to make it recently used
+        cache.get(&key1);
+
+        // Insert key4, should evict key2 (least recently used)
+        let key4 = PathBuf::from("/tmp/4.bin");
+        let evicted = cache.put(key4, chunk);
+        assert_eq!(evicted, Some(key2));
+    }
+
+    #[test]
+    fn test_cache_stats_hits_misses() {
+        let cache = LruCache::new(10);
+        let key = PathBuf::from("/tmp/test.bin");
+        cache.put(key.clone(), 1024);
+
+        cache.get(&key); // hit
+        cache.get(&key); // hit
+        cache.get(&PathBuf::from("/tmp/miss.bin")); // miss
+
+        let stats = cache.stats();
+        assert_eq!(stats.hits(), 2);
+        assert_eq!(stats.misses(), 1);
+        assert_eq!(stats.total_requests(), 3);
+    }
+
+    #[test]
+    fn test_hit_rate() {
+        let cache = LruCache::new(10);
+        // No requests → 0.0
+        assert_eq!(cache.hit_rate(), 0.0);
+
+        let key = PathBuf::from("/tmp/test.bin");
+        cache.put(key.clone(), 1024);
+        cache.get(&key); // hit
+        cache.get(&PathBuf::from("/missing")); // miss
+
+        // 1 hit / 2 requests = 0.5
+        assert!((cache.hit_rate() - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_remove() {
+        let cache = LruCache::new(10);
+        let key = PathBuf::from("/tmp/test.bin");
+        cache.put(key.clone(), 2048);
+        assert_eq!(cache.entry_count(), 1);
+
+        let removed_size = cache.remove(&key);
+        assert_eq!(removed_size, Some(2048));
+        assert_eq!(cache.entry_count(), 0);
+        assert_eq!(cache.size_bytes(), 0);
+    }
+
+    #[test]
+    fn test_remove_missing() {
+        let cache = LruCache::new(10);
+        let key = PathBuf::from("/tmp/missing.bin");
+        let removed = cache.remove(&key);
+        assert!(removed.is_none());
+    }
+
+    #[test]
+    fn test_clear() {
+        let cache = LruCache::new(10);
+        cache.put(PathBuf::from("/tmp/a.bin"), 1024);
+        cache.put(PathBuf::from("/tmp/b.bin"), 2048);
+        assert_eq!(cache.entry_count(), 2);
+
+        cache.clear();
+        assert_eq!(cache.entry_count(), 0);
+        assert_eq!(cache.size_bytes(), 0);
+    }
+
+    #[test]
+    fn test_eviction_stats() {
+        let cache = LruCache::new(1);
+        let max = 1024 * 1024;
+
+        cache.put(PathBuf::from("/tmp/a.bin"), max);
+        // This triggers eviction
+        cache.put(PathBuf::from("/tmp/b.bin"), max);
+
+        let stats = cache.stats();
+        assert_eq!(stats.evictions(), 1);
+    }
+}

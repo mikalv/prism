@@ -421,4 +421,260 @@ mod tests {
             PropagationStrategy::Versioned
         );
     }
+
+    // --- get_version ---
+
+    #[tokio::test]
+    async fn test_get_version() {
+        let registry = SchemaRegistry::new("node-1");
+
+        assert!(registry.get_version("nonexistent").await.is_none());
+
+        registry.register("test", json!({"a": 1})).await.unwrap();
+        let version = registry.get_version("test").await.unwrap();
+        assert_eq!(version, SchemaVersion::new(1));
+    }
+
+    // --- get nonexistent ---
+
+    #[tokio::test]
+    async fn test_get_nonexistent_collection() {
+        let registry = SchemaRegistry::new("node-1");
+        assert!(registry.get("nonexistent").await.is_none());
+    }
+
+    // --- get_version_from_history ---
+
+    #[tokio::test]
+    async fn test_get_version_from_history() {
+        let registry = SchemaRegistry::new("node-1");
+
+        registry.register("test", json!({"v": 1})).await.unwrap();
+        registry.register("test", json!({"v": 2})).await.unwrap();
+        registry.register("test", json!({"v": 3})).await.unwrap();
+
+        let v1 = registry.get_version_from_history("test", 1).await;
+        assert!(v1.is_some());
+        assert_eq!(v1.unwrap().version, SchemaVersion::new(1));
+
+        let v2 = registry.get_version_from_history("test", 2).await;
+        assert!(v2.is_some());
+
+        let v99 = registry.get_version_from_history("test", 99).await;
+        assert!(v99.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_version_from_history_nonexistent_collection() {
+        let registry = SchemaRegistry::new("node-1");
+        assert!(
+            registry
+                .get_version_from_history("nonexistent", 1)
+                .await
+                .is_none()
+        );
+    }
+
+    // --- list_collections ---
+
+    #[tokio::test]
+    async fn test_list_collections() {
+        let registry = SchemaRegistry::new("node-1");
+
+        let collections = registry.list_collections().await;
+        assert!(collections.is_empty());
+
+        registry.register("products", json!({"a": 1})).await.unwrap();
+        registry.register("orders", json!({"b": 2})).await.unwrap();
+
+        let collections = registry.list_collections().await;
+        assert_eq!(collections.len(), 2);
+
+        let names: Vec<_> = collections.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"products"));
+        assert!(names.contains(&"orders"));
+    }
+
+    // --- get_history ---
+
+    #[tokio::test]
+    async fn test_get_history_nonexistent() {
+        let registry = SchemaRegistry::new("node-1");
+        let history = registry.get_history("nonexistent").await;
+        assert!(history.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_history_sorted() {
+        let registry = SchemaRegistry::new("node-1");
+
+        registry.register("test", json!({"v": 1})).await.unwrap();
+        registry.register("test", json!({"v": 2})).await.unwrap();
+        registry.register("test", json!({"v": 3})).await.unwrap();
+
+        let history = registry.get_history("test").await;
+        assert_eq!(history.len(), 3);
+        // Should be sorted ascending
+        assert!(history[0] < history[1]);
+        assert!(history[1] < history[2]);
+    }
+
+    // --- needs_migration ---
+
+    #[tokio::test]
+    async fn test_needs_migration_nonexistent() {
+        let registry = SchemaRegistry::new("node-1");
+        // Nonexistent collection always needs migration
+        assert!(registry.needs_migration("test", SchemaVersion::new(1)).await);
+    }
+
+    #[tokio::test]
+    async fn test_needs_migration_current() {
+        let registry = SchemaRegistry::new("node-1");
+        registry.register("test", json!({"a": 1})).await.unwrap();
+
+        // Current version = 1, target = 1, no migration needed
+        assert!(!registry.needs_migration("test", SchemaVersion::new(1)).await);
+        // Target = 2, needs migration
+        assert!(registry.needs_migration("test", SchemaVersion::new(2)).await);
+    }
+
+    // --- remove ---
+
+    #[tokio::test]
+    async fn test_remove_collection() {
+        let registry = SchemaRegistry::new("node-1");
+        registry.register("test", json!({"a": 1})).await.unwrap();
+        assert!(registry.get("test").await.is_some());
+
+        let removed = registry.remove("test").await;
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().collection, "test");
+
+        assert!(registry.get("test").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_nonexistent() {
+        let registry = SchemaRegistry::new("node-1");
+        let removed = registry.remove("nonexistent").await;
+        assert!(removed.is_none());
+    }
+
+    // --- apply_remote_schema same version ---
+
+    #[tokio::test]
+    async fn test_apply_remote_schema_same_version() {
+        let registry = SchemaRegistry::new("node-1");
+
+        let v1 = VersionedSchema::new(
+            "test",
+            SchemaVersion::new(3),
+            json!({"a": 1}),
+            "node-2",
+        );
+        registry.apply_remote_schema(v1).await.unwrap();
+
+        // Same version should be rejected
+        let v1_again = VersionedSchema::new(
+            "test",
+            SchemaVersion::new(3),
+            json!({"a": 2}),
+            "node-3",
+        );
+        let applied = registry.apply_remote_schema(v1_again).await.unwrap();
+        assert!(!applied);
+    }
+
+    // --- with_max_history ---
+
+    #[tokio::test]
+    async fn test_max_history_pruning() {
+        let registry = SchemaRegistry::new("node-1").with_max_history(3);
+
+        for i in 1..=5 {
+            registry
+                .register("test", json!({"version": i}))
+                .await
+                .unwrap();
+        }
+
+        let history = registry.get_history("test").await;
+        // Should have pruned oldest versions, keeping max 3
+        assert!(history.len() <= 3);
+    }
+
+    // --- clear ---
+
+    #[tokio::test]
+    async fn test_clear() {
+        let registry = SchemaRegistry::new("node-1");
+        registry.register("col1", json!({"a": 1})).await.unwrap();
+        registry.register("col2", json!({"b": 2})).await.unwrap();
+
+        registry.clear().await;
+        assert!(registry.list_collections().await.is_empty());
+    }
+
+    // --- SchemaRegistrySnapshot ---
+
+    #[tokio::test]
+    async fn test_snapshot_collections() {
+        let registry = SchemaRegistry::new("node-1");
+        registry.register("col1", json!({"a": 1})).await.unwrap();
+        registry.register("col2", json!({"b": 2})).await.unwrap();
+
+        let snapshot = registry.snapshot().await;
+        let collections = snapshot.collections();
+        assert_eq!(collections.len(), 2);
+        assert_eq!(snapshot.node_id, "node-1");
+
+        assert!(snapshot.get("col1").is_some());
+        assert!(snapshot.get("col2").is_some());
+        assert!(snapshot.get("nonexistent").is_none());
+    }
+
+    // --- restore from snapshot with newer version ---
+
+    #[tokio::test]
+    async fn test_restore_newer_version() {
+        let registry1 = SchemaRegistry::new("node-1");
+        registry1.register("col1", json!({"v": 1})).await.unwrap();
+        registry1.register("col1", json!({"v": 2})).await.unwrap();
+
+        let snapshot = registry1.snapshot().await;
+
+        let registry2 = SchemaRegistry::new("node-2");
+        // Pre-register a v1 schema
+        registry2.register("col1", json!({"v": 1})).await.unwrap();
+
+        // Restore should overwrite with newer version from snapshot (v2)
+        registry2.restore(snapshot).await;
+
+        let current = registry2.get("col1").await.unwrap();
+        assert_eq!(current.version, SchemaVersion::new(2));
+    }
+
+    // --- restore doesn't downgrade ---
+
+    #[tokio::test]
+    async fn test_restore_does_not_downgrade() {
+        let registry = SchemaRegistry::new("node-1");
+        registry.register("col1", json!({"v": 1})).await.unwrap();
+        registry.register("col1", json!({"v": 2})).await.unwrap();
+        registry.register("col1", json!({"v": 3})).await.unwrap();
+
+        // Create a snapshot at v1 from another registry
+        let old_registry = SchemaRegistry::new("node-2");
+        old_registry
+            .register("col1", json!({"v": 1}))
+            .await
+            .unwrap();
+        let old_snapshot = old_registry.snapshot().await;
+
+        // Restoring old snapshot should NOT downgrade from v3
+        registry.restore(old_snapshot).await;
+        let current = registry.get("col1").await.unwrap();
+        assert_eq!(current.version, SchemaVersion::new(3));
+    }
 }

@@ -579,4 +579,351 @@ mod tests {
         assert_eq!(response.protocol_version, 2);
         assert_eq!(response.min_supported_version, 1);
     }
+
+    // --- From/Into round-trip tests ---
+
+    #[test]
+    fn test_rpc_query_roundtrip() {
+        let query = prism::backends::Query {
+            query_string: "test search".into(),
+            fields: vec!["title".into(), "body".into()],
+            limit: 10,
+            offset: 5,
+            merge_strategy: Some("rrf".into()),
+            text_weight: Some(0.7),
+            vector_weight: Some(0.3),
+            highlight: Some(prism::backends::HighlightConfig {
+                fields: vec!["title".into()],
+                pre_tag: "<em>".into(),
+                post_tag: "</em>".into(),
+                fragment_size: 100,
+                number_of_fragments: 3,
+            }),
+            rrf_k: Some(60),
+            min_score: Some(0.5),
+            score_function: Some("bm25".into()),
+            skip_ranking: true,
+        };
+
+        let rpc: RpcQuery = query.clone().into();
+        let back: prism::backends::Query = rpc.into();
+
+        assert_eq!(back.query_string, query.query_string);
+        assert_eq!(back.fields, query.fields);
+        assert_eq!(back.limit, query.limit);
+        assert_eq!(back.offset, query.offset);
+        assert_eq!(back.merge_strategy, query.merge_strategy);
+        assert_eq!(back.text_weight, query.text_weight);
+        assert_eq!(back.vector_weight, query.vector_weight);
+        assert_eq!(back.rrf_k, query.rrf_k);
+        assert_eq!(back.min_score, query.min_score);
+        assert_eq!(back.score_function, query.score_function);
+        assert_eq!(back.skip_ranking, query.skip_ranking);
+        assert!(back.highlight.is_some());
+    }
+
+    #[test]
+    fn test_rpc_query_no_highlight() {
+        let query = prism::backends::Query {
+            query_string: "simple".into(),
+            fields: vec![],
+            limit: 10,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
+        };
+
+        let rpc: RpcQuery = query.into();
+        let back: prism::backends::Query = rpc.into();
+        assert!(back.highlight.is_none());
+        assert!(!back.skip_ranking);
+    }
+
+    #[test]
+    fn test_rpc_highlight_config_roundtrip() {
+        let config = prism::backends::HighlightConfig {
+            fields: vec!["title".into(), "body".into()],
+            pre_tag: "<b>".into(),
+            post_tag: "</b>".into(),
+            fragment_size: 200,
+            number_of_fragments: 5,
+        };
+
+        let rpc: RpcHighlightConfig = config.clone().into();
+        let back: prism::backends::HighlightConfig = rpc.into();
+
+        assert_eq!(back.fields, config.fields);
+        assert_eq!(back.pre_tag, config.pre_tag);
+        assert_eq!(back.post_tag, config.post_tag);
+        assert_eq!(back.fragment_size, config.fragment_size);
+        assert_eq!(back.number_of_fragments, config.number_of_fragments);
+    }
+
+    #[test]
+    fn test_rpc_document_roundtrip() {
+        let mut fields = HashMap::new();
+        fields.insert("title".to_string(), Value::String("Hello".into()));
+        fields.insert("count".to_string(), Value::Number(42.into()));
+        fields.insert("active".to_string(), Value::Bool(true));
+
+        let doc = prism::backends::Document {
+            id: "doc-123".into(),
+            fields: fields.clone(),
+        };
+
+        let rpc: RpcDocument = doc.into();
+        let back: prism::backends::Document = rpc.into();
+
+        assert_eq!(back.id, "doc-123");
+        assert_eq!(back.fields, fields);
+    }
+
+    #[test]
+    fn test_rpc_search_result_roundtrip() {
+        let mut fields = HashMap::new();
+        fields.insert("title".to_string(), Value::String("Test".into()));
+
+        let mut highlight = HashMap::new();
+        highlight.insert(
+            "title".to_string(),
+            vec!["<em>Test</em> doc".to_string()],
+        );
+
+        let result = prism::backends::SearchResult {
+            id: "res-1".into(),
+            score: 0.95,
+            fields: fields.clone(),
+            highlight: Some(highlight.clone()),
+        };
+
+        let rpc: RpcSearchResult = result.into();
+        let back: prism::backends::SearchResult = rpc.into();
+
+        assert_eq!(back.id, "res-1");
+        assert!((back.score - 0.95).abs() < f32::EPSILON);
+        assert_eq!(back.fields, fields);
+        assert_eq!(back.highlight, Some(highlight));
+    }
+
+    #[test]
+    fn test_rpc_search_result_no_highlight() {
+        let result = prism::backends::SearchResult {
+            id: "res-2".into(),
+            score: 0.5,
+            fields: HashMap::new(),
+            highlight: None,
+        };
+
+        let rpc: RpcSearchResult = result.into();
+        let back: prism::backends::SearchResult = rpc.into();
+
+        assert!(back.highlight.is_none());
+    }
+
+    #[test]
+    fn test_rpc_search_results_roundtrip() {
+        let results = prism::backends::SearchResults {
+            results: vec![
+                prism::backends::SearchResult {
+                    id: "a".into(),
+                    score: 1.0,
+                    fields: HashMap::new(),
+                    highlight: None,
+                },
+                prism::backends::SearchResult {
+                    id: "b".into(),
+                    score: 0.8,
+                    fields: HashMap::new(),
+                    highlight: None,
+                },
+            ],
+            total: 42,
+            latency_ms: 15,
+        };
+
+        let rpc: RpcSearchResults = results.into();
+        let back: prism::backends::SearchResults = rpc.into();
+
+        assert_eq!(back.results.len(), 2);
+        assert_eq!(back.total, 42);
+        assert_eq!(back.latency_ms, 15);
+        assert_eq!(back.results[0].id, "a");
+        assert_eq!(back.results[1].id, "b");
+    }
+
+    #[test]
+    fn test_rpc_backend_stats_roundtrip() {
+        let stats = prism::backends::BackendStats {
+            document_count: 1000,
+            size_bytes: 1024 * 1024,
+        };
+
+        let rpc: RpcBackendStats = stats.into();
+        let back: prism::backends::BackendStats = rpc.into();
+
+        assert_eq!(back.document_count, 1000);
+        assert_eq!(back.size_bytes, 1024 * 1024);
+    }
+
+    // --- Struct construction tests ---
+
+    #[test]
+    fn test_delete_by_query_request_serde() {
+        let req = DeleteByQueryRequest {
+            collection: "products".into(),
+            query: RpcQuery {
+                query_string: "obsolete:true".into(),
+                fields: vec![],
+                limit: 100,
+                offset: 0,
+                merge_strategy: None,
+                text_weight: None,
+                vector_weight: None,
+                highlight: None,
+                rrf_k: None,
+                min_score: None,
+                score_function: None,
+                skip_ranking: false,
+            },
+            max_docs: 0,
+            dry_run: true,
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        let back: DeleteByQueryRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.collection, "products");
+        assert!(back.dry_run);
+    }
+
+    #[test]
+    fn test_delete_by_query_response_serde() {
+        let resp = DeleteByQueryResponse {
+            deleted_count: 42,
+            took_ms: 150,
+            deleted_ids: vec!["a".into(), "b".into()],
+        };
+
+        let json = serde_json::to_string(&resp).unwrap();
+        let back: DeleteByQueryResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.deleted_count, 42);
+        assert_eq!(back.deleted_ids.len(), 2);
+    }
+
+    #[test]
+    fn test_import_by_query_roundtrip() {
+        let req = ImportByQueryRequest {
+            source_collection: "old_index".into(),
+            target_collection: "new_index".into(),
+            query: RpcQuery {
+                query_string: "*".into(),
+                fields: vec![],
+                limit: 1000,
+                offset: 0,
+                merge_strategy: None,
+                text_weight: None,
+                vector_weight: None,
+                highlight: None,
+                rrf_k: None,
+                min_score: None,
+                score_function: None,
+                skip_ranking: false,
+            },
+            source_node: Some("node-1:9100".into()),
+            batch_size: 500,
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        let back: ImportByQueryRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.source_collection, "old_index");
+        assert_eq!(back.source_node, Some("node-1:9100".into()));
+    }
+
+    #[test]
+    fn test_node_info_full() {
+        let info = NodeInfo {
+            node_id: "node-1".into(),
+            version: "0.7.0".into(),
+            collections: vec!["a".into(), "b".into()],
+            uptime_secs: 3600,
+            healthy: true,
+            protocol_version: 2,
+            min_supported_version: 1,
+            draining: false,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        let back: NodeInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.collections.len(), 2);
+        assert_eq!(back.protocol_version, 2);
+    }
+
+    #[test]
+    fn test_shard_assignment_roundtrip() {
+        let req = ShardAssignmentRequest {
+            shard_id: "shard-0".into(),
+            collection: "test".into(),
+            primary_node: "node-1".into(),
+            replica_nodes: vec!["node-2".into(), "node-3".into()],
+            shard_number: 0,
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        let back: ShardAssignmentRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.replica_nodes.len(), 2);
+    }
+
+    #[test]
+    fn test_cluster_health_serde() {
+        let health = RpcClusterHealth {
+            nodes: vec![RpcNodeHealth {
+                node_id: "node-1".into(),
+                state: "alive".into(),
+                last_heartbeat: Some(1700000000),
+                missed_heartbeats: 0,
+                last_latency_ms: Some(5),
+                draining: false,
+            }],
+            alive_count: 1,
+            suspect_count: 0,
+            dead_count: 0,
+            total_count: 1,
+            quorum_available: true,
+        };
+
+        let json = serde_json::to_string(&health).unwrap();
+        let back: RpcClusterHealth = serde_json::from_str(&json).unwrap();
+        assert!(back.quorum_available);
+        assert_eq!(back.nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_schema_propagation_serde() {
+        let req = RpcApplySchemaRequest {
+            collection: "products".into(),
+            version: 3,
+            schema: serde_json::json!({"fields": {"title": "text"}}),
+            created_at: 1700000000,
+            created_by: "node-1".into(),
+            changes: vec![RpcSchemaChange {
+                change_type: "field_added".into(),
+                path: "fields.title".into(),
+                old_value: None,
+                new_value: Some(Value::String("text".into())),
+                description: "Added title field".into(),
+            }],
+            metadata: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        let back: RpcApplySchemaRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.version, 3);
+        assert_eq!(back.changes.len(), 1);
+        assert_eq!(back.changes[0].change_type, "field_added");
+    }
 }

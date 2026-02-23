@@ -278,7 +278,7 @@ impl RolloverService {
 mod tests {
     use super::*;
     use crate::backends::{TextBackend, VectorBackend};
-    use crate::ilm::types::RolloverConditions;
+    use crate::ilm::types::{ManagedIndex, RolloverConditions};
     use std::time::Duration;
     use tempfile::TempDir;
 
@@ -312,6 +312,19 @@ backends:
         manager
     }
 
+    fn make_policy() -> IlmPolicy {
+        IlmPolicy {
+            name: "test".to_string(),
+            description: String::new(),
+            rollover: RolloverConditions {
+                max_docs: Some(100),
+                max_size: None,
+                max_age: Some(Duration::from_secs(86400)),
+            },
+            phases: Default::default(),
+        }
+    }
+
     #[tokio::test]
     async fn test_rollover_check() {
         let temp = TempDir::new().unwrap();
@@ -321,20 +334,224 @@ backends:
 
         let service = RolloverService::new(manager, alias_manager, state);
 
-        let policy = IlmPolicy {
-            name: "test".to_string(),
-            description: String::new(),
-            rollover: RolloverConditions {
-                max_docs: Some(100),
-                max_size: None,
-                max_age: Some(Duration::from_secs(86400)),
-            },
-            phases: Default::default(),
-        };
+        let policy = make_policy();
 
         // Check rollover for empty collection
         let result = service.check_rollover("test", &policy).await.unwrap();
         assert!(!result.should_rollover);
         assert!(result.reasons.is_empty());
+    }
+
+    // ========================================================================
+    // initialize_index tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_initialize_index_with_explicit_collection() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        let service = RolloverService::new(manager, alias_manager.clone(), state.clone());
+        let policy = make_policy();
+
+        let managed = service
+            .initialize_index("test", &policy, Some("test"))
+            .await
+            .unwrap();
+
+        assert_eq!(managed.index_name, "test");
+        assert_eq!(managed.collection_name, "test");
+        assert_eq!(managed.policy_name, "test");
+        assert_eq!(managed.generation, 1);
+        assert_eq!(managed.phase, crate::ilm::types::Phase::Hot);
+        assert!(!managed.readonly);
+
+        // Verify aliases were created
+        let write_alias = alias_manager.get_write_alias("test").await;
+        assert!(write_alias.is_some());
+        assert_eq!(write_alias.unwrap().targets, vec!["test"]);
+
+        let read_alias = alias_manager.get_read_alias("test").await;
+        assert!(read_alias.is_some());
+        assert_eq!(read_alias.unwrap().targets, vec!["test"]);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_index_auto_generated_name() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        let service = RolloverService::new(manager, alias_manager.clone(), state.clone());
+        let policy = make_policy();
+
+        let managed = service
+            .initialize_index("logs", &policy, None)
+            .await
+            .unwrap();
+
+        // Collection name should be auto-generated
+        assert!(managed.collection_name.starts_with("logs-"));
+        assert!(managed.collection_name.ends_with("-000001"));
+        assert_eq!(managed.index_name, "logs");
+    }
+
+    // ========================================================================
+    // get_managed_index / get_indexes_for / update_managed_index
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_managed_index() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        let service = RolloverService::new(manager, alias_manager, state);
+        let policy = make_policy();
+
+        // No managed index yet
+        assert!(service.get_managed_index("test").await.is_none());
+
+        // Initialize
+        service
+            .initialize_index("test", &policy, Some("test"))
+            .await
+            .unwrap();
+
+        // Now it should exist
+        let managed = service.get_managed_index("test").await;
+        assert!(managed.is_some());
+        let managed = managed.unwrap();
+        assert_eq!(managed.collection_name, "test");
+    }
+
+    #[tokio::test]
+    async fn test_get_indexes_for() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        let service = RolloverService::new(manager, alias_manager, state);
+        let policy = make_policy();
+
+        // No indexes initially
+        let indexes = service.get_indexes_for("test").await;
+        assert!(indexes.is_empty());
+
+        // Initialize an index
+        service
+            .initialize_index("test", &policy, Some("test-collection"))
+            .await
+            .unwrap();
+
+        let indexes = service.get_indexes_for("test").await;
+        assert_eq!(indexes.len(), 1);
+        assert_eq!(indexes[0].index_name, "test");
+    }
+
+    #[tokio::test]
+    async fn test_update_managed_index() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        let service = RolloverService::new(manager, alias_manager, state);
+        let policy = make_policy();
+
+        service
+            .initialize_index("test", &policy, Some("test"))
+            .await
+            .unwrap();
+
+        // Get the managed index and modify it
+        let mut managed = service.get_managed_index("test").await.unwrap();
+        managed.readonly = true;
+        managed.set_error("test error");
+
+        service.update_managed_index(managed).await;
+
+        // Verify the update persisted
+        let updated = service.get_managed_index("test").await.unwrap();
+        assert!(updated.readonly);
+        assert_eq!(updated.error, Some("test error".to_string()));
+    }
+
+    // ========================================================================
+    // rollover check with state (managed index age tracking)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_rollover_check_with_managed_state() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        // Add a managed index to the state
+        {
+            let mut s = state.write().await;
+            let idx = ManagedIndex::new("test", "test", "test-policy", 1);
+            s.upsert(idx);
+        }
+
+        let service = RolloverService::new(manager, alias_manager, state);
+        let policy = make_policy();
+
+        // With zero docs and age < 1d, should not rollover
+        let result = service.check_rollover("test", &policy).await.unwrap();
+        assert!(!result.should_rollover);
+        assert!(result.reasons.is_empty());
+        assert_eq!(result.stats.document_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_rollover_check_nonexistent_collection() {
+        let temp = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp).await;
+        let alias_manager = Arc::new(AliasManager::new(temp.path()).await.unwrap());
+        let state = Arc::new(RwLock::new(IlmState::new()));
+
+        let service = RolloverService::new(manager, alias_manager, state);
+        let policy = make_policy();
+
+        // Checking rollover for a collection that doesn't exist in the backend should error
+        let result = service.check_rollover("nonexistent", &policy).await;
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // RolloverConditions unit tests
+    // ========================================================================
+
+    #[test]
+    fn test_rollover_conditions_check_multiple_reasons() {
+        let conditions = RolloverConditions {
+            max_size: Some(1000),
+            max_docs: Some(10),
+            max_age: Some(Duration::from_secs(60)),
+        };
+
+        // All conditions exceeded
+        let reasons = conditions.check_conditions(2000, 20, Duration::from_secs(120));
+        assert_eq!(reasons.len(), 3);
+    }
+
+    #[test]
+    fn test_rollover_conditions_no_conditions() {
+        let conditions = RolloverConditions {
+            max_size: None,
+            max_docs: None,
+            max_age: None,
+        };
+
+        assert!(!conditions.should_rollover(999999, 999999, Duration::from_secs(999999)));
+        let reasons = conditions.check_conditions(999999, 999999, Duration::from_secs(999999));
+        assert!(reasons.is_empty());
     }
 }

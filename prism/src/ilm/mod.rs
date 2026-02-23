@@ -587,4 +587,344 @@ min_age = "7d"
         assert_eq!(status.len(), 1);
         assert_eq!(status[0].collection, "test");
     }
+
+    // ========================================================================
+    // upsert_policy / get_policy / delete_policy
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_upsert_and_get_policy() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Create a new policy
+        let mut policy = IlmPolicy::new("my-policy");
+        policy.description = "Test policy".to_string();
+
+        ilm.upsert_policy(policy.clone()).await.unwrap();
+
+        // Get it back
+        let retrieved = ilm.get_policy("my-policy").await;
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.name, "my-policy");
+        assert_eq!(retrieved.description, "Test policy");
+
+        // Update it
+        let mut updated = retrieved;
+        updated.description = "Updated description".to_string();
+        ilm.upsert_policy(updated).await.unwrap();
+
+        let re_retrieved = ilm.get_policy("my-policy").await.unwrap();
+        assert_eq!(re_retrieved.description, "Updated description");
+    }
+
+    #[tokio::test]
+    async fn test_get_policy_nonexistent() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        let result = ilm.get_policy("does-not-exist").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_policy() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Initially has "logs" policy
+        assert!(ilm.get_policy("logs").await.is_some());
+
+        // Delete it
+        let removed = ilm.delete_policy("logs").await.unwrap();
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().name, "logs");
+
+        // Now it should be gone
+        assert!(ilm.get_policy("logs").await.is_none());
+
+        // Deleting again returns None
+        let removed_again = ilm.delete_policy("logs").await.unwrap();
+        assert!(removed_again.is_none());
+    }
+
+    // ========================================================================
+    // list_policies
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_list_policies_multiple() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Add a second policy
+        ilm.upsert_policy(IlmPolicy::new("metrics"))
+            .await
+            .unwrap();
+
+        let policies = ilm.list_policies().await;
+        assert_eq!(policies.len(), 2);
+
+        let names: Vec<&str> = policies.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"logs"));
+        assert!(names.contains(&"metrics"));
+    }
+
+    // ========================================================================
+    // explain
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_explain_managed_index() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Attach policy first
+        ilm.attach_policy("test", "test", "logs").await.unwrap();
+
+        // Explain the managed index
+        let explain = ilm.explain("test").await.unwrap();
+        assert_eq!(explain.collection, "test");
+        assert!(explain.managed);
+        assert_eq!(explain.policy, "logs");
+        assert_eq!(explain.phase, Phase::Hot);
+        assert!(!explain.readonly);
+    }
+
+    #[tokio::test]
+    async fn test_explain_unmanaged_collection() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        let result = ilm.explain("test").await;
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // run_cycle
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_run_cycle_no_managed_indexes() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Should succeed with no managed indexes
+        ilm.run_cycle().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_run_cycle_with_managed_index() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Attach a policy to a collection
+        ilm.attach_policy("test", "test", "logs").await.unwrap();
+
+        // Run a cycle -- should not error (the index is too young to transition)
+        ilm.run_cycle().await.unwrap();
+
+        // Status should still show hot phase
+        let status = ilm.get_status().await;
+        assert_eq!(status.len(), 1);
+        assert_eq!(status[0].phase, Phase::Hot);
+    }
+
+    // ========================================================================
+    // is_readonly / resolve
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_is_readonly() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Unmanaged collection should not be readonly
+        assert!(!ilm.is_readonly("test").await);
+
+        // Attach and it should still not be readonly (in hot phase)
+        ilm.attach_policy("test", "test", "logs").await.unwrap();
+        assert!(!ilm.is_readonly("test").await);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_alias() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Attach policy creates aliases
+        ilm.attach_policy("test", "test", "logs").await.unwrap();
+
+        // Resolve the write alias
+        let resolved = ilm.resolve("test-write").await;
+        assert_eq!(resolved, vec!["test".to_string()]);
+
+        // Resolve a non-alias returns itself
+        let resolved = ilm.resolve("just-a-name").await;
+        assert_eq!(resolved, vec!["just-a-name".to_string()]);
+    }
+
+    // ========================================================================
+    // stop / start lifecycle
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_stop_signal() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        // Stop should not panic even before start
+        ilm.stop();
+    }
+
+    // ========================================================================
+    // Multi-policy with phases configuration
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_policy_with_all_phases() {
+        let temp = TempDir::new().unwrap();
+        let (manager, _config) = create_test_setup(&temp).await;
+
+        let config_str = r#"
+enabled = true
+check_interval_secs = 60
+
+[policies.full]
+rollover_max_size = "10GB"
+rollover_max_age = "1d"
+rollover_max_docs = 1000000
+
+[policies.full.phases.hot]
+min_age = "0d"
+
+[policies.full.phases.warm]
+min_age = "1d"
+readonly = true
+
+[policies.full.phases.cold]
+min_age = "7d"
+storage = "s3"
+
+[policies.full.phases.frozen]
+min_age = "30d"
+
+[policies.full.phases.delete]
+min_age = "90d"
+"#;
+        let full_config: IlmConfig = toml::from_str(config_str).unwrap();
+        let ilm = IlmManager::new(manager, &full_config, temp.path())
+            .await
+            .unwrap();
+
+        let policy = ilm.get_policy("full").await.unwrap();
+        assert_eq!(policy.phases.len(), 5);
+        assert!(policy.phases.contains_key(&Phase::Hot));
+        assert!(policy.phases.contains_key(&Phase::Warm));
+        assert!(policy.phases.contains_key(&Phase::Cold));
+        assert!(policy.phases.contains_key(&Phase::Frozen));
+        assert!(policy.phases.contains_key(&Phase::Delete));
+    }
+
+    // ========================================================================
+    // get_status
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_get_status_empty() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        let status = ilm.get_status().await;
+        assert!(status.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_status_after_attach() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        ilm.attach_policy("test", "test", "logs").await.unwrap();
+
+        let status = ilm.get_status().await;
+        assert_eq!(status.len(), 1);
+        assert_eq!(status[0].collection, "test");
+        assert_eq!(status[0].policy, "logs");
+        assert_eq!(status[0].phase, Phase::Hot);
+        assert!(!status[0].readonly);
+        assert_eq!(status[0].generation, 1);
+        assert!(status[0].error.is_none());
+    }
+
+    // ========================================================================
+    // attach_policy error paths
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_attach_policy_nonexistent_policy() {
+        let temp = TempDir::new().unwrap();
+        let (manager, config) = create_test_setup(&temp).await;
+
+        let ilm = IlmManager::new(manager, &config, temp.path())
+            .await
+            .unwrap();
+
+        let result = ilm
+            .attach_policy("test", "test", "nonexistent-policy")
+            .await;
+        assert!(result.is_err());
+    }
 }

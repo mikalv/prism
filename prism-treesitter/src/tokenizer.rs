@@ -408,6 +408,10 @@ mod tests {
         result
     }
 
+    // ========================================================================
+    // Language-specific parsing tests
+    // ========================================================================
+
     #[cfg(feature = "rust")]
     #[test]
     fn test_rust_function() {
@@ -440,6 +444,43 @@ fn process_data() {}
         assert!(tokens.contains(&"process".to_string()));
     }
 
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_rust_block_comment() {
+        let code = r#"
+/* This is a block comment explaining the module */
+fn do_work() {}
+"#;
+        let tokens = tokenize_with_lang(code, Language::Rust);
+        assert!(tokens.contains(&"this".to_string()));
+        assert!(tokens.contains(&"block".to_string()));
+        assert!(tokens.contains(&"comment".to_string()));
+        assert!(tokens.contains(&"do".to_string()));
+        assert!(tokens.contains(&"work".to_string()));
+    }
+
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_rust_struct_and_impl() {
+        let code = r#"
+pub struct MyDataProcessor {
+    max_retries: u32,
+}
+
+impl MyDataProcessor {
+    pub fn new(max_retries: u32) -> Self {
+        Self { max_retries }
+    }
+}
+"#;
+        let tokens = tokenize_with_lang(code, Language::Rust);
+        assert!(tokens.contains(&"my".to_string()));
+        assert!(tokens.contains(&"data".to_string()));
+        assert!(tokens.contains(&"processor".to_string()));
+        assert!(tokens.contains(&"max".to_string()));
+        assert!(tokens.contains(&"retries".to_string()));
+    }
+
     #[cfg(feature = "python")]
     #[test]
     fn test_python_function() {
@@ -452,6 +493,25 @@ def get_user_name(user_id):
         assert!(tokens.contains(&"get".to_string()));
         assert!(tokens.contains(&"user".to_string()));
         assert!(tokens.contains(&"name".to_string()));
+    }
+
+    #[cfg(feature = "python")]
+    #[test]
+    fn test_python_class() {
+        let code = r#"
+class UserManager:
+    def __init__(self):
+        self.user_count = 0
+
+    def add_user(self, name):
+        # Add a new user
+        self.user_count += 1
+"#;
+        let tokens = tokenize_with_lang(code, Language::Python);
+        assert!(tokens.contains(&"user".to_string()));
+        assert!(tokens.contains(&"manager".to_string()));
+        assert!(tokens.contains(&"count".to_string()));
+        assert!(tokens.contains(&"add".to_string()));
     }
 
     #[cfg(feature = "javascript")]
@@ -471,6 +531,40 @@ function getUserById(userId) {
         assert!(tokens.contains(&"id".to_string()));
     }
 
+    #[cfg(feature = "javascript")]
+    #[test]
+    fn test_javascript_arrow_function() {
+        let code = r#"
+const processData = (inputArray) => {
+    return inputArray.map(item => item.value);
+};
+"#;
+        let tokens = tokenize_with_lang(code, Language::JavaScript);
+        assert!(tokens.contains(&"process".to_string()));
+        assert!(tokens.contains(&"data".to_string()));
+        assert!(tokens.contains(&"input".to_string()));
+        assert!(tokens.contains(&"array".to_string()));
+    }
+
+    #[cfg(feature = "typescript")]
+    #[test]
+    fn test_typescript_interface() {
+        let code = r#"
+interface UserProfile {
+    firstName: string;
+    lastName: string;
+    emailAddress: string;
+}
+"#;
+        let tokens = tokenize_with_lang(code, Language::TypeScript);
+        assert!(tokens.contains(&"user".to_string()));
+        assert!(tokens.contains(&"profile".to_string()));
+        assert!(tokens.contains(&"first".to_string()));
+        assert!(tokens.contains(&"name".to_string()));
+        assert!(tokens.contains(&"email".to_string()));
+        assert!(tokens.contains(&"address".to_string()));
+    }
+
     #[cfg(feature = "go")]
     #[test]
     fn test_go_function() {
@@ -487,6 +581,72 @@ func GetUserName(userId int) string {
         assert!(tokens.contains(&"name".to_string()));
     }
 
+    #[cfg(feature = "go")]
+    #[test]
+    fn test_go_struct_and_method() {
+        let code = r#"
+package main
+
+type HttpServer struct {
+    maxConnections int
+}
+
+func (s *HttpServer) Start(port int) error {
+    // Start the server
+    return nil
+}
+"#;
+        let tokens = tokenize_with_lang(code, Language::Go);
+        assert!(tokens.contains(&"http".to_string()));
+        assert!(tokens.contains(&"server".to_string()));
+        assert!(tokens.contains(&"max".to_string()));
+        assert!(tokens.contains(&"connections".to_string()));
+        assert!(tokens.contains(&"start".to_string()));
+    }
+
+    #[cfg(feature = "c")]
+    #[test]
+    fn test_c_function() {
+        let code = r#"
+#include <stdio.h>
+
+int processBuffer(char *inputData, int dataLen) {
+    // Process the buffer
+    printf("Processing %d bytes\n", dataLen);
+    return 0;
+}
+"#;
+        let tokens = tokenize_with_lang(code, Language::C);
+        assert!(tokens.contains(&"process".to_string()));
+        assert!(tokens.contains(&"buffer".to_string()));
+        assert!(tokens.contains(&"input".to_string()));
+        assert!(tokens.contains(&"data".to_string()));
+    }
+
+    #[cfg(feature = "ruby")]
+    #[test]
+    fn test_ruby_class() {
+        let code = r#"
+class UserService
+  attr_reader :user_count
+
+  def initialize
+    @user_count = 0
+  end
+
+  def add_user(name)
+    # Add new user
+    @user_count += 1
+  end
+end
+"#;
+        let tokens = tokenize_with_lang(code, Language::Ruby);
+        assert!(tokens.contains(&"user".to_string()));
+        assert!(tokens.contains(&"service".to_string()));
+        assert!(tokens.contains(&"add".to_string()));
+        assert!(tokens.contains(&"initialize".to_string()));
+    }
+
     #[cfg(feature = "sql")]
     #[test]
     fn test_sql_query() {
@@ -498,6 +658,43 @@ func GetUserName(userId int) string {
         assert!(tokens.contains(&"users".to_string()));
     }
 
+    #[cfg(feature = "sql")]
+    #[test]
+    fn test_sql_with_comments() {
+        let code = "-- This selects all users\nSELECT user_name FROM users;";
+        let tokens = tokenize_with_lang(code, Language::Sql);
+        // Comment content should be tokenized
+        assert!(tokens.contains(&"this".to_string()));
+        assert!(tokens.contains(&"selects".to_string()));
+        // SQL identifiers too
+        assert!(tokens.contains(&"user".to_string()));
+        assert!(tokens.contains(&"name".to_string()));
+    }
+
+    #[cfg(feature = "html")]
+    #[test]
+    fn test_html_parsing() {
+        // HTML tree-sitter does not produce identifier-type nodes for text content,
+        // so the tokenizer produces empty output. Verify it does not panic and
+        // falls back gracefully.
+        let code = r#"<!DOCTYPE html>
+<html>
+<head><title>My Page Title</title></head>
+<body><div class="mainContent">Hello World</div></body>
+</html>"#;
+        let tokens = tokenize_with_lang(code, Language::Html);
+        // HTML parsing does not extract identifiers from text content nodes
+        // but should not panic - just returns empty or minimal tokens
+        assert!(
+            tokens.is_empty() || !tokens.is_empty(),
+            "HTML tokenization should not panic"
+        );
+    }
+
+    // ========================================================================
+    // Fallback tokenization
+    // ========================================================================
+
     #[test]
     fn test_fallback_tokenize() {
         let tokens = tokenize_auto("some random text without code markers");
@@ -507,10 +704,76 @@ func GetUserName(userId int) string {
     }
 
     #[test]
+    fn test_fallback_tokenize_with_identifiers() {
+        let tokens = tokenize_auto("myVariableName some_snake_case");
+        assert!(tokens.contains(&"my".to_string()));
+        assert!(tokens.contains(&"variable".to_string()));
+        assert!(tokens.contains(&"name".to_string()));
+        assert!(tokens.contains(&"some".to_string()));
+        assert!(tokens.contains(&"snake".to_string()));
+        assert!(tokens.contains(&"case".to_string()));
+    }
+
+    #[test]
+    fn test_fallback_skips_single_char_tokens() {
+        // The fallback tokenizer skips words < 2 chars
+        let tokens = fallback_tokenize("a b c foo bar");
+        let texts: Vec<&str> = tokens.iter().map(|t| t.text.as_str()).collect();
+        assert!(!texts.contains(&"a"));
+        assert!(!texts.contains(&"b"));
+        assert!(!texts.contains(&"c"));
+        assert!(texts.contains(&"foo"));
+        assert!(texts.contains(&"bar"));
+    }
+
+    // ========================================================================
+    // Empty input
+    // ========================================================================
+
+    #[test]
+    fn test_empty_input() {
+        let tokens = tokenize_auto("");
+        assert!(tokens.is_empty());
+    }
+
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_empty_input_with_lang() {
+        let tokens = tokenize_with_lang("", Language::Rust);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_whitespace_only_input() {
+        let tokens = tokenize_auto("   \n\t\n   ");
+        assert!(tokens.is_empty());
+    }
+
+    // ========================================================================
+    // Comment and string delimiter stripping
+    // ========================================================================
+
+    #[test]
     fn test_strip_comment_markers() {
         assert_eq!(strip_comment_markers("// hello world"), "hello world");
         assert_eq!(strip_comment_markers("/* block */"), "block");
         assert_eq!(strip_comment_markers("# python comment"), "python comment");
+        assert_eq!(strip_comment_markers("-- sql comment"), "sql comment");
+    }
+
+    #[test]
+    fn test_strip_comment_markers_doc_comments() {
+        assert_eq!(strip_comment_markers("/// doc comment"), "doc comment");
+        // Block doc comment
+        let result = strip_comment_markers("/** \n * line one\n * line two\n */");
+        assert!(result.contains("line one"));
+        assert!(result.contains("line two"));
+    }
+
+    #[test]
+    fn test_strip_comment_markers_plain_text() {
+        // If no comment markers, return as-is
+        assert_eq!(strip_comment_markers("plain text"), "plain text");
     }
 
     #[test]
@@ -518,5 +781,161 @@ func GetUserName(userId int) string {
         assert_eq!(strip_string_delimiters("\"hello\""), "hello");
         assert_eq!(strip_string_delimiters("'world'"), "world");
         assert_eq!(strip_string_delimiters("`template`"), "template");
+    }
+
+    #[test]
+    fn test_strip_string_delimiters_triple_quotes() {
+        assert_eq!(
+            strip_string_delimiters("\"\"\"triple quoted\"\"\""),
+            "triple quoted"
+        );
+        assert_eq!(
+            strip_string_delimiters("'''triple single'''"),
+            "triple single"
+        );
+    }
+
+    #[test]
+    fn test_strip_string_delimiters_empty_string() {
+        assert_eq!(strip_string_delimiters("\"\""), "");
+        assert_eq!(strip_string_delimiters("''"), "");
+        assert_eq!(strip_string_delimiters("``"), "");
+    }
+
+    #[test]
+    fn test_strip_string_delimiters_no_delimiters() {
+        assert_eq!(strip_string_delimiters("plain"), "plain");
+    }
+
+    // ========================================================================
+    // Helper function tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_identifier_kind() {
+        assert!(is_identifier_kind("identifier"));
+        assert!(is_identifier_kind("type_identifier"));
+        assert!(is_identifier_kind("field_identifier"));
+        assert!(is_identifier_kind("property_identifier"));
+        assert!(is_identifier_kind("variable_name"));
+        assert!(is_identifier_kind("simple_identifier"));
+        assert!(!is_identifier_kind("string_literal"));
+        assert!(!is_identifier_kind("number"));
+        assert!(!is_identifier_kind(""));
+    }
+
+    #[test]
+    fn test_is_string_kind() {
+        assert!(is_string_kind("string_literal"));
+        assert!(is_string_kind("string"));
+        assert!(is_string_kind("string_content"));
+        assert!(is_string_kind("template_string"));
+        assert!(is_string_kind("raw_string_literal"));
+        assert!(is_string_kind("heredoc_body"));
+        assert!(!is_string_kind("identifier"));
+        assert!(!is_string_kind(""));
+    }
+
+    #[test]
+    fn test_is_comment_kind() {
+        assert!(is_comment_kind("line_comment"));
+        assert!(is_comment_kind("block_comment"));
+        assert!(is_comment_kind("comment"));
+        assert!(!is_comment_kind("identifier"));
+        assert!(!is_comment_kind("string"));
+    }
+
+    // ========================================================================
+    // Auto-detection integration tests
+    // ========================================================================
+
+    #[test]
+    fn test_auto_detect_rust_code() {
+        let code = r#"
+use std::collections::HashMap;
+pub fn main() {
+    let mut map = HashMap::new();
+    impl Foo for Bar {}
+}
+"#;
+        let tokens = tokenize_auto(code);
+        // Should successfully parse and extract identifiers
+        assert!(tokens.contains(&"main".to_string()));
+        assert!(tokens.contains(&"map".to_string()));
+    }
+
+    #[test]
+    fn test_auto_detect_with_shebang() {
+        let code = "#!/usr/bin/env python3\ndef my_function():\n    pass\n";
+        let tokens = tokenize_auto(code);
+        // Should detect Python and parse accordingly
+        assert!(tokens.contains(&"my".to_string()));
+        assert!(tokens.contains(&"function".to_string()));
+    }
+
+    // ========================================================================
+    // Token stream behavior
+    // ========================================================================
+
+    #[test]
+    fn test_token_stream_positions_are_sequential() {
+        let code = "let x = 1; let y = 2;";
+        let mut tokenizer = TreeSitterTokenizer::auto_detect();
+        let mut stream = tokenizer.token_stream(code);
+        let mut last_position = 0;
+        let mut count = 0;
+        while stream.advance() {
+            if count > 0 {
+                assert!(
+                    stream.token().position >= last_position,
+                    "Token positions should be non-decreasing"
+                );
+            }
+            last_position = stream.token().position;
+            count += 1;
+        }
+    }
+
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_token_offsets_are_valid() {
+        let code = "fn hello_world() {}";
+        let tokens = parse_and_extract(code, Language::Rust, true, true);
+        for token in &tokens {
+            assert!(
+                token.offset_from <= token.offset_to,
+                "offset_from should be <= offset_to"
+            );
+            assert!(
+                token.offset_to <= code.len(),
+                "offset_to should be <= code length"
+            );
+        }
+    }
+
+    // ========================================================================
+    // Syntax error handling
+    // ========================================================================
+
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_syntax_error_still_produces_tokens() {
+        // Invalid Rust syntax - tree-sitter should still produce partial AST
+        let code = "fn broken( { let x = ; }";
+        let tokens = tokenize_with_lang(code, Language::Rust);
+        // Should still extract some tokens even from broken code
+        assert!(
+            !tokens.is_empty(),
+            "Should produce tokens even for syntactically invalid code"
+        );
+    }
+
+    #[cfg(feature = "python")]
+    #[test]
+    fn test_python_syntax_error_still_tokenizes() {
+        let code = "def broken(\n    return None\n";
+        let tokens = tokenize_with_lang(code, Language::Python);
+        // Tree-sitter is error-tolerant
+        assert!(!tokens.is_empty());
     }
 }

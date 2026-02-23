@@ -359,3 +359,145 @@ fn extract_context_from_fields(
     }
     context
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------------------------------------------------------------
+    // extract_search_context
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_extract_search_context_both_present() {
+        let ctx = SearchContext {
+            project_id: Some("proj-1".to_string()),
+            session_id: Some("sess-2".to_string()),
+        };
+        let map = extract_search_context(&ctx);
+        assert_eq!(map.get("project_id").unwrap(), "proj-1");
+        assert_eq!(map.get("session_id").unwrap(), "sess-2");
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_search_context_only_project() {
+        let ctx = SearchContext {
+            project_id: Some("proj-x".to_string()),
+            session_id: None,
+        };
+        let map = extract_search_context(&ctx);
+        assert_eq!(map.get("project_id").unwrap(), "proj-x");
+        assert!(!map.contains_key("session_id"));
+        assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_search_context_only_session() {
+        let ctx = SearchContext {
+            project_id: None,
+            session_id: Some("s-42".to_string()),
+        };
+        let map = extract_search_context(&ctx);
+        assert!(!map.contains_key("project_id"));
+        assert_eq!(map.get("session_id").unwrap(), "s-42");
+    }
+
+    #[test]
+    fn test_extract_search_context_empty() {
+        let ctx = SearchContext::default();
+        let map = extract_search_context(&ctx);
+        assert!(map.is_empty());
+    }
+
+    // ---------------------------------------------------------------
+    // extract_context_from_fields
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_extract_context_from_fields_all_present() {
+        let fields = HashMap::from([
+            ("project_id".to_string(), serde_json::json!("p1")),
+            ("session_id".to_string(), serde_json::json!("s1")),
+            ("file_path".to_string(), serde_json::json!("/src/main.rs")),
+            ("other_field".to_string(), serde_json::json!("ignored")),
+        ]);
+        let ctx = extract_context_from_fields(&fields);
+        assert_eq!(ctx.get("project_id").unwrap(), "p1");
+        assert_eq!(ctx.get("session_id").unwrap(), "s1");
+        assert_eq!(ctx.get("file_path").unwrap(), "/src/main.rs");
+        assert_eq!(ctx.len(), 3); // only 3 known keys extracted
+    }
+
+    #[test]
+    fn test_extract_context_from_fields_partial() {
+        let fields = HashMap::from([
+            ("project_id".to_string(), serde_json::json!("p2")),
+            ("title".to_string(), serde_json::json!("A title")),
+        ]);
+        let ctx = extract_context_from_fields(&fields);
+        assert_eq!(ctx.get("project_id").unwrap(), "p2");
+        assert_eq!(ctx.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_context_from_fields_empty() {
+        let fields: HashMap<String, serde_json::Value> = HashMap::new();
+        let ctx = extract_context_from_fields(&fields);
+        assert!(ctx.is_empty());
+    }
+
+    #[test]
+    fn test_extract_context_from_fields_non_string_values_skipped() {
+        let fields = HashMap::from([
+            ("project_id".to_string(), serde_json::json!(42)), // number, not string
+            ("session_id".to_string(), serde_json::json!(true)), // bool
+        ]);
+        let ctx = extract_context_from_fields(&fields);
+        assert!(ctx.is_empty(), "Non-string values should be skipped");
+    }
+
+    // ---------------------------------------------------------------
+    // SearchContext default
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_search_context_default() {
+        let ctx = SearchContext::default();
+        assert!(ctx.project_id.is_none());
+        assert!(ctx.session_id.is_none());
+    }
+
+    // ---------------------------------------------------------------
+    // BoostingRequest defaults
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_boosting_request_deserialize_defaults() {
+        let json = r#"{"recency_enabled": true}"#;
+        let req: BoostingRequest = serde_json::from_str(json).unwrap();
+        assert!(req.recency_enabled);
+        assert_eq!(req.recency_field, "timestamp"); // default
+        assert!((req.recency_decay_days - 30.0).abs() < 0.01); // default
+        assert!((req.context_boost - 1.5).abs() < 0.01); // default
+    }
+
+    // ---------------------------------------------------------------
+    // LuceneSearchRequest defaults
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_lucene_search_request_defaults() {
+        let json = r#"{"collection": "test", "query": "hello"}"#;
+        let req: LuceneSearchRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.collection, "test");
+        assert_eq!(req.query, "hello");
+        assert_eq!(req.limit, 10); // default_limit
+        assert_eq!(req.offset, 0);
+        assert!(req.facets.is_empty());
+        assert!(req.boosting.is_none());
+        assert!(req.merge_strategy.is_none());
+        assert!(!req.enable_semantic);
+        assert!(req.vector.is_none());
+    }
+}

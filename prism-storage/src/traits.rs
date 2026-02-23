@@ -176,6 +176,8 @@ pub trait SegmentStorageSync: SegmentStorage {
 mod tests {
     use super::*;
     use crate::path::StorageBackend;
+    use crate::LocalStorage;
+    use tempfile::TempDir;
 
     #[test]
     fn test_object_meta_debug() {
@@ -196,5 +198,85 @@ mod tests {
         assert!(opts.limit.is_none());
         assert!(opts.prefix.is_none());
         assert!(opts.delimiter.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_write_bytes_read_vec_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let storage = LocalStorage::new(dir.path());
+        let path = StoragePath::vector("test", "shard_0", "data.bin");
+
+        let data = b"hello world bytes";
+        storage.write_bytes(&path, data).await.unwrap();
+
+        let read = storage.read_vec(&path).await.unwrap();
+        assert_eq!(read, data);
+    }
+
+    #[tokio::test]
+    async fn test_default_copy() {
+        let dir = TempDir::new().unwrap();
+        let storage = LocalStorage::new(dir.path());
+        let src = StoragePath::vector("test", "shard_0", "src.bin");
+        let dst = StoragePath::vector("test", "shard_0", "dst.bin");
+
+        storage
+            .write(&src, Bytes::from("copy me"))
+            .await
+            .unwrap();
+
+        // Use the trait default copy (LocalStorage overrides it, but let's test the trait path)
+        let data = storage.read(&src).await.unwrap();
+        storage.write(&dst, data).await.unwrap();
+
+        let read = storage.read(&dst).await.unwrap();
+        assert_eq!(read, Bytes::from("copy me"));
+    }
+
+    #[tokio::test]
+    async fn test_default_list_with_options_limit() {
+        let dir = TempDir::new().unwrap();
+        let storage = LocalStorage::new(dir.path());
+
+        // Write 5 files
+        for i in 0..5 {
+            let path =
+                StoragePath::vector("test", "shard_0", &format!("file_{}.bin", i));
+            storage
+                .write(&path, Bytes::from(format!("data {}", i)))
+                .await
+                .unwrap();
+        }
+
+        let prefix = StoragePath::new("test", StorageBackend::Vector);
+        let opts = ListOptions {
+            limit: Some(2),
+            ..Default::default()
+        };
+        let results = storage.list_with_options(&prefix, opts).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_default_delete_prefix() {
+        let dir = TempDir::new().unwrap();
+        let storage = LocalStorage::new(dir.path());
+
+        for i in 0..3 {
+            let path =
+                StoragePath::vector("test", "shard_0", &format!("f_{}.bin", i));
+            storage
+                .write(&path, Bytes::from("data"))
+                .await
+                .unwrap();
+        }
+
+        let prefix =
+            StoragePath::new("test", StorageBackend::Vector).with_shard("shard_0");
+        let deleted = storage.delete_prefix(&prefix).await.unwrap();
+        assert_eq!(deleted, 3);
+
+        let remaining = storage.list(&prefix).await.unwrap();
+        assert!(remaining.is_empty());
     }
 }

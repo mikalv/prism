@@ -513,6 +513,41 @@ mod tests {
         assert_eq!(config.max_concurrent, 10);
         assert_eq!(config.max_retries, 3);
         assert!(!config.require_all_nodes);
+        assert_eq!(config.min_acknowledgements, 1);
+        assert_eq!(config.retry_delay_ms, 1000);
+    }
+
+    #[test]
+    fn test_propagation_config_serde_roundtrip() {
+        let config = PropagationConfig {
+            node_timeout_ms: 10000,
+            max_concurrent: 5,
+            max_retries: 2,
+            retry_delay_ms: 500,
+            require_all_nodes: true,
+            min_acknowledgements: 3,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: PropagationConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.node_timeout_ms, 10000);
+        assert_eq!(deserialized.max_concurrent, 5);
+        assert_eq!(deserialized.max_retries, 2);
+        assert_eq!(deserialized.retry_delay_ms, 500);
+        assert!(deserialized.require_all_nodes);
+        assert_eq!(deserialized.min_acknowledgements, 3);
+    }
+
+    #[test]
+    fn test_propagation_config_serde_defaults() {
+        // Deserialize from empty object - should use defaults
+        let config: PropagationConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(config.node_timeout_ms, 5000);
+        assert_eq!(config.max_concurrent, 10);
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.retry_delay_ms, 1000);
+        assert!(!config.require_all_nodes);
+        assert_eq!(config.min_acknowledgements, 1);
     }
 
     #[test]
@@ -521,7 +556,13 @@ mod tests {
             PropagationStatus::new("products", 1, vec!["node-1".into(), "node-2".into()]);
 
         assert!(!status.complete);
+        assert!(!status.success);
         assert_eq!(status.pending.len(), 2);
+        assert_eq!(status.collection, "products");
+        assert_eq!(status.version, 1);
+        assert!(status.started_at > 0);
+        assert!(status.completed_at.is_none());
+        assert!(status.error.is_none());
 
         status.succeeded.push("node-1".into());
         status.pending.retain(|n| n != "node-1");
@@ -531,5 +572,59 @@ mod tests {
         assert!(status.complete);
         assert!(status.success);
         assert!(status.completed_at.is_some());
+        assert!(status.error.is_none());
+    }
+
+    #[test]
+    fn test_propagation_status_failure() {
+        let mut status =
+            PropagationStatus::new("products", 2, vec!["node-1".into()]);
+
+        status.failed.push("node-1".into());
+        status.pending.clear();
+        status.mark_complete(false, Some("All nodes failed".to_string()));
+
+        assert!(status.complete);
+        assert!(!status.success);
+        assert_eq!(status.error, Some("All nodes failed".to_string()));
+        assert!(status.completed_at.is_some());
+        assert!(status.completed_at.unwrap() >= status.started_at);
+    }
+
+    #[test]
+    fn test_propagation_status_empty_nodes() {
+        let status = PropagationStatus::new("test", 1, vec![]);
+        assert!(status.pending.is_empty());
+        assert!(status.succeeded.is_empty());
+        assert!(status.failed.is_empty());
+    }
+
+    #[test]
+    fn test_propagation_event_variants() {
+        // Verify all PropagationEvent variants can be constructed
+        let _started = PropagationEvent::Started {
+            collection: "products".into(),
+            version: 1,
+            target_nodes: vec!["node-1".into()],
+        };
+
+        let _acked = PropagationEvent::NodeAcknowledged {
+            collection: "products".into(),
+            version: 1,
+            node_id: "node-1".into(),
+        };
+
+        let _failed = PropagationEvent::NodeFailed {
+            collection: "products".into(),
+            version: 1,
+            node_id: "node-1".into(),
+            error: "timeout".into(),
+        };
+
+        let _completed = PropagationEvent::Completed {
+            collection: "products".into(),
+            version: 1,
+            success: true,
+        };
     }
 }

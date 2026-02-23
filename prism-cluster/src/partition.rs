@@ -734,4 +734,546 @@ mod tests {
             ConflictResolution::LastWriteWins
         );
     }
+
+    // --- PartitionState tests ---
+
+    #[test]
+    fn test_partition_state_healthy_variants() {
+        let state = PartitionState::Healthy { node_count: 5 };
+        assert!(state.is_healthy());
+        assert!(state.has_quorum());
+        assert_eq!(state.as_str(), "healthy");
+    }
+
+    #[test]
+    fn test_partition_state_partitioned_with_quorum() {
+        let state = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into(), "n2".into(), "n3".into()],
+            unreachable_nodes: vec!["n4".into(), "n5".into()],
+            has_quorum: true,
+            detected_at: 12345,
+        };
+        assert!(!state.is_healthy());
+        assert!(state.has_quorum());
+        assert_eq!(state.as_str(), "partitioned");
+    }
+
+    #[test]
+    fn test_partition_state_partitioned_without_quorum() {
+        let state = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into(), "n4".into()],
+            has_quorum: false,
+            detected_at: 12345,
+        };
+        assert!(!state.is_healthy());
+        assert!(!state.has_quorum());
+    }
+
+    #[test]
+    fn test_partition_state_healing() {
+        let state = PartitionState::Healing {
+            reconnected_nodes: vec!["n1".into(), "n2".into()],
+            conflicts_pending: 3,
+            started_at: 12345,
+        };
+        assert!(!state.is_healthy());
+        assert!(state.has_quorum()); // Healing implies quorum restored
+        assert_eq!(state.as_str(), "healing");
+    }
+
+    // --- PartitionError Display ---
+
+    #[test]
+    fn test_partition_error_no_quorum_display() {
+        let err = PartitionError::NoQuorum {
+            alive: 1,
+            required: 3,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("No quorum"));
+        assert!(msg.contains("1 alive"));
+        assert!(msg.contains("3 required"));
+    }
+
+    #[test]
+    fn test_partition_error_write_rejected_display() {
+        let err = PartitionError::WriteRejected {
+            reason: "no quorum".to_string(),
+        };
+        assert!(err.to_string().contains("Write rejected"));
+        assert!(err.to_string().contains("no quorum"));
+    }
+
+    #[test]
+    fn test_partition_error_read_rejected_display() {
+        let err = PartitionError::ReadRejected {
+            reason: "partition policy".to_string(),
+        };
+        assert!(err.to_string().contains("Read rejected"));
+    }
+
+    #[test]
+    fn test_partition_error_node_unreachable_display() {
+        let err = PartitionError::NodeUnreachable {
+            node_id: "node-42".to_string(),
+        };
+        assert!(err.to_string().contains("node-42"));
+    }
+
+    #[test]
+    fn test_partition_error_is_std_error() {
+        let err = PartitionError::NoQuorum {
+            alive: 0,
+            required: 3,
+        };
+        // Verify it implements std::error::Error
+        let _: &dyn std::error::Error = &err;
+    }
+
+    // --- is_node_reachable tests ---
+
+    #[test]
+    fn test_is_node_reachable_healthy() {
+        let (_, detector) = make_detector();
+        // Healthy state means all nodes reachable
+        assert!(detector.is_node_reachable("any-node"));
+    }
+
+    #[test]
+    fn test_is_node_reachable_partitioned() {
+        let (_, detector) = make_detector();
+
+        // Manually set partitioned state
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["node-1".to_string(), "node-2".to_string()],
+            unreachable_nodes: vec!["node-3".to_string()],
+            has_quorum: true,
+            detected_at: 0,
+        };
+
+        assert!(detector.is_node_reachable("node-1"));
+        assert!(detector.is_node_reachable("node-2"));
+        assert!(!detector.is_node_reachable("node-3"));
+        assert!(!detector.is_node_reachable("node-999"));
+    }
+
+    #[test]
+    fn test_is_node_reachable_healing() {
+        let (_, detector) = make_detector();
+
+        *detector.state.write() = PartitionState::Healing {
+            reconnected_nodes: vec!["node-1".to_string()],
+            conflicts_pending: 0,
+            started_at: 0,
+        };
+
+        assert!(detector.is_node_reachable("node-1"));
+        assert!(!detector.is_node_reachable("node-2"));
+    }
+
+    // --- reachable_nodes / unreachable_nodes ---
+
+    #[test]
+    fn test_reachable_nodes_no_nodes() {
+        let (_, detector) = make_detector();
+        let nodes = detector.reachable_nodes();
+        assert!(nodes.is_empty());
+    }
+
+    #[test]
+    fn test_reachable_nodes_with_registered_nodes() {
+        let (health_checker, detector) = make_detector();
+        health_checker.register_node("node-1");
+        health_checker.register_node("node-2");
+
+        // All registered nodes start as Alive
+        let reachable = detector.reachable_nodes();
+        assert_eq!(reachable.len(), 2);
+
+        let unreachable = detector.unreachable_nodes();
+        assert!(unreachable.is_empty());
+    }
+
+    // --- can_accept_writes ---
+
+    #[test]
+    fn test_can_accept_writes_healthy() {
+        let (_, detector) = make_detector();
+        assert!(detector.can_accept_writes());
+    }
+
+    #[test]
+    fn test_can_accept_writes_partitioned_with_quorum() {
+        let (_, detector) = make_detector();
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into(), "n2".into()],
+            unreachable_nodes: vec!["n3".into()],
+            has_quorum: true,
+            detected_at: 0,
+        };
+        assert!(detector.can_accept_writes());
+    }
+
+    #[test]
+    fn test_can_accept_writes_partitioned_no_quorum_readonly() {
+        // Default partition behavior is ReadOnly, which rejects writes when no quorum
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::ReadOnly,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+        assert!(!detector.can_accept_writes());
+    }
+
+    #[test]
+    fn test_can_accept_writes_partitioned_no_quorum_serve_stale() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::ServeStale,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+        // ServeStale allows writes even without quorum
+        assert!(detector.can_accept_writes());
+    }
+
+    #[test]
+    fn test_can_accept_writes_healing() {
+        let (_, detector) = make_detector();
+        *detector.state.write() = PartitionState::Healing {
+            reconnected_nodes: vec!["n1".into()],
+            conflicts_pending: 0,
+            started_at: 0,
+        };
+        assert!(detector.can_accept_writes());
+    }
+
+    // --- can_serve_reads ---
+
+    #[test]
+    fn test_can_serve_reads_healthy() {
+        let (_, detector) = make_detector();
+        assert!(detector.can_serve_reads());
+    }
+
+    #[test]
+    fn test_can_serve_reads_partitioned_with_quorum() {
+        let (_, detector) = make_detector();
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into(), "n2".into()],
+            unreachable_nodes: vec!["n3".into()],
+            has_quorum: true,
+            detected_at: 0,
+        };
+        assert!(detector.can_serve_reads());
+    }
+
+    #[test]
+    fn test_can_serve_reads_partitioned_no_quorum_reject_all() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::RejectAll,
+            allow_stale_reads: false,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+        assert!(!detector.can_serve_reads());
+    }
+
+    #[test]
+    fn test_can_serve_reads_partitioned_no_quorum_read_only_stale_allowed() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::ReadOnly,
+            allow_stale_reads: true,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+        // ReadOnly + allow_stale_reads = reads allowed
+        assert!(detector.can_serve_reads());
+    }
+
+    #[test]
+    fn test_can_serve_reads_partitioned_no_quorum_read_only_stale_disallowed() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::ReadOnly,
+            allow_stale_reads: false,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+        assert!(!detector.can_serve_reads());
+    }
+
+    #[test]
+    fn test_can_serve_reads_healing() {
+        let (_, detector) = make_detector();
+        *detector.state.write() = PartitionState::Healing {
+            reconnected_nodes: vec![],
+            conflicts_pending: 0,
+            started_at: 0,
+        };
+        assert!(detector.can_serve_reads());
+    }
+
+    // --- PartitionAwareOp tests ---
+
+    #[test]
+    fn test_partition_aware_op_require_quorum_toggle() {
+        let (health_checker, detector) = make_detector();
+        health_checker.register_node("self");
+
+        let op = PartitionAwareOp::new(&detector).require_quorum(false);
+        assert!(op.can_write().is_ok());
+    }
+
+    #[test]
+    fn test_partition_aware_op_allow_stale_toggle() {
+        let (health_checker, detector) = make_detector();
+        health_checker.register_node("self");
+
+        let op = PartitionAwareOp::new(&detector).allow_stale(true);
+        assert!(op.can_read().is_ok());
+    }
+
+    #[test]
+    fn test_partition_aware_op_can_write_no_quorum() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            min_nodes_for_write: WriteQuorum::Count(3),
+            partition_behavior: PartitionBehavior::ReadOnly,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            Arc::clone(&health_checker),
+        );
+
+        // Register only 1 node, quorum requires 3
+        health_checker.register_node("node-1");
+
+        let op = PartitionAwareOp::new(&detector).require_quorum(true);
+        let result = op.can_write();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PartitionError::NoQuorum { alive, required } => {
+                assert_eq!(alive, 1);
+                assert_eq!(required, 3);
+            }
+            _ => panic!("Expected NoQuorum error"),
+        }
+    }
+
+    #[test]
+    fn test_partition_aware_op_can_read_rejected_but_stale_allowed() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::RejectAll,
+            allow_stale_reads: false,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        // Put into partitioned state with no quorum
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+
+        // With allow_stale(true) override, reads should succeed even when detector says no
+        let op = PartitionAwareOp::new(&detector).allow_stale(true);
+        assert!(op.can_read().is_ok());
+    }
+
+    #[test]
+    fn test_partition_aware_op_can_read_rejected_stale_not_allowed() {
+        let health_config = HealthConfig::default();
+        let cluster_config = ClusterConfig::default();
+        let consistency_config = ConsistencyConfig {
+            partition_behavior: PartitionBehavior::RejectAll,
+            allow_stale_reads: false,
+            ..Default::default()
+        };
+        let cluster_state = Arc::new(ClusterState::new());
+        let health_checker = Arc::new(HealthChecker::new(
+            health_config,
+            cluster_config.clone(),
+            cluster_state,
+        ));
+        let detector = PartitionDetector::new(
+            consistency_config,
+            cluster_config,
+            health_checker,
+        );
+
+        *detector.state.write() = PartitionState::Partitioned {
+            reachable_nodes: vec!["n1".into()],
+            unreachable_nodes: vec!["n2".into(), "n3".into()],
+            has_quorum: false,
+            detected_at: 0,
+        };
+
+        let op = PartitionAwareOp::new(&detector).allow_stale(false);
+        let result = op.can_read();
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PartitionError::ReadRejected { reason } => {
+                assert!(reason.contains("does not allow reads"));
+            }
+            _ => panic!("Expected ReadRejected error"),
+        }
+    }
+
+    // --- subscribe ---
+
+    #[test]
+    fn test_detector_subscribe() {
+        let (_, detector) = make_detector();
+        let _rx = detector.subscribe();
+        // Verify we can subscribe without panic
+    }
+
+    // --- config accessor ---
+
+    #[test]
+    fn test_detector_config() {
+        let (_, detector) = make_detector();
+        let config = detector.config();
+        assert_eq!(config.min_nodes_for_write, WriteQuorum::Quorum);
+    }
+
+    // --- WriteQuorum edge cases ---
+
+    #[test]
+    fn test_write_quorum_one_zero_total() {
+        // With 0 total nodes, One still requires 1
+        assert!(!WriteQuorum::One.is_satisfied(0, 0));
+        assert_eq!(WriteQuorum::One.min_nodes(0), 1);
+    }
+
+    #[test]
+    fn test_write_quorum_all_zero() {
+        assert!(WriteQuorum::All.is_satisfied(0, 0));
+        assert_eq!(WriteQuorum::All.min_nodes(0), 0);
+    }
+
+    #[test]
+    fn test_write_quorum_quorum_single_node() {
+        // 1 total, quorum = 1 > 0 = true
+        assert!(WriteQuorum::Quorum.is_satisfied(1, 1));
+        assert_eq!(WriteQuorum::Quorum.min_nodes(1), 1);
+    }
 }

@@ -394,6 +394,10 @@ fn detect_from_keywords(text: &str) -> Option<Language> {
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Extension detection tests — covers all cfg-gated branches
+    // ========================================================================
+
     #[test]
     fn test_extension_rust() {
         assert_eq!(language_from_extension("rs"), Some(Language::Rust));
@@ -402,12 +406,123 @@ mod tests {
     #[test]
     fn test_extension_python() {
         assert_eq!(language_from_extension("py"), Some(Language::Python));
+        assert_eq!(language_from_extension("pyw"), Some(Language::Python));
+        assert_eq!(language_from_extension("pyi"), Some(Language::Python));
+    }
+
+    #[test]
+    fn test_extension_javascript() {
+        assert_eq!(language_from_extension("js"), Some(Language::JavaScript));
+        assert_eq!(language_from_extension("jsx"), Some(Language::JavaScript));
+        assert_eq!(language_from_extension("mjs"), Some(Language::JavaScript));
+        assert_eq!(language_from_extension("cjs"), Some(Language::JavaScript));
+    }
+
+    #[test]
+    fn test_extension_typescript() {
+        assert_eq!(language_from_extension("ts"), Some(Language::TypeScript));
+        assert_eq!(language_from_extension("tsx"), Some(Language::TypeScript));
+        assert_eq!(language_from_extension("mts"), Some(Language::TypeScript));
+        assert_eq!(language_from_extension("cts"), Some(Language::TypeScript));
+    }
+
+    #[test]
+    fn test_extension_go() {
+        assert_eq!(language_from_extension("go"), Some(Language::Go));
+    }
+
+    #[test]
+    fn test_extension_c() {
+        assert_eq!(language_from_extension("c"), Some(Language::C));
+        assert_eq!(language_from_extension("h"), Some(Language::C));
+    }
+
+    #[test]
+    fn test_extension_cpp() {
+        assert_eq!(language_from_extension("cpp"), Some(Language::Cpp));
+        assert_eq!(language_from_extension("cc"), Some(Language::Cpp));
+        assert_eq!(language_from_extension("cxx"), Some(Language::Cpp));
+        assert_eq!(language_from_extension("hpp"), Some(Language::Cpp));
+        assert_eq!(language_from_extension("hxx"), Some(Language::Cpp));
+        assert_eq!(language_from_extension("hh"), Some(Language::Cpp));
+    }
+
+    #[test]
+    fn test_extension_ruby() {
+        assert_eq!(language_from_extension("rb"), Some(Language::Ruby));
+        assert_eq!(language_from_extension("rake"), Some(Language::Ruby));
+        assert_eq!(language_from_extension("gemspec"), Some(Language::Ruby));
+    }
+
+    #[test]
+    fn test_extension_elixir() {
+        assert_eq!(language_from_extension("ex"), Some(Language::Elixir));
+        assert_eq!(language_from_extension("exs"), Some(Language::Elixir));
+    }
+
+    #[test]
+    fn test_extension_erlang() {
+        assert_eq!(language_from_extension("erl"), Some(Language::Erlang));
+        assert_eq!(language_from_extension("hrl"), Some(Language::Erlang));
+    }
+
+    #[test]
+    fn test_extension_bash() {
+        assert_eq!(language_from_extension("sh"), Some(Language::Bash));
+        assert_eq!(language_from_extension("bash"), Some(Language::Bash));
+        assert_eq!(language_from_extension("zsh"), Some(Language::Bash));
+    }
+
+    #[test]
+    fn test_extension_yaml() {
+        assert_eq!(language_from_extension("yaml"), Some(Language::Yaml));
+        assert_eq!(language_from_extension("yml"), Some(Language::Yaml));
+    }
+
+    #[test]
+    fn test_extension_toml() {
+        assert_eq!(language_from_extension("toml"), Some(Language::Toml));
+    }
+
+    #[test]
+    fn test_extension_json() {
+        assert_eq!(language_from_extension("json"), Some(Language::Json));
+        assert_eq!(language_from_extension("jsonl"), Some(Language::Json));
+    }
+
+    #[test]
+    fn test_extension_html() {
+        assert_eq!(language_from_extension("html"), Some(Language::Html));
+        assert_eq!(language_from_extension("htm"), Some(Language::Html));
+    }
+
+    #[test]
+    fn test_extension_sql() {
+        assert_eq!(language_from_extension("sql"), Some(Language::Sql));
+        assert_eq!(language_from_extension("ddl"), Some(Language::Sql));
+        assert_eq!(language_from_extension("dml"), Some(Language::Sql));
     }
 
     #[test]
     fn test_extension_unknown() {
         assert_eq!(language_from_extension("xyz"), None);
+        assert_eq!(language_from_extension(""), None);
+        assert_eq!(language_from_extension("pdf"), None);
+        assert_eq!(language_from_extension("docx"), None);
     }
+
+    #[test]
+    fn test_extension_case_insensitive() {
+        assert_eq!(language_from_extension("RS"), Some(Language::Rust));
+        assert_eq!(language_from_extension("Py"), Some(Language::Python));
+        assert_eq!(language_from_extension("JS"), Some(Language::JavaScript));
+        assert_eq!(language_from_extension("Go"), Some(Language::Go));
+        assert_eq!(language_from_extension("HTML"), Some(Language::Html));
+    }
+
+    // ========================================================================
+    // Shebang detection
+    // ========================================================================
 
     #[test]
     fn test_shebang_python() {
@@ -416,10 +531,51 @@ mod tests {
     }
 
     #[test]
+    fn test_shebang_python_no_env() {
+        let code = "#!/usr/bin/python\nimport os\n";
+        assert_eq!(language_from_content(code), Some(Language::Python));
+    }
+
+    #[test]
     fn test_shebang_bash() {
         let code = "#!/bin/bash\necho hello\n";
         assert_eq!(language_from_content(code), Some(Language::Bash));
     }
+
+    #[test]
+    fn test_shebang_sh() {
+        let code = "#!/bin/sh\necho hello\n";
+        assert_eq!(language_from_content(code), Some(Language::Bash));
+    }
+
+    #[test]
+    fn test_shebang_ruby() {
+        let code = "#!/usr/bin/env ruby\nputs 'hello'\n";
+        assert_eq!(language_from_content(code), Some(Language::Ruby));
+    }
+
+    #[test]
+    fn test_shebang_elixir() {
+        let code = "#!/usr/bin/env elixir\nIO.puts \"hello\"\n";
+        assert_eq!(language_from_content(code), Some(Language::Elixir));
+    }
+
+    #[test]
+    fn test_shebang_escript() {
+        let code = "#!/usr/bin/env escript\nmain(_) -> ok.\n";
+        assert_eq!(language_from_content(code), Some(Language::Erlang));
+    }
+
+    #[test]
+    fn test_no_shebang() {
+        // If there is no shebang and no recognizable keywords, should return None
+        let code = "some plain text without shebang or keywords";
+        assert_eq!(language_from_content(code), None);
+    }
+
+    // ========================================================================
+    // Keyword detection for various languages
+    // ========================================================================
 
     #[test]
     fn test_keywords_rust() {
@@ -432,6 +588,43 @@ pub fn process(data: &[u8]) -> Result<(), Error> {
 }
 "#;
         assert_eq!(language_from_content(code), Some(Language::Rust));
+    }
+
+    #[test]
+    fn test_keywords_python() {
+        let code = r#"
+class MyClass:
+    def __init__(self, name):
+        self.name = name
+
+if __name__ == "__main__":
+    obj = MyClass("test")
+"#;
+        assert_eq!(language_from_content(code), Some(Language::Python));
+    }
+
+    #[test]
+    fn test_keywords_javascript_commonjs() {
+        let code = r#"
+const express = require('express');
+const app = express();
+module.exports = app;
+console.log("started");
+"#;
+        assert_eq!(language_from_content(code), Some(Language::JavaScript));
+    }
+
+    #[test]
+    fn test_keywords_typescript() {
+        let code = r#"
+export interface UserService {
+    getUser(id: string): Promise<User>;
+    setName(name: string): void;
+}
+
+export type Status = "active" | "inactive";
+"#;
+        assert_eq!(language_from_content(code), Some(Language::TypeScript));
     }
 
     #[test]
@@ -450,11 +643,60 @@ func main() {
     }
 
     #[test]
+    fn test_keywords_c() {
+        let code = r#"
+#include <stdio.h>
+
+int main(int argc, char *argv[]) {
+    printf("Hello world\n");
+    void *p = malloc(128);
+    return 0;
+}
+"#;
+        assert_eq!(language_from_content(code), Some(Language::C));
+    }
+
+    #[test]
+    fn test_keywords_cpp() {
+        let code = r#"
+#include <vector>
+
+namespace mylib {
+    template<typename T>
+    class Container {
+    public:
+        std::vector<T> items;
+    };
+}
+"#;
+        assert_eq!(language_from_content(code), Some(Language::Cpp));
+    }
+
+    #[test]
+    fn test_keywords_ruby() {
+        let code = r#"
+require 'json'
+require_relative 'helpers'
+
+class Dog
+  attr_accessor :name, :breed
+
+  def bark
+    puts "Woof!"
+  end
+end
+"#;
+        assert_eq!(language_from_content(code), Some(Language::Ruby));
+    }
+
+    #[test]
     fn test_keywords_elixir() {
         let code = r#"
 defmodule MyApp.Router do
   use Phoenix.Router
 
+  @doc "Index action"
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     conn |> render("index.html")
   end
@@ -464,19 +706,108 @@ end
     }
 
     #[test]
-    fn test_no_detection() {
-        assert_eq!(language_from_content(""), None);
-        assert_eq!(language_from_content("hello world"), None);
+    fn test_keywords_erlang() {
+        let code = r#"
+-module(my_server).
+-export([start/0, handle/1]).
+
+start() ->
+    spawn(fun() -> loop() end).
+"#;
+        assert_eq!(language_from_content(code), Some(Language::Erlang));
     }
 
     #[test]
-    fn test_extension_sql() {
-        assert_eq!(language_from_extension("sql"), Some(Language::Sql));
+    fn test_keywords_html() {
+        let code = r#"
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Test</title></head>
+<body><div>Hello</div></body>
+</html>
+"#;
+        assert_eq!(language_from_content(code), Some(Language::Html));
+    }
+
+    #[test]
+    fn test_keywords_yaml() {
+        let code = "---\nname: test\nversion: 1.0\n";
+        assert_eq!(language_from_content(code), Some(Language::Yaml));
+    }
+
+    #[test]
+    fn test_keywords_json() {
+        let code = r#"{"name": "test", "version": 1}"#;
+        assert_eq!(language_from_content(code), Some(Language::Json));
+    }
+
+    #[test]
+    fn test_keywords_toml() {
+        let code = r#"
+[package]
+name = "my-crate"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+"#;
+        assert_eq!(language_from_content(code), Some(Language::Toml));
     }
 
     #[test]
     fn test_keywords_sql() {
         let code = "SELECT id, name FROM users WHERE active = true ORDER BY name;";
         assert_eq!(language_from_content(code), Some(Language::Sql));
+    }
+
+    #[test]
+    fn test_keywords_sql_ddl() {
+        let code = "CREATE TABLE users (id INT, name VARCHAR(255));";
+        assert_eq!(language_from_content(code), Some(Language::Sql));
+    }
+
+    #[test]
+    fn test_keywords_sql_join() {
+        let code = "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id WHERE o.total > 100;";
+        assert_eq!(language_from_content(code), Some(Language::Sql));
+    }
+
+    // ========================================================================
+    // Edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_no_detection() {
+        assert_eq!(language_from_content(""), None);
+        assert_eq!(language_from_content("hello world"), None);
+    }
+
+    #[test]
+    fn test_empty_input() {
+        assert_eq!(language_from_extension(""), None);
+        assert_eq!(language_from_content(""), None);
+    }
+
+    #[test]
+    fn test_long_content_truncation() {
+        // Ensure detection works even with content longer than 4KB
+        let mut code = String::new();
+        for _ in 0..200 {
+            code.push_str("use std::collections::HashMap;\n");
+        }
+        code.push_str("pub fn main() {}\nimpl Foo for Bar {}\nlet mut x = 5;\n");
+        assert!(code.len() > 4096);
+        assert_eq!(language_from_content(&code), Some(Language::Rust));
+    }
+
+    #[test]
+    fn test_content_without_shebang_not_first_line() {
+        // Lines starting with # not on first line should not be treated as shebang
+        let code = "\n#!/usr/bin/env python\nimport sys\n";
+        // Shebang is not on first line so should not match
+        // Will fallback to keyword detection
+        let result = language_from_content(code);
+        // Not shebang-detected, might be keyword-detected or None
+        assert_ne!(result, None); // import keyword should score for Python
     }
 }

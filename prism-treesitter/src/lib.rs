@@ -190,3 +190,120 @@ pub fn register_tokenizers(manager: &TokenizerManager) {
         manager.register(&name, TreeSitterTokenizer::new(lang));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_language_all_returns_all_enabled() {
+        let all = Language::all();
+        // With default features, all 16 languages should be present
+        assert!(all.len() >= 16, "Expected at least 16 languages, got {}", all.len());
+    }
+
+    #[test]
+    fn test_language_name_all_variants() {
+        let expected_names: Vec<&str> = vec![
+            #[cfg(feature = "rust")]
+            "rust",
+            #[cfg(feature = "python")]
+            "python",
+            #[cfg(feature = "javascript")]
+            "javascript",
+            #[cfg(feature = "typescript")]
+            "typescript",
+            #[cfg(feature = "go")]
+            "go",
+            #[cfg(feature = "c")]
+            "c",
+            #[cfg(feature = "cpp")]
+            "cpp",
+            #[cfg(feature = "ruby")]
+            "ruby",
+            #[cfg(feature = "elixir")]
+            "elixir",
+            #[cfg(feature = "erlang")]
+            "erlang",
+            #[cfg(feature = "bash")]
+            "bash",
+            #[cfg(feature = "yaml")]
+            "yaml",
+            #[cfg(feature = "toml")]
+            "toml",
+            #[cfg(feature = "json")]
+            "json",
+            #[cfg(feature = "html")]
+            "html",
+            #[cfg(feature = "sql")]
+            "sql",
+        ];
+
+        let all = Language::all();
+        let names: Vec<&str> = all.iter().map(|l| l.name()).collect();
+        assert_eq!(names, expected_names);
+    }
+
+    #[test]
+    fn test_language_name_unique() {
+        let all = Language::all();
+        let names: Vec<&str> = all.iter().map(|l| l.name()).collect();
+        let mut unique = names.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(names.len(), unique.len(), "Language names must be unique");
+    }
+
+    #[test]
+    fn test_ts_language_valid_for_all() {
+        // Each language should produce a valid tree-sitter Language that can create a parser
+        for lang in Language::all() {
+            let ts_lang = lang.ts_language();
+            let mut parser = tree_sitter::Parser::new();
+            assert!(
+                parser.set_language(&ts_lang).is_ok(),
+                "Failed to set language for {:?}",
+                lang
+            );
+        }
+    }
+
+    #[test]
+    fn test_language_equality() {
+        #[cfg(feature = "rust")]
+        {
+            assert_eq!(Language::Rust, Language::Rust);
+            assert_ne!(Language::Rust, Language::Python);
+        }
+    }
+
+    #[test]
+    fn test_language_clone_copy() {
+        #[cfg(feature = "rust")]
+        {
+            let lang = Language::Rust;
+            let copied = lang;
+            let cloned = lang.clone();
+            assert_eq!(copied, cloned);
+        }
+    }
+
+    #[test]
+    fn test_register_tokenizers_no_panic() {
+        let manager = TokenizerManager::default();
+        register_tokenizers(&manager);
+
+        // Verify the auto-detect tokenizer was registered
+        assert!(manager.get("code-treesitter").is_some());
+
+        // Verify per-language tokenizers
+        for lang in Language::all() {
+            let name = format!("code-treesitter-{}", lang.name());
+            assert!(
+                manager.get(&name).is_some(),
+                "Tokenizer {} not registered",
+                name
+            );
+        }
+    }
+}

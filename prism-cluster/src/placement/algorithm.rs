@@ -521,4 +521,371 @@ mod tests {
         // Empty node should have higher score
         assert!(score_empty > score_with_shards);
     }
+
+    #[test]
+    fn test_place_replicas_zero_replication() {
+        let nodes = vec![make_node("node-1", "zone-a", 0)];
+        let strategy = PlacementStrategy::default();
+        let result = place_replicas("shard-1", 0, &nodes, &[], &strategy);
+        assert!(matches!(
+            result,
+            Err(PlacementError::InsufficientNodes { needed: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn test_place_replicas_no_nodes() {
+        let nodes: Vec<NodeInfo> = vec![];
+        let strategy = PlacementStrategy::default();
+        let result = place_replicas("shard-1", 1, &nodes, &[], &strategy);
+        assert!(matches!(result, Err(PlacementError::NoHealthyNodes)));
+    }
+
+    #[test]
+    fn test_place_replicas_all_unhealthy() {
+        let mut node = make_node("node-1", "zone-a", 0);
+        node.healthy = false;
+        let nodes = vec![node];
+        let strategy = PlacementStrategy::default();
+        let result = place_replicas("shard-1", 1, &nodes, &[], &strategy);
+        assert!(matches!(result, Err(PlacementError::NoHealthyNodes)));
+    }
+
+    #[test]
+    fn test_place_replicas_insufficient_nodes() {
+        let nodes = vec![make_node("node-1", "zone-a", 0)];
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::None,
+            ..Default::default()
+        };
+        let result = place_replicas("shard-1", 3, &nodes, &[], &strategy);
+        assert!(matches!(
+            result,
+            Err(PlacementError::InsufficientNodes { needed: 3, available: 1 })
+        ));
+    }
+
+    #[test]
+    fn test_place_replicas_with_required_attributes() {
+        let mut node1 = make_node("node-1", "zone-a", 0);
+        node1.topology.attributes.insert("tier".to_string(), "hot".to_string());
+        let node2 = make_node("node-2", "zone-b", 0);
+        // node2 doesn't have the required attribute
+
+        let nodes = vec![node1, node2];
+
+        let mut required = HashMap::new();
+        required.insert("tier".to_string(), "hot".to_string());
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::None,
+            required_attributes: required,
+            ..Default::default()
+        };
+
+        let result = place_replicas("shard-1", 1, &nodes, &[], &strategy);
+        assert!(result.is_ok());
+        let decision = result.unwrap();
+        assert_eq!(decision.primary_node, "node-1");
+    }
+
+    #[test]
+    fn test_place_replicas_required_attributes_none_match() {
+        let node1 = make_node("node-1", "zone-a", 0);
+
+        let mut required = HashMap::new();
+        required.insert("tier".to_string(), "hot".to_string());
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::None,
+            required_attributes: required,
+            ..Default::default()
+        };
+
+        let result = place_replicas("shard-1", 1, &[node1], &[], &strategy);
+        assert!(matches!(result, Err(PlacementError::NoHealthyNodes)));
+    }
+
+    #[test]
+    fn test_place_replicas_with_preferred_attributes() {
+        let mut node1 = make_node("node-1", "zone-a", 0);
+        node1.topology.attributes.insert("tier".to_string(), "hot".to_string());
+        let node2 = make_node("node-2", "zone-b", 0);
+
+        let mut preferred = HashMap::new();
+        preferred.insert("tier".to_string(), "hot".to_string());
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::Zone,
+            preferred_attributes: preferred,
+            ..Default::default()
+        };
+
+        let result = place_replicas("shard-1", 1, &[node1, node2], &[], &strategy);
+        assert!(result.is_ok());
+        // node-1 should get bonus score for preferred attribute
+        let decision = result.unwrap();
+        assert_eq!(decision.primary_node, "node-1");
+    }
+
+    #[test]
+    fn test_place_replicas_region_spread() {
+        let mut node1 = make_node("node-1", "zone-a", 0);
+        node1.topology.region = Some("us-east-1".to_string());
+        let mut node2 = make_node("node-2", "zone-b", 0);
+        node2.topology.region = Some("us-west-2".to_string());
+        let mut node3 = make_node("node-3", "zone-c", 0);
+        node3.topology.region = Some("eu-west-1".to_string());
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::Region,
+            ..Default::default()
+        };
+
+        let result = place_replicas("shard-1", 3, &[node1, node2, node3], &[], &strategy);
+        assert!(result.is_ok());
+        let decision = result.unwrap();
+        assert_eq!(decision.replica_nodes.len(), 2);
+    }
+
+    #[test]
+    fn test_place_replicas_rack_spread() {
+        let mut node1 = make_node("node-1", "zone-a", 0);
+        node1.topology.rack = Some("rack-1".to_string());
+        let mut node2 = make_node("node-2", "zone-a", 0);
+        node2.topology.rack = Some("rack-2".to_string());
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::Rack,
+            ..Default::default()
+        };
+
+        let result = place_replicas("shard-1", 2, &[node1, node2], &[], &strategy);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_place_replicas_rack_spread_insufficient() {
+        let mut node1 = make_node("node-1", "zone-a", 0);
+        node1.topology.rack = Some("rack-1".to_string());
+        let mut node2 = make_node("node-2", "zone-a", 0);
+        node2.topology.rack = Some("rack-1".to_string()); // Same rack
+        let mut node3 = make_node("node-3", "zone-a", 0);
+        node3.topology.rack = Some("rack-1".to_string()); // Same rack
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::Rack,
+            ..Default::default()
+        };
+
+        // 3 nodes, all same rack, need 3 replicas across racks -> insufficient racks
+        let result = place_replicas("shard-1", 3, &[node1, node2, node3], &[], &strategy);
+        assert!(matches!(result, Err(PlacementError::InsufficientRacks { .. })));
+    }
+
+    #[test]
+    fn test_place_replicas_no_spread() {
+        let nodes = vec![
+            make_node("node-1", "zone-a", 0),
+            make_node("node-2", "zone-a", 0),
+            make_node("node-3", "zone-a", 0),
+        ];
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::None,
+            ..Default::default()
+        };
+
+        // Should succeed even though all same zone
+        let result = place_replicas("shard-1", 3, &nodes, &[], &strategy);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_score_node_disk_usage_factor() {
+        let mut node = make_node("node-1", "zone-a", 0);
+        node.disk_used_bytes = 50_000_000_000;
+        node.disk_total_bytes = 100_000_000_000;
+
+        let strategy = PlacementStrategy {
+            balance_by: vec![BalanceFactor::DiskUsage],
+            ..Default::default()
+        };
+
+        let score = score_node(&node, &[], &strategy);
+        // Score should be reduced due to disk usage
+        assert!(score < 100.0);
+    }
+
+    #[test]
+    fn test_score_node_index_size_factor() {
+        let mut node = make_node("node-1", "zone-a", 0);
+        node.index_size_bytes = 5 * 1024 * 1024 * 1024; // 5GB
+
+        let strategy = PlacementStrategy {
+            balance_by: vec![BalanceFactor::IndexSize],
+            ..Default::default()
+        };
+
+        let score = score_node(&node, &[], &strategy);
+        assert!(score < 100.0);
+    }
+
+    #[test]
+    fn test_score_node_ssd_preference() {
+        let mut ssd_node = make_node("node-1", "zone-a", 0);
+        ssd_node.topology.attributes.insert("disk_type".to_string(), "ssd".to_string());
+        let hdd_node = make_node("node-2", "zone-b", 0);
+
+        let strategy = PlacementStrategy {
+            balance_by: vec![BalanceFactor::PreferSsd],
+            ..Default::default()
+        };
+
+        let ssd_score = score_node(&ssd_node, &[], &strategy);
+        let hdd_score = score_node(&hdd_node, &[], &strategy);
+        assert!(ssd_score > hdd_score);
+    }
+
+    #[test]
+    fn test_score_node_minimum_zero() {
+        let mut node = make_node("node-1", "zone-a", 0);
+        node.disk_used_bytes = 99_000_000_000;
+        node.disk_total_bytes = 100_000_000_000;
+        node.index_size_bytes = 100 * 1024 * 1024 * 1024; // 100GB
+
+        let strategy = PlacementStrategy {
+            balance_by: vec![
+                BalanceFactor::DiskUsage,
+                BalanceFactor::IndexSize,
+                BalanceFactor::ShardCount,
+            ],
+            ..Default::default()
+        };
+
+        // Even with very high usage, score should not go below 0.0
+        let assignments: Vec<ShardAssignment> = (0..100)
+            .map(|i| ShardAssignment::new("test", i, "node-1"))
+            .collect();
+        let score = score_node(&node, &assignments, &strategy);
+        assert!(score >= 0.0);
+    }
+
+    #[test]
+    fn test_find_rebalance_target_basic() {
+        let nodes = vec![
+            make_node("node-1", "zone-a", 0),
+            make_node("node-2", "zone-b", 0),
+        ];
+
+        let shard = ShardAssignment::new("test", 0, "node-1");
+        let strategy = PlacementStrategy::default();
+
+        let result = find_rebalance_target(&shard, &nodes, &[], &strategy);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "node-2");
+    }
+
+    #[test]
+    fn test_find_rebalance_target_all_unhealthy() {
+        let mut node = make_node("node-2", "zone-b", 0);
+        node.healthy = false;
+
+        let shard = ShardAssignment::new("test", 0, "node-1");
+        let strategy = PlacementStrategy::default();
+
+        let result = find_rebalance_target(&shard, &[node], &[], &strategy);
+        assert!(matches!(result, Err(PlacementError::NoHealthyNodes)));
+    }
+
+    #[test]
+    fn test_find_rebalance_target_no_candidates() {
+        // Only node that has the shard - no other candidates
+        let nodes = vec![make_node("node-1", "zone-a", 0)];
+        let shard = ShardAssignment::new("test", 0, "node-1");
+        let strategy = PlacementStrategy::default();
+
+        let result = find_rebalance_target(&shard, &nodes, &[], &strategy);
+        assert!(matches!(result, Err(PlacementError::NoHealthyNodes)));
+    }
+
+    #[test]
+    fn test_find_rebalance_target_prefers_different_zone() {
+        let nodes = vec![
+            make_node("node-1", "zone-a", 0),
+            make_node("node-2", "zone-a", 0), // Same zone as source
+            make_node("node-3", "zone-b", 0), // Different zone
+        ];
+
+        let shard = ShardAssignment::new("test", 0, "node-1");
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::Zone,
+            ..Default::default()
+        };
+
+        let result = find_rebalance_target(&shard, &nodes, &[], &strategy);
+        assert!(result.is_ok());
+        // Should prefer node-3 (different zone)
+        assert_eq!(result.unwrap(), "node-3");
+    }
+
+    #[test]
+    fn test_find_rebalance_target_selects_least_loaded() {
+        let nodes = vec![
+            make_node("node-2", "zone-b", 5),
+            make_node("node-3", "zone-c", 0),
+        ];
+
+        // Existing assignments on node-2
+        let assignments: Vec<ShardAssignment> = (0..5)
+            .map(|i| ShardAssignment::new("test", i, "node-2"))
+            .collect();
+
+        let shard = ShardAssignment::new("other", 0, "node-1");
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::None,
+            balance_by: vec![BalanceFactor::ShardCount],
+            ..Default::default()
+        };
+
+        let result = find_rebalance_target(&shard, &nodes, &assignments, &strategy);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "node-3");
+    }
+
+    #[test]
+    fn test_placement_decision_fields() {
+        let nodes = vec![
+            make_node("node-1", "zone-a", 0),
+            make_node("node-2", "zone-b", 0),
+        ];
+
+        let strategy = PlacementStrategy {
+            spread_across: SpreadLevel::Zone,
+            ..Default::default()
+        };
+
+        let result = place_replicas("test-shard-0", 2, &nodes, &[], &strategy);
+        assert!(result.is_ok());
+        let decision = result.unwrap();
+        assert_eq!(decision.shard_id, "test-shard-0");
+        assert!(!decision.reason.is_empty());
+        assert_eq!(decision.replica_nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_placement_error_display() {
+        let err = PlacementError::InsufficientNodes {
+            needed: 3,
+            available: 1,
+        };
+        assert!(err.to_string().contains("3"));
+        assert!(err.to_string().contains("1"));
+
+        let err = PlacementError::NoHealthyNodes;
+        assert!(err.to_string().contains("No healthy nodes"));
+
+        let err = PlacementError::NodeNotFound("n1".to_string());
+        assert!(err.to_string().contains("n1"));
+    }
 }

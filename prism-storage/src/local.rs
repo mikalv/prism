@@ -506,4 +506,141 @@ mod tests {
         let remaining = storage.list(&prefix).await.unwrap();
         assert!(remaining.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_rename_not_found() {
+        let (storage, _temp) = create_test_storage().await;
+        let from = StoragePath::vector("test", "shard_0", "missing.bin");
+        let to = StoragePath::vector("test", "shard_0", "new.bin");
+
+        let result = storage.rename(&from, &to).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_head_not_found() {
+        let (storage, _temp) = create_test_storage().await;
+        let path = StoragePath::vector("test", "shard_0", "missing.bin");
+
+        let result = storage.head(&path).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_copy_not_found() {
+        let (storage, _temp) = create_test_storage().await;
+        let from = StoragePath::vector("test", "shard_0", "missing.bin");
+        let to = StoragePath::vector("test", "shard_0", "copy.bin");
+
+        let result = storage.copy(&from, &to).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
+    }
+
+    #[test]
+    fn test_sync_read_not_found() {
+        let temp = TempDir::new().unwrap();
+        let storage = LocalStorage::new(temp.path());
+        let path = StoragePath::vector("test", "shard_0", "missing.bin");
+
+        let result = storage.read_sync(&path);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
+    }
+
+    #[test]
+    fn test_sync_rename_not_found() {
+        let temp = TempDir::new().unwrap();
+        let storage = LocalStorage::new(temp.path());
+        let from = StoragePath::vector("test", "shard_0", "missing.bin");
+        let to = StoragePath::vector("test", "shard_0", "new.bin");
+
+        let result = storage.rename_sync(&from, &to);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
+    }
+
+    #[test]
+    fn test_backend_name() {
+        let temp = TempDir::new().unwrap();
+        let storage = LocalStorage::new(temp.path());
+        assert_eq!(storage.backend_name(), "local");
+    }
+
+    #[test]
+    fn test_base_path() {
+        let temp = TempDir::new().unwrap();
+        let storage = LocalStorage::new(temp.path());
+        assert_eq!(storage.base_path(), temp.path());
+    }
+
+    #[tokio::test]
+    async fn test_list_empty_prefix() {
+        let (storage, _temp) = create_test_storage().await;
+
+        storage
+            .write(
+                &StoragePath::vector("test", "shard_0", "a.bin"),
+                Bytes::from("a"),
+            )
+            .await
+            .unwrap();
+
+        let prefix = StoragePath::new("test", StorageBackend::Vector).with_shard("shard_0");
+        let results = storage.list(&prefix).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].size, 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_with_options_limit() {
+        let (storage, _temp) = create_test_storage().await;
+
+        for i in 0..5 {
+            storage
+                .write(
+                    &StoragePath::vector("test", "shard_0", &format!("f{}.bin", i)),
+                    Bytes::from("x"),
+                )
+                .await
+                .unwrap();
+        }
+
+        let prefix = StoragePath::new("test", StorageBackend::Vector);
+        let opts = ListOptions {
+            limit: Some(3),
+            ..Default::default()
+        };
+        let results = storage.list_with_options(&prefix, opts).await.unwrap();
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn test_sync_delete_idempotent() {
+        let temp = TempDir::new().unwrap();
+        let storage = LocalStorage::new(temp.path());
+        let path = StoragePath::vector("test", "shard_0", "missing.bin");
+        // Should not error
+        storage.delete_sync(&path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_overwrite() {
+        let (storage, _temp) = create_test_storage().await;
+        let path = StoragePath::vector("test", "shard_0", "data.bin");
+
+        storage
+            .write(&path, Bytes::from("version 1"))
+            .await
+            .unwrap();
+        storage
+            .write(&path, Bytes::from("version 2"))
+            .await
+            .unwrap();
+
+        let read = storage.read(&path).await.unwrap();
+        assert_eq!(read, Bytes::from("version 2"));
+    }
 }

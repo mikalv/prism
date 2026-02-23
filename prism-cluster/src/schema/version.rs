@@ -403,4 +403,279 @@ mod tests {
         assert!(!versioned.has_breaking_changes());
         assert_eq!(versioned.metadata.get("author"), Some(&"admin".to_string()));
     }
+
+    // --- SchemaVersion ---
+
+    #[test]
+    fn test_schema_version_default() {
+        let v = SchemaVersion::default();
+        assert_eq!(v.version(), 1);
+    }
+
+    #[test]
+    fn test_schema_version_display() {
+        let v = SchemaVersion::new(42);
+        assert_eq!(format!("{}", v), "v42");
+    }
+
+    #[test]
+    fn test_schema_version_next_chain() {
+        let v1 = SchemaVersion::new(1);
+        let v2 = v1.next();
+        let v3 = v2.next();
+        assert_eq!(v2.version(), 2);
+        assert_eq!(v3.version(), 3);
+        assert!(v3.is_newer_than(&v1));
+        assert!(v3.is_newer_than(&v2));
+        assert!(!v1.is_newer_than(&v3));
+    }
+
+    #[test]
+    fn test_schema_version_equal_not_newer() {
+        let v1 = SchemaVersion::new(5);
+        let v2 = SchemaVersion::new(5);
+        assert!(!v1.is_newer_than(&v2));
+        assert!(!v2.is_newer_than(&v1));
+    }
+
+    #[test]
+    fn test_schema_version_ord() {
+        let v1 = SchemaVersion::new(1);
+        let v3 = SchemaVersion::new(3);
+        assert!(v3 > v1);
+        assert!(v1 < v3);
+    }
+
+    #[test]
+    fn test_schema_version_serde() {
+        let v = SchemaVersion::new(10);
+        let json = serde_json::to_string(&v).unwrap();
+        let deserialized: SchemaVersion = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.version(), 10);
+    }
+
+    #[test]
+    fn test_schema_version_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(SchemaVersion::new(1));
+        set.insert(SchemaVersion::new(2));
+        set.insert(SchemaVersion::new(1)); // duplicate
+        assert_eq!(set.len(), 2);
+    }
+
+    // --- ChangeType ---
+
+    #[test]
+    fn test_change_type_is_additive() {
+        assert!(ChangeType::FieldAdded.is_additive());
+        assert!(ChangeType::FieldMadeOptional.is_additive());
+        assert!(ChangeType::IndexAdded.is_additive());
+        assert!(!ChangeType::FieldRemoved.is_additive());
+        assert!(!ChangeType::FieldTypeChanged.is_additive());
+        assert!(!ChangeType::IndexRemoved.is_additive());
+        assert!(!ChangeType::IndexSettingsChanged.is_additive());
+        assert!(!ChangeType::BackendConfigChanged.is_additive());
+        assert!(!ChangeType::CollectionSettingsChanged.is_additive());
+    }
+
+    #[test]
+    fn test_change_type_breaking_comprehensive() {
+        assert!(ChangeType::FieldRemoved.is_breaking());
+        assert!(ChangeType::FieldTypeChanged.is_breaking());
+        assert!(ChangeType::FieldMadeRequired.is_breaking());
+        assert!(ChangeType::IndexRemoved.is_breaking());
+        assert!(!ChangeType::FieldAdded.is_breaking());
+        assert!(!ChangeType::FieldMadeOptional.is_breaking());
+        assert!(!ChangeType::IndexAdded.is_breaking());
+        assert!(!ChangeType::IndexSettingsChanged.is_breaking());
+        assert!(!ChangeType::BackendConfigChanged.is_breaking());
+        assert!(!ChangeType::CollectionSettingsChanged.is_breaking());
+    }
+
+    #[test]
+    fn test_change_type_serde() {
+        let ct = ChangeType::FieldRemoved;
+        let json = serde_json::to_string(&ct).unwrap();
+        assert_eq!(json, "\"field_removed\"");
+        let deserialized: ChangeType = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ChangeType::FieldRemoved);
+    }
+
+    // --- SchemaChange ---
+
+    #[test]
+    fn test_schema_change_with_values() {
+        let change = SchemaChange::new(
+            ChangeType::FieldTypeChanged,
+            "backends.text.fields.title",
+            "Changed title field type",
+        )
+        .with_old_value(json!("text"))
+        .with_new_value(json!("keyword"));
+
+        assert_eq!(change.path, "backends.text.fields.title");
+        assert!(change.is_breaking());
+        assert_eq!(change.old_value, Some(json!("text")));
+        assert_eq!(change.new_value, Some(json!("keyword")));
+    }
+
+    #[test]
+    fn test_schema_change_additive() {
+        let change = SchemaChange::new(
+            ChangeType::FieldAdded,
+            "description",
+            "Added description field",
+        );
+        assert!(!change.is_breaking());
+    }
+
+    // --- VersionedSchema ---
+
+    #[test]
+    fn test_versioned_schema_breaking_changes() {
+        let schema = json!({"test": true});
+        let versioned = VersionedSchema::new("test", SchemaVersion::new(2), schema, "node-1")
+            .with_changes(vec![
+                SchemaChange::new(ChangeType::FieldAdded, "new_field", "added"),
+                SchemaChange::new(ChangeType::FieldRemoved, "old_field", "removed"),
+            ]);
+
+        assert!(versioned.has_breaking_changes());
+        let breaking = versioned.breaking_changes();
+        assert_eq!(breaking.len(), 1);
+        assert_eq!(breaking[0].change_type, ChangeType::FieldRemoved);
+    }
+
+    #[test]
+    fn test_versioned_schema_additive_changes() {
+        let schema = json!({"test": true});
+        let versioned = VersionedSchema::new("test", SchemaVersion::new(2), schema, "node-1")
+            .with_changes(vec![
+                SchemaChange::new(ChangeType::FieldAdded, "new_field", "added"),
+                SchemaChange::new(ChangeType::IndexAdded, "new_index", "added index"),
+                SchemaChange::new(ChangeType::FieldRemoved, "old_field", "removed"),
+            ]);
+
+        let additive = versioned.additive_changes();
+        assert_eq!(additive.len(), 2);
+    }
+
+    #[test]
+    fn test_versioned_schema_no_changes() {
+        let schema = json!({"test": true});
+        let versioned = VersionedSchema::new("test", SchemaVersion::new(1), schema, "node-1");
+        assert!(!versioned.has_breaking_changes());
+        assert!(versioned.breaking_changes().is_empty());
+        assert!(versioned.additive_changes().is_empty());
+    }
+
+    #[test]
+    fn test_versioned_schema_metadata() {
+        let schema = json!({});
+        let versioned = VersionedSchema::new("test", SchemaVersion::new(1), schema, "node-1")
+            .with_metadata("env", "production")
+            .with_metadata("user", "admin");
+
+        assert_eq!(versioned.metadata.get("env"), Some(&"production".to_string()));
+        assert_eq!(versioned.metadata.get("user"), Some(&"admin".to_string()));
+        assert_eq!(versioned.metadata.len(), 2);
+    }
+
+    #[test]
+    fn test_versioned_schema_created_at() {
+        let schema = json!({});
+        let versioned = VersionedSchema::new("test", SchemaVersion::new(1), schema, "node-1");
+        assert!(versioned.created_at > 0);
+        assert_eq!(versioned.created_by, "node-1");
+    }
+
+    // --- detect_changes ---
+
+    #[test]
+    fn test_detect_no_changes() {
+        let schema = json!({"name": "test", "value": 42});
+        let changes = detect_changes(&schema, &schema, "");
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn test_detect_value_change() {
+        let old = json!({"name": "test"});
+        let new = json!({"name": "changed"});
+        let changes = detect_changes(&old, &new, "");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].change_type, ChangeType::FieldTypeChanged);
+        assert_eq!(changes[0].path, "name");
+    }
+
+    #[test]
+    fn test_detect_multiple_changes() {
+        let old = json!({"a": 1, "b": 2, "c": 3});
+        let new = json!({"a": 1, "b": 99, "d": 4}); // b changed, c removed, d added
+
+        let changes = detect_changes(&old, &new, "");
+        assert_eq!(changes.len(), 3);
+
+        let removed: Vec<_> = changes
+            .iter()
+            .filter(|c| c.change_type == ChangeType::FieldRemoved)
+            .collect();
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].path, "c");
+
+        let added: Vec<_> = changes
+            .iter()
+            .filter(|c| c.change_type == ChangeType::FieldAdded)
+            .collect();
+        assert_eq!(added.len(), 1);
+        assert_eq!(added[0].path, "d");
+    }
+
+    #[test]
+    fn test_detect_array_change() {
+        let old = json!({"items": [1, 2, 3]});
+        let new = json!({"items": [1, 2, 3, 4]});
+        let changes = detect_changes(&old, &new, "");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, "items");
+    }
+
+    #[test]
+    fn test_detect_deeply_nested_changes() {
+        let old = json!({
+            "level1": {
+                "level2": {
+                    "level3": "old_value"
+                }
+            }
+        });
+        let new = json!({
+            "level1": {
+                "level2": {
+                    "level3": "new_value"
+                }
+            }
+        });
+        let changes = detect_changes(&old, &new, "");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, "level1.level2.level3");
+    }
+
+    #[test]
+    fn test_detect_with_prefix() {
+        let old = json!({"a": 1});
+        let new = json!({"a": 2});
+        let changes = detect_changes(&old, &new, "root");
+        assert_eq!(changes[0].path, "root.a");
+    }
+
+    #[test]
+    fn test_detect_type_mismatch() {
+        let old = json!(42);
+        let new = json!("string");
+        let changes = detect_changes(&old, &new, "field");
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].change_type, ChangeType::FieldTypeChanged);
+    }
 }
