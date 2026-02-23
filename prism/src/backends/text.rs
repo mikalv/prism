@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
-    collector::TopDocs, indexer::NoMergePolicy, query::QueryParser, schema::*, DateTime, DocSet,
+    collector::TopDocs, query::QueryParser, schema::*, DateTime, DocSet,
     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term,
 };
 
@@ -311,11 +311,6 @@ impl TextBackend {
             .try_into()?;
 
         let writer = index.writer(50_000_000)?;
-        // Disable background merge threads. Our TantivyStorageAdapter doesn't
-        // support Unix unlink semantics (deleted files remaining accessible via
-        // open file handles), so background merges that delete old segment files
-        // cause "Path not found" crashes in concurrent readers/writers.
-        writer.set_merge_policy(Box::new(NoMergePolicy));
         let writer = Arc::new(parking_lot::Mutex::new(writer));
 
         // Check if system fields exist in the loaded schema
@@ -495,23 +490,6 @@ impl SearchBackend for TextBackend {
         }
 
         writer.commit()?;
-
-        // Auto-merge if segment count exceeds threshold
-        let segment_ids = coll.index.searchable_segment_ids()?;
-        if segment_ids.len() > 10 {
-            tracing::info!(
-                "Auto-merging {} segments for collection '{}'",
-                segment_ids.len(),
-                collection
-            );
-            let merge_future = writer.merge(&segment_ids);
-            match futures::executor::block_on(merge_future) {
-                Ok(_) => {
-                    writer.commit()?;
-                }
-                Err(e) => tracing::warn!("Auto-merge failed for '{}': {:?}", collection, e),
-            }
-        }
 
         // Reload reader to ensure newly committed documents are visible
         coll.reader.reload()?;
@@ -769,23 +747,6 @@ impl SearchBackend for TextBackend {
         }
 
         writer.commit()?;
-
-        // Auto-merge if segment count exceeds threshold
-        let segment_ids = coll.index.searchable_segment_ids()?;
-        if segment_ids.len() > 10 {
-            tracing::info!(
-                "Auto-merging {} segments for collection '{}' after delete",
-                segment_ids.len(),
-                collection
-            );
-            let merge_future = writer.merge(&segment_ids);
-            match futures::executor::block_on(merge_future) {
-                Ok(_) => {
-                    writer.commit()?;
-                }
-                Err(e) => tracing::warn!("Auto-merge failed for '{}': {:?}", collection, e),
-            }
-        }
 
         Ok(())
     }
@@ -2137,10 +2098,11 @@ impl TextBackend {
         })
     }
 
-    /// Synchronously merge all segments into one (or up to `max_segments`).
+    /// Manually merge all segments into one (or up to `max_segments`).
     ///
-    /// Safe because the writer lock is held during the entire merge+commit+reload
-    /// cycle, preventing any concurrent reads on stale segments.
+    /// Useful for forcing compaction after bulk imports, similar to
+    /// Elasticsearch's `_forcemerge`. Tantivy's LogMergePolicy handles
+    /// routine merging automatically.
     pub fn optimize(&self, collection: &str, max_segments: Option<usize>) -> Result<OptimizeResult> {
         let collections = self.collections.read().unwrap();
         let coll = collections

@@ -215,21 +215,6 @@ impl TantivyStorageAdapter {
         StoragePath::tantivy(&self.collection, &self.shard, segment)
     }
 
-    /// Read file size from storage.
-    fn get_file_size(&self, path: &Path) -> Result<usize, OpenReadError> {
-        let storage_path = self.to_storage_path(path);
-        let storage = self.storage.clone();
-
-        block_on_safe(
-            &self.runtime,
-            async move { storage.head(&storage_path).await },
-        )
-        .map(|meta| meta.size as usize)
-        .map_err(|e| match e {
-            StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path.to_path_buf()),
-            _ => OpenReadError::wrap_io_error(io::Error::other(e.to_string()), path.to_path_buf()),
-        })
-    }
 }
 
 impl std::fmt::Debug for TantivyStorageAdapter {
@@ -256,34 +241,20 @@ impl Clone for TantivyStorageAdapter {
     }
 }
 
-/// File handle for reading from SegmentStorage.
+/// File handle that caches the full file content in memory.
+///
+/// Data is loaded eagerly when the handle is created, so all subsequent
+/// `read_bytes()` calls are served from the in-memory cache. This avoids
+/// a race condition where Tantivy's background merge threads delete old
+/// segment files while concurrent readers still reference them.
 struct StorageFileHandle {
-    storage: Arc<dyn SegmentStorage>,
-    path: StoragePath,
+    data: Bytes,
     len: usize,
-    runtime: Arc<RuntimeWrapper>,
-}
-
-impl StorageFileHandle {
-    fn new(
-        storage: Arc<dyn SegmentStorage>,
-        path: StoragePath,
-        len: usize,
-        runtime: Arc<RuntimeWrapper>,
-    ) -> Self {
-        Self {
-            storage,
-            path,
-            len,
-            runtime,
-        }
-    }
 }
 
 impl std::fmt::Debug for StorageFileHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StorageFileHandle")
-            .field("path", &self.path.to_string())
             .field("len", &self.len)
             .finish()
     }
@@ -297,26 +268,13 @@ impl HasLen for StorageFileHandle {
 
 impl FileHandle for StorageFileHandle {
     fn read_bytes(&self, range: Range<usize>) -> io::Result<OwnedBytes> {
-        let storage = self.storage.clone();
-        let path = self.path.clone();
-
-        block_on_safe(&self.runtime, async move {
-            let data = storage
-                .read(&path)
-                .await
-                .map_err(|e| io::Error::other(e.to_string()))?;
-
-            // Extract the requested range
-            if range.end > data.len() {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    format!("Range {:?} exceeds file size {}", range, data.len()),
-                ));
-            }
-
-            let slice = &data[range];
-            Ok(OwnedBytes::new(slice.to_vec()))
-        })
+        if range.end > self.len {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                format!("Range {:?} exceeds file size {}", range, self.len),
+            ));
+        }
+        Ok(OwnedBytes::new(self.data[range].to_vec()))
     }
 }
 
@@ -415,14 +373,18 @@ struct NoOpLock;
 impl Directory for TantivyStorageAdapter {
     fn get_file_handle(&self, path: &Path) -> Result<Arc<dyn FileHandle>, OpenReadError> {
         let storage_path = self.to_storage_path(path);
-        let len = self.get_file_size(path)?;
+        let storage = self.storage.clone();
 
-        Ok(Arc::new(StorageFileHandle::new(
-            self.storage.clone(),
-            storage_path,
-            len,
-            self.runtime.clone(),
-        )))
+        let data = block_on_safe(&self.runtime, async move {
+            storage.read(&storage_path).await
+        })
+        .map_err(|e| match e {
+            StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path.to_path_buf()),
+            _ => OpenReadError::wrap_io_error(io::Error::other(e.to_string()), path.to_path_buf()),
+        })?;
+
+        let len = data.len();
+        Ok(Arc::new(StorageFileHandle { data, len }))
     }
 
     fn exists(&self, path: &Path) -> Result<bool, OpenReadError> {
