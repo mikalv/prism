@@ -10,13 +10,25 @@ Base URL: `http://localhost:3080` (default)
 
 ### GET /health
 
-Check server health.
+Check server health. Returns node status, version, collection count, and uptime.
 
 **Response:** `200 OK`
 
 ```json
-{ "status": "ok" }
+{
+  "status": "ok",
+  "version": "0.6.6",
+  "collections": 4,
+  "uptime_secs": 3621
+}
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Always `"ok"` if the server is responding |
+| `version` | string | Server version (from `Cargo.toml`) |
+| `collections` | integer | Number of loaded collections |
+| `uptime_secs` | integer | Seconds since server started |
 
 ---
 
@@ -487,6 +499,25 @@ Reconstruct a document from the index (all stored fields).
 
 ---
 
+### POST /collections/:collection/optimize
+
+Trigger a segment merge for a collection. Useful for one-off optimization; for automated merging see the `[optimize]` config section.
+
+**Query parameters:**
+- `max_segments` (integer, optional) — Target max segments (default: merge all)
+
+**Response:** `200 OK`
+
+```json
+{
+  "segments_before": 12,
+  "segments_after": 3,
+  "merged": true
+}
+```
+
+---
+
 ## Collection Management
 
 ### GET /admin/collections
@@ -703,16 +734,31 @@ Federated index — routes documents to the correct shard by ID hash.
 
 ### GET /cluster/health
 
-Returns cluster status.
+Returns cluster health with per-node status.
 
 **Response:** `200 OK`
 
 ```json
 {
-  "status": "ok",
-  "message": "cluster operational"
+  "status": "green",
+  "federated": true,
+  "total_nodes": 3,
+  "healthy_nodes": 3,
+  "nodes": [
+    { "node_id": "node-1", "address": "prism-node1:9080", "healthy": true, "draining": false },
+    { "node_id": "node-2", "address": "prism-node2:9080", "healthy": true, "draining": false },
+    { "node_id": "node-3", "address": "prism-node3:9080", "healthy": true, "draining": true }
+  ]
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `"green"` (all healthy), `"yellow"` (some down), `"red"` (all down) |
+| `federated` | boolean | Always `true` in cluster mode |
+| `total_nodes` | integer | Total registered nodes |
+| `healthy_nodes` | integer | Reachable nodes |
+| `nodes` | array | Per-node status with address, health, and drain state |
 
 See [Clustering & Federation](../guides/clustering.md) for the full guide.
 
