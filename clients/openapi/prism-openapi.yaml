@@ -1,0 +1,1236 @@
+openapi: "3.1.0"
+info:
+  title: Prism Search Engine API
+  version: "0.7.0"
+  description: HTTP API for Prism — a fast, embeddable search engine with text, vector, hybrid search, graph, and aggregation capabilities.
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3080
+    description: Local development
+
+tags:
+  - name: health
+  - name: search
+  - name: documents
+  - name: collections
+  - name: aggregations
+  - name: suggest
+  - name: mlt
+  - name: msearch
+  - name: segments
+  - name: graph
+  - name: ilm
+  - name: stats
+  - name: admin
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: health
+      summary: Check server health
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /collections/{collection}/search:
+    post:
+      tags: [search]
+      operationId: search
+      summary: Full-featured search
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+        "404":
+          description: Collection not found
+
+  /collections/{collection}/documents:
+    post:
+      tags: [documents]
+      operationId: indexDocuments
+      summary: Index documents (bulk)
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/Document"
+      responses:
+        "200":
+          description: Documents indexed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndexResponse"
+        "404":
+          description: Collection not found
+
+  /collections/{collection}/documents/{id}:
+    get:
+      tags: [documents]
+      operationId: getDocument
+      summary: Get document by ID
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      responses:
+        "200":
+          description: Document found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "404":
+          description: Document or collection not found
+
+  /collections/{name}:
+    put:
+      tags: [collections]
+      operationId: createCollection
+      summary: Create a new collection
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Collection schema definition
+      responses:
+        "201":
+          description: Collection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCollectionResponse"
+        "400":
+          description: Invalid collection name
+        "409":
+          description: Collection already exists
+    delete:
+      tags: [collections]
+      operationId: deleteCollection
+      summary: Delete a collection
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: delete_data
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Collection deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  status:
+                    type: string
+        "404":
+          description: Collection not found
+
+  /admin/collections:
+    get:
+      tags: [collections]
+      operationId: listCollections
+      summary: List all collections
+      responses:
+        "200":
+          description: List of collection names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /collections/{collection}/schema:
+    get:
+      tags: [collections]
+      operationId: getSchema
+      summary: Get collection schema
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: Collection schema
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /collections/{collection}/stats:
+    get:
+      tags: [collections]
+      operationId: getStats
+      summary: Get collection statistics
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: Collection statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionStatsResponse"
+
+  /collections/{collection}/aggregate:
+    post:
+      tags: [aggregations]
+      operationId: aggregate
+      summary: Run aggregations
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AggregateRequest"
+      responses:
+        "200":
+          description: Aggregation results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AggregateResponse"
+
+  /collections/{collection}/_suggest:
+    post:
+      tags: [suggest]
+      operationId: suggest
+      summary: Prefix completion and fuzzy suggestions
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuggestRequest"
+      responses:
+        "200":
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestResponse"
+
+  /collections/{collection}/_mlt:
+    post:
+      tags: [mlt]
+      operationId: moreLikeThis
+      summary: Find similar documents
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MltRequest"
+      responses:
+        "200":
+          description: Similar documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+
+  /_msearch:
+    post:
+      tags: [msearch]
+      operationId: multiSearch
+      summary: Search across multiple collections
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MultiSearchRequest"
+      responses:
+        "200":
+          description: Multi-search results
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /collections/{collection}/segments:
+    get:
+      tags: [segments]
+      operationId: getSegments
+      summary: Get segment information
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: Segment information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SegmentsInfo"
+
+  /collections/{collection}/optimize:
+    post:
+      tags: [segments]
+      operationId: optimize
+      summary: Trigger segment merge
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: max_segments
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Optimization result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizeResult"
+
+  /collections/{collection}/doc/{id}/reconstruct:
+    get:
+      tags: [documents]
+      operationId: reconstructDocument
+      summary: Reconstruct document from index
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      responses:
+        "200":
+          description: Reconstructed document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /collections/{collection}/terms/{field}:
+    get:
+      tags: [documents]
+      operationId: getTopTerms
+      summary: Get top terms in a field
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: field
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 25
+      responses:
+        "200":
+          description: Top terms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopTermsResponse"
+
+  /collections/{collection}/graph/nodes:
+    post:
+      tags: [graph]
+      operationId: addGraphNode
+      summary: Add a graph node
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphNode"
+      responses:
+        "201":
+          description: Node created
+
+  /collections/{collection}/graph/nodes/{id}:
+    get:
+      tags: [graph]
+      operationId: getGraphNode
+      summary: Get a graph node
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      responses:
+        "200":
+          description: Graph node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphNode"
+    delete:
+      tags: [graph]
+      operationId: removeGraphNode
+      summary: Remove a graph node and its edges
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      responses:
+        "204":
+          description: Node removed
+
+  /collections/{collection}/graph/edges:
+    post:
+      tags: [graph]
+      operationId: addGraphEdge
+      summary: Add an edge between nodes
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphEdge"
+      responses:
+        "201":
+          description: Edge created
+
+  /collections/{collection}/graph/nodes/{id}/edges:
+    get:
+      tags: [graph]
+      operationId: getGraphEdges
+      summary: Get outgoing edges from a node
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      responses:
+        "200":
+          description: Edge list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GraphEdge"
+
+  /collections/{collection}/graph/bfs:
+    post:
+      tags: [graph]
+      operationId: graphBfs
+      summary: Breadth-first search traversal
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BfsRequest"
+      responses:
+        "200":
+          description: BFS results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BfsResponse"
+
+  /collections/{collection}/graph/shortest-path:
+    post:
+      tags: [graph]
+      operationId: graphShortestPath
+      summary: Find shortest path between nodes
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShortestPathRequest"
+      responses:
+        "200":
+          description: Shortest path result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShortestPathResponse"
+
+  /collections/{collection}/graph/stats:
+    get:
+      tags: [graph]
+      operationId: graphStats
+      summary: Get graph statistics
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: Graph statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphStats"
+
+  /_ilm/policy:
+    get:
+      tags: [ilm]
+      operationId: listIlmPolicies
+      summary: List all ILM policies
+      responses:
+        "200":
+          description: ILM policies
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /_ilm/policy/{name}:
+    get:
+      tags: [ilm]
+      operationId: getIlmPolicy
+      summary: Get ILM policy
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Policy detail
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      tags: [ilm]
+      operationId: createIlmPolicy
+      summary: Create ILM policy
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Policy created
+    delete:
+      tags: [ilm]
+      operationId: deleteIlmPolicy
+      summary: Delete ILM policy
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Policy deleted
+
+  /_ilm/status:
+    get:
+      tags: [ilm]
+      operationId: ilmStatus
+      summary: Get ILM status
+      responses:
+        "200":
+          description: ILM status
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /{index}/_ilm/explain:
+    get:
+      tags: [ilm]
+      operationId: ilmExplain
+      summary: Explain ILM state for index
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ILM explanation
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /{index}/_rollover:
+    post:
+      tags: [ilm]
+      operationId: rollover
+      summary: Trigger index rollover
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rollover result
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /{index}/_ilm/move/{phase}:
+    post:
+      tags: [ilm]
+      operationId: ilmMovePhase
+      summary: Move index to ILM phase
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: phase
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Phase move result
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /{collection}/_ilm/attach:
+    post:
+      tags: [ilm]
+      operationId: ilmAttachPolicy
+      summary: Attach ILM policy to collection
+      parameters:
+        - name: collection
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [policy]
+              properties:
+                policy:
+                  type: string
+      responses:
+        "200":
+          description: Policy attached
+
+  /_aliases:
+    get:
+      tags: [ilm]
+      operationId: listAliases
+      summary: List all aliases
+      responses:
+        "200":
+          description: Aliases
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      tags: [ilm]
+      operationId: updateAliases
+      summary: Update aliases
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [actions]
+              properties:
+                actions:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "200":
+          description: Aliases updated
+
+  /stats/cache:
+    get:
+      tags: [stats]
+      operationId: cacheStats
+      summary: Get embedding cache statistics
+      responses:
+        "200":
+          description: Cache statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheStats"
+
+  /stats/server:
+    get:
+      tags: [stats]
+      operationId: serverInfo
+      summary: Get server information
+      responses:
+        "200":
+          description: Server info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerInfo"
+
+  /admin/lint-schemas:
+    get:
+      tags: [admin]
+      operationId: lintSchemas
+      summary: Validate all collection schemas
+      responses:
+        "200":
+          description: Schema validation results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LintSchemasResponse"
+
+components:
+  parameters:
+    collection:
+      name: collection
+      in: path
+      required: true
+      schema:
+        type: string
+    documentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version, collections, uptime_secs]
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        collections:
+          type: integer
+        uptime_secs:
+          type: integer
+
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        vector:
+          type: array
+          items:
+            type: number
+            format: float
+        fields:
+          type: array
+          items:
+            type: string
+        limit:
+          type: integer
+          default: 10
+        offset:
+          type: integer
+          default: 0
+        merge_strategy:
+          type: string
+        text_weight:
+          type: number
+          format: float
+        vector_weight:
+          type: number
+          format: float
+        highlight:
+          $ref: "#/components/schemas/HighlightConfig"
+        rerank:
+          type: object
+        rrf_k:
+          type: integer
+        min_score:
+          type: number
+          format: float
+        score_function:
+          type: string
+
+    HighlightConfig:
+      type: object
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          items:
+            type: string
+        pre_tag:
+          type: string
+          default: "<em>"
+        post_tag:
+          type: string
+          default: "</em>"
+        fragment_size:
+          type: integer
+          default: 150
+        number_of_fragments:
+          type: integer
+          default: 3
+
+    SearchResult:
+      type: object
+      required: [id, score, fields]
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+          format: float
+        fields:
+          type: object
+          additionalProperties: true
+        highlight:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    SearchResults:
+      type: object
+      required: [results, total]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+        total:
+          type: integer
+
+    Document:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        fields:
+          type: object
+          additionalProperties: true
+
+    IndexResponse:
+      type: object
+      required: [indexed, failed]
+      properties:
+        indexed:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              doc_id:
+                type: string
+              error:
+                type: string
+
+    CreateCollectionResponse:
+      type: object
+      required: [collection, status, backends]
+      properties:
+        collection:
+          type: string
+        status:
+          type: string
+        backends:
+          type: array
+          items:
+            type: string
+
+    CollectionStatsResponse:
+      type: object
+      properties:
+        document_count:
+          type: integer
+        size_bytes:
+          type: integer
+
+    AggregateRequest:
+      type: object
+      required: [aggregations]
+      properties:
+        query:
+          type: string
+        scan_limit:
+          type: integer
+          default: 10000
+        aggregations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Aggregation"
+
+    Aggregation:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [count, sum, avg, min, max, stats, percentiles, terms, histogram, date_histogram, range, filter, filters, global]
+        field:
+          type: string
+        size:
+          type: integer
+        interval:
+          type: number
+        percents:
+          type: array
+          items:
+            type: number
+        min_doc_count:
+          type: integer
+        extended_bounds:
+          type: object
+          properties:
+            min:
+              type: number
+            max:
+              type: number
+        calendar_interval:
+          type: string
+        ranges:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              from:
+                type: number
+              to:
+                type: number
+        filter:
+          type: string
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+        aggs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Aggregation"
+
+    AggregateResponse:
+      type: object
+      properties:
+        results:
+          type: object
+          additionalProperties: true
+        took_ms:
+          type: number
+          format: float
+
+    SuggestRequest:
+      type: object
+      required: [prefix, field]
+      properties:
+        prefix:
+          type: string
+        field:
+          type: string
+        size:
+          type: integer
+          default: 5
+        fuzzy:
+          type: boolean
+          default: false
+        max_distance:
+          type: integer
+          default: 2
+
+    SuggestionEntry:
+      type: object
+      required: [term, score, doc_freq]
+      properties:
+        term:
+          type: string
+        score:
+          type: number
+          format: float
+        doc_freq:
+          type: integer
+
+    SuggestResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestionEntry"
+        did_you_mean:
+          type: string
+
+    MltRequest:
+      type: object
+      properties:
+        like:
+          type: object
+        like_text:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+        min_term_freq:
+          type: integer
+          default: 2
+        min_doc_freq:
+          type: integer
+          default: 5
+        max_query_terms:
+          type: integer
+          default: 25
+        size:
+          type: integer
+          default: 10
+
+    MultiSearchRequest:
+      type: object
+      required: [collections]
+      properties:
+        collections:
+          type: array
+          items:
+            type: string
+        query:
+          type: string
+        vector:
+          type: array
+          items:
+            type: number
+            format: float
+        limit:
+          type: integer
+          default: 10
+
+    SegmentInfo:
+      type: object
+      required: [id, num_docs, num_deleted_docs, size_bytes]
+      properties:
+        id:
+          type: string
+        num_docs:
+          type: integer
+        num_deleted_docs:
+          type: integer
+        size_bytes:
+          type: integer
+
+    SegmentsInfo:
+      type: object
+      properties:
+        collection:
+          type: string
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SegmentInfo"
+
+    OptimizeResult:
+      type: object
+      required: [segments_before, segments_after, merged]
+      properties:
+        segments_before:
+          type: integer
+        segments_after:
+          type: integer
+        merged:
+          type: boolean
+
+    TopTermsResponse:
+      type: object
+      properties:
+        field:
+          type: string
+        terms:
+          type: array
+          items:
+            type: object
+            properties:
+              term:
+                type: string
+              doc_freq:
+                type: integer
+
+    GraphNode:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        node_type:
+          type: string
+        title:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+
+    GraphEdge:
+      type: object
+      required: [from, to, edge_type]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        edge_type:
+          type: string
+        weight:
+          type: number
+          format: float
+          default: 1.0
+
+    BfsRequest:
+      type: object
+      required: [start, edge_type]
+      properties:
+        start:
+          type: string
+        edge_type:
+          type: string
+        max_depth:
+          type: integer
+          default: 3
+
+    BfsResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+
+    ShortestPathRequest:
+      type: object
+      required: [start, target]
+      properties:
+        start:
+          type: string
+        target:
+          type: string
+        edge_types:
+          type: array
+          items:
+            type: string
+
+    ShortestPathResponse:
+      type: object
+      properties:
+        path:
+          type: array
+          items:
+            type: string
+        length:
+          type: integer
+
+    GraphStats:
+      type: object
+      properties:
+        node_count:
+          type: integer
+        edge_count:
+          type: integer
+
+    CacheStats:
+      type: object
+      properties:
+        total_entries:
+          type: integer
+        total_bytes:
+          type: integer
+        hits:
+          type: integer
+        misses:
+          type: integer
+        hit_rate:
+          type: number
+          format: float
+
+    ServerInfo:
+      type: object
+      properties:
+        version:
+          type: string
+        features:
+          type: array
+          items:
+            type: string
+
+    LintSchemasResponse:
+      type: object
+      properties:
+        valid:
+          type: array
+          items:
+            type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: string

@@ -1,0 +1,15 @@
+# Elixir
+_build/
+deps/
+.fetch
+*.ez
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Rust
+target/

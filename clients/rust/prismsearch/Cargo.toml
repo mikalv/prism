@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "prismsearch"
+version = "0.1.0"
+edition = "2021"
+description = "Rust client for Prism search engine"
+license = "MIT"
+repository = "https://github.com/mikalv/prism"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
