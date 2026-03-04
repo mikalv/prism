@@ -932,6 +932,11 @@ impl CollectionManager {
         self.text_backend.get_segments(collection)
     }
 
+    /// Get detailed space usage for a single collection.
+    pub fn space_usage(&self, collection: &str) -> Result<crate::backends::text::CollectionSpaceUsage> {
+        self.text_backend.space_usage(collection)
+    }
+
     /// Synchronously merge segments for a collection to reduce search latency.
     pub fn optimize(&self, collection: &str, max_segments: Option<usize>) -> Result<crate::backends::text::OptimizeResult> {
         self.text_backend.optimize(collection, max_segments)

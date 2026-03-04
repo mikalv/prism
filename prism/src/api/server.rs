@@ -520,6 +520,7 @@ impl ApiServer {
                     .delete(crate::api::routes::delete_collection),
             )
             .route("/admin/lint-schemas", get(crate::api::routes::lint_schemas))
+            .route("/admin/debug", get(crate::api::routes::debug_info))
             .route("/", get(crate::api::routes::root))
             .route("/health", get(crate::api::routes::health))
             // Stats API (Issue #22)

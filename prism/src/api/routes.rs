@@ -585,6 +585,132 @@ pub async fn health(
     })
 }
 
+// ============================================================================
+// Debug / Introspection API
+// ============================================================================
+
+use crate::backends::text::FieldSpaceUsage;
+
+/// Debug info for a single collection
+#[derive(Serialize)]
+pub struct DebugCollectionInfo {
+    pub collection: String,
+    pub total_bytes: u64,
+    pub store_bytes: u64,
+    pub num_docs: u32,
+    pub num_deleted: u32,
+    pub num_segments: usize,
+    pub fields: Vec<FieldSpaceUsage>,
+}
+
+/// Full debug response
+#[derive(Serialize)]
+pub struct DebugResponse {
+    pub process: ProcessInfo,
+    pub collections: Vec<DebugCollectionInfo>,
+    pub totals: DebugTotals,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache: Option<CacheStatsResponse>,
+}
+
+#[derive(Serialize)]
+pub struct ProcessInfo {
+    pub rss_bytes: u64,
+    pub uptime_secs: u64,
+    pub version: &'static str,
+}
+
+#[derive(Serialize)]
+pub struct DebugTotals {
+    pub collections: usize,
+    pub total_docs: u64,
+    pub total_index_bytes: u64,
+    pub total_store_bytes: u64,
+}
+
+/// GET /admin/debug — Server introspection: per-collection space usage, process memory, cache stats
+pub async fn debug_info(
+    State(manager): State<Arc<CollectionManager>>,
+) -> Json<DebugResponse> {
+    let uptime = SERVER_START
+        .get()
+        .map(|t| t.elapsed().as_secs())
+        .unwrap_or(0);
+
+    // Process RSS (platform-specific)
+    let rss_bytes = get_process_rss();
+
+    // Per-collection space usage
+    let names = manager.list_collections();
+    let mut collections = Vec::new();
+    let mut total_docs: u64 = 0;
+    let mut total_index_bytes: u64 = 0;
+    let mut total_store_bytes: u64 = 0;
+
+    for name in &names {
+        match manager.space_usage(name) {
+            Ok(usage) => {
+                total_docs += usage.num_docs as u64;
+                total_index_bytes += usage.total_bytes;
+                total_store_bytes += usage.store_bytes;
+                collections.push(DebugCollectionInfo {
+                    collection: usage.collection,
+                    total_bytes: usage.total_bytes,
+                    store_bytes: usage.store_bytes,
+                    num_docs: usage.num_docs,
+                    num_deleted: usage.num_deleted,
+                    num_segments: usage.num_segments,
+                    fields: usage.fields,
+                });
+            }
+            Err(e) => {
+                tracing::warn!("Debug: failed to get space usage for '{}': {}", name, e);
+            }
+        }
+    }
+
+    // Cache stats (best-effort)
+    let cache = manager.cache_stats().await.map(|s| CacheStatsResponse {
+        total_entries: s.total_entries,
+        total_bytes: s.total_bytes,
+        hits: s.hits,
+        misses: s.misses,
+        hit_rate: s.hit_rate(),
+    });
+
+    Json(DebugResponse {
+        process: ProcessInfo {
+            rss_bytes,
+            uptime_secs: uptime,
+            version: env!("CARGO_PKG_VERSION"),
+        },
+        collections,
+        totals: DebugTotals {
+            collections: names.len(),
+            total_docs,
+            total_index_bytes,
+            total_store_bytes,
+        },
+        cache,
+    })
+}
+
+/// Get process RSS in bytes. Falls back to 0 on unsupported platforms.
+fn get_process_rss() -> u64 {
+    // Linux: parse VmRSS from /proc/self/status (in kB)
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmRSS:") {
+                let trimmed = rest.trim().trim_end_matches(" kB").trim();
+                if let Ok(kb) = trimmed.parse::<u64>() {
+                    return kb * 1024;
+                }
+            }
+        }
+    }
+    0
+}
+
 /// Root endpoint response
 #[derive(Serialize)]
 pub struct RootResponse {

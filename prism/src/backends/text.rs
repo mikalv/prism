@@ -1666,6 +1666,29 @@ pub struct SegmentsInfo {
     pub delete_ratio: f64,
 }
 
+/// Per-field space usage breakdown
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FieldSpaceUsage {
+    pub name: String,
+    pub termdict_bytes: u64,
+    pub postings_bytes: u64,
+    pub positions_bytes: u64,
+    pub fast_fields_bytes: u64,
+    pub total_bytes: u64,
+}
+
+/// Per-collection space usage breakdown
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CollectionSpaceUsage {
+    pub collection: String,
+    pub total_bytes: u64,
+    pub store_bytes: u64,
+    pub num_docs: u32,
+    pub num_deleted: u32,
+    pub num_segments: usize,
+    pub fields: Vec<FieldSpaceUsage>,
+}
+
 /// Reconstructed document with indexed terms
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ReconstructedDocument {
@@ -2234,6 +2257,81 @@ impl TextBackend {
             stored_fields,
             indexed_terms,
         }))
+    }
+
+    /// Get detailed space usage for a collection using Tantivy's space_usage API.
+    pub fn space_usage(&self, collection: &str) -> Result<CollectionSpaceUsage> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        coll.reader.reload()?;
+        let searcher = coll.reader.searcher();
+        let space = searcher.space_usage()?;
+
+        let total_docs: u32 = searcher.segment_readers().iter().map(|s| s.num_docs()).sum();
+        let total_deleted: u32 = searcher
+            .segment_readers()
+            .iter()
+            .map(|s| s.num_deleted_docs())
+            .sum();
+
+        // Aggregate store bytes across segments
+        let store_bytes: u64 = space
+            .segments()
+            .iter()
+            .map(|s| s.store().total().get_bytes())
+            .sum();
+
+        // Aggregate per-field usage across all segments
+        let mut field_map: HashMap<String, (u64, u64, u64, u64)> = HashMap::new();
+
+        for seg in space.segments() {
+            for (field, usage) in seg.termdict().fields() {
+                let name = coll.schema.get_field_name(*field).to_string();
+                let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
+                entry.0 += usage.total().get_bytes();
+            }
+            for (field, usage) in seg.postings().fields() {
+                let name = coll.schema.get_field_name(*field).to_string();
+                let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
+                entry.1 += usage.total().get_bytes();
+            }
+            for (field, usage) in seg.positions().fields() {
+                let name = coll.schema.get_field_name(*field).to_string();
+                let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
+                entry.2 += usage.total().get_bytes();
+            }
+            for (field, usage) in seg.fast_fields().fields() {
+                let name = coll.schema.get_field_name(*field).to_string();
+                let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
+                entry.3 += usage.total().get_bytes();
+            }
+        }
+
+        let mut fields: Vec<FieldSpaceUsage> = field_map
+            .into_iter()
+            .map(|(name, (td, post, pos, ff))| FieldSpaceUsage {
+                name,
+                termdict_bytes: td,
+                postings_bytes: post,
+                positions_bytes: pos,
+                fast_fields_bytes: ff,
+                total_bytes: td + post + pos + ff,
+            })
+            .collect();
+        fields.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+
+        Ok(CollectionSpaceUsage {
+            collection: collection.to_string(),
+            total_bytes: space.total().get_bytes(),
+            store_bytes,
+            num_docs: total_docs,
+            num_deleted: total_deleted,
+            num_segments: searcher.segment_readers().len(),
+            fields,
+        })
     }
 }
 
