@@ -205,9 +205,9 @@ impl Default for TlsConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SecurityConfig {
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
     pub api_keys: Vec<ApiKeyConfig>,
@@ -215,6 +215,17 @@ pub struct SecurityConfig {
     pub roles: HashMap<String, RoleConfig>,
     #[serde(default)]
     pub audit: AuditConfig,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            api_keys: Vec::new(),
+            roles: HashMap::new(),
+            audit: AuditConfig::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
