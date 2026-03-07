@@ -384,7 +384,7 @@ mod tests {
     async fn test_roundtrip_no_compression() {
         let (storage, _dir) = create_test_storage(CompressionConfig::none()).await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         let data = Bytes::from("Hello, World!");
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -398,7 +398,7 @@ mod tests {
     async fn test_roundtrip_lz4() {
         let (storage, _dir) = create_test_storage(CompressionConfig::lz4()).await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         // Create compressible data
         let data = Bytes::from("a".repeat(10000));
 
@@ -413,7 +413,7 @@ mod tests {
     async fn test_roundtrip_zstd() {
         let (storage, _dir) = create_test_storage(CompressionConfig::zstd()).await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         // Create compressible data
         let data = Bytes::from("b".repeat(10000));
 
@@ -429,7 +429,7 @@ mod tests {
         let (storage, dir) =
             create_test_storage(CompressionConfig::lz4().with_min_size(1000)).await;
 
-        let path = StoragePath::vector("test", "shard_0", "small.bin");
+        let path = StoragePath::vector("test", "shard_0", "small.bin").unwrap();
         let data = Bytes::from("tiny"); // Less than min_size
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -451,7 +451,7 @@ mod tests {
     async fn test_compression_actually_compresses() {
         let (storage, dir) = create_test_storage(CompressionConfig::lz4().with_min_size(0)).await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         // Highly compressible data
         let data = Bytes::from("x".repeat(10000));
 
@@ -473,7 +473,7 @@ mod tests {
     async fn test_exists_and_delete() {
         let (storage, _dir) = create_test_storage(CompressionConfig::none()).await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         let data = Bytes::from("test data");
 
         assert!(!storage.exists(&path).await.unwrap());
@@ -547,7 +547,7 @@ mod tests {
         let inner = Arc::new(LocalStorage::new(dir.path()));
 
         // Write raw data with a compression header but unknown algorithm byte
-        let path = StoragePath::vector("test", "shard_0", "bad.bin");
+        let path = StoragePath::vector("test", "shard_0", "bad.bin").unwrap();
         let mut bad_data = vec![0xC0u8, 0xFF, 0x00, 0x00]; // magic + unknown algo
         bad_data.extend_from_slice(b"some payload");
         inner
@@ -567,7 +567,7 @@ mod tests {
         let inner = Arc::new(LocalStorage::new(dir.path()));
 
         // Write raw data without compression header (no magic byte)
-        let path = StoragePath::vector("test", "shard_0", "raw.bin");
+        let path = StoragePath::vector("test", "shard_0", "raw.bin").unwrap();
         let raw_data = Bytes::from("plain uncompressed data");
         inner.write(&path, raw_data.clone()).await.unwrap();
 

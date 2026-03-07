@@ -51,14 +51,14 @@
 //! let storage = LocalStorage::new("./data");
 //!
 //! // Write vector index data
-//! let path = StoragePath::vector("products", "shard_0", "hnsw_index.bin");
+//! let path = StoragePath::vector("products", "shard_0", "hnsw_index.bin").unwrap();
 //! storage.write(&path, Bytes::from("binary data")).await?;
 //!
 //! // Read it back
 //! let data = storage.read(&path).await?;
 //!
 //! // List all vector indexes for a collection
-//! let prefix = StoragePath::new("products", StorageBackend::Vector);
+//! let prefix = StoragePath::new("products", StorageBackend::Vector).unwrap();
 //! let files = storage.list(&prefix).await?;
 //! # Ok(())
 //! # }

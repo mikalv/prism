@@ -96,7 +96,7 @@ mod tests {
 
         let storage = StorageFactory::create_segment_storage(&config, temp.path()).unwrap();
 
-        let path = StoragePath::vector("test", "default", "data.bin");
+        let path = StoragePath::vector("test", "default", "data.bin").unwrap();
         let data = Bytes::from_static(b"test data");
 
         storage.write(&path, data.clone()).await.unwrap();
