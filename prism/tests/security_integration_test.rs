@@ -136,7 +136,10 @@ async fn test_reader_cannot_access_admin() {
 
 #[tokio::test]
 async fn test_security_disabled_allows_all() {
-    let disabled = SecurityConfig::default(); // enabled = false
+    let disabled = SecurityConfig {
+        enabled: false,
+        ..SecurityConfig::default()
+    };
     let (_temp, url) = setup_server(disabled).await;
     let client = reqwest::Client::new();
     // No auth header, should work

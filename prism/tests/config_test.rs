@@ -218,7 +218,7 @@ data_dir = "/tmp/prism"
 #[test]
 fn test_default_security_config() {
     let config = Config::default();
-    assert!(!config.security.enabled);
+    assert!(config.security.enabled);
     assert!(config.security.api_keys.is_empty());
     assert!(config.security.roles.is_empty());
     assert!(!config.security.audit.enabled);
@@ -266,7 +266,7 @@ fn test_parse_config_without_security_section() {
 bind_addr = "127.0.0.1:3080"
 "#;
     let config: Config = toml::from_str(toml_content).unwrap();
-    assert!(!config.security.enabled);
+    assert!(config.security.enabled); // security enabled by default
     assert!(config.security.api_keys.is_empty());
 }
 
