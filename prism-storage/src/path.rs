@@ -134,19 +134,67 @@ impl FromStr for StorageBackend {
 /// All components are validated at construction time. It is not possible to
 /// create a `StoragePath` containing traversal sequences, null bytes, or
 /// other dangerous characters.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct StoragePath {
-    /// Collection name
-    pub collection: String,
-    /// Backend type (tantivy, vector, graph, meta)
-    pub backend: StorageBackend,
-    /// Optional shard identifier
-    pub shard: Option<String>,
-    /// Segment or file name
-    pub segment: String,
+    collection: String,
+    backend: StorageBackend,
+    shard: Option<String>,
+    segment: String,
+}
+
+/// Custom deserializer that validates all components.
+impl<'de> Deserialize<'de> for StoragePath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            collection: String,
+            backend: StorageBackend,
+            shard: Option<String>,
+            segment: String,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        validate_component(&raw.collection).map_err(serde::de::Error::custom)?;
+        if let Some(ref s) = raw.shard {
+            validate_component(s).map_err(serde::de::Error::custom)?;
+        }
+        for component in raw.segment.split('/') {
+            if !component.is_empty() {
+                validate_component(component).map_err(serde::de::Error::custom)?;
+            }
+        }
+        Ok(StoragePath {
+            collection: raw.collection,
+            backend: raw.backend,
+            shard: raw.shard,
+            segment: raw.segment,
+        })
+    }
 }
 
 impl StoragePath {
+    /// Get the collection name.
+    pub fn collection(&self) -> &str {
+        &self.collection
+    }
+
+    /// Get the backend type.
+    pub fn backend(&self) -> StorageBackend {
+        self.backend
+    }
+
+    /// Get the shard identifier, if any.
+    pub fn shard(&self) -> Option<&str> {
+        self.shard.as_deref()
+    }
+
+    /// Get the segment/file name.
+    pub fn segment(&self) -> &str {
+        &self.segment
+    }
+
     /// Create a new storage path.
     ///
     /// Returns an error if the collection name is invalid.
@@ -287,7 +335,8 @@ impl StoragePath {
 
     /// Convert to filesystem path.
     ///
-    /// Safe because all components were validated at construction time.
+    /// Components are validated at construction time. As defense-in-depth,
+    /// this method also verifies the resolved path stays under `base`.
     pub fn to_path_buf(&self, base: &std::path::Path) -> PathBuf {
         let mut path = base.join(&self.collection).join(self.backend.to_string());
         if let Some(shard) = &self.shard {
@@ -296,6 +345,12 @@ impl StoragePath {
         if !self.segment.is_empty() {
             path = path.join(&self.segment);
         }
+        // Defense-in-depth: ensure the resolved path stays under base
+        debug_assert!(
+            path.starts_with(base),
+            "StoragePath escaped base directory: {:?}",
+            path
+        );
         path
     }
 
@@ -397,19 +452,19 @@ mod tests {
     #[test]
     fn test_storage_path_parse() {
         let path = StoragePath::parse("products/vector/shard_0/hnsw_00001.bin").unwrap();
-        assert_eq!(path.collection, "products");
-        assert_eq!(path.backend, StorageBackend::Vector);
-        assert_eq!(path.shard, Some("shard_0".to_string()));
-        assert_eq!(path.segment, "hnsw_00001.bin");
+        assert_eq!(path.collection(), "products");
+        assert_eq!(path.backend(), StorageBackend::Vector);
+        assert_eq!(path.shard(), Some("shard_0"));
+        assert_eq!(path.segment(), "hnsw_00001.bin");
     }
 
     #[test]
     fn test_storage_path_parse_no_shard() {
         let path = StoragePath::parse("products/meta/schema.json").unwrap();
-        assert_eq!(path.collection, "products");
-        assert_eq!(path.backend, StorageBackend::Meta);
-        assert_eq!(path.shard, None);
-        assert_eq!(path.segment, "schema.json");
+        assert_eq!(path.collection(), "products");
+        assert_eq!(path.backend(), StorageBackend::Meta);
+        assert_eq!(path.shard(), None);
+        assert_eq!(path.segment(), "schema.json");
     }
 
     #[test]
@@ -464,15 +519,15 @@ mod tests {
     fn test_parse_collapses_consecutive_slashes() {
         // Consecutive slashes are filtered — resulting path is valid
         let path = StoragePath::parse("products///vector///file.bin").unwrap();
-        assert_eq!(path.collection, "products");
-        assert_eq!(path.segment, "file.bin");
+        assert_eq!(path.collection(), "products");
+        assert_eq!(path.segment(), "file.bin");
     }
 
     #[test]
     fn test_parse_handles_leading_trailing_slashes() {
         let path = StoragePath::parse("/products/vector/file.bin/").unwrap();
-        assert_eq!(path.collection, "products");
-        assert_eq!(path.segment, "file.bin");
+        assert_eq!(path.collection(), "products");
+        assert_eq!(path.segment(), "file.bin");
     }
 
     #[test]
@@ -535,6 +590,23 @@ mod tests {
     fn test_fuzz_crash_3_null_bytes_and_dot() {
         // Input containing null bytes and ./
         assert!(StoragePath::parse("/vector/\x01///\x00/./").is_err());
+    }
+
+    #[test]
+    fn test_deserialize_rejects_traversal() {
+        let json = r#"{"collection":"..","backend":"vector","shard":null,"segment":"file.bin"}"#;
+        assert!(serde_json::from_str::<StoragePath>(json).is_err());
+
+        let json = r#"{"collection":"valid","backend":"vector","shard":"..","segment":"file.bin"}"#;
+        assert!(serde_json::from_str::<StoragePath>(json).is_err());
+
+        let json = r#"{"collection":"valid","backend":"vector","shard":null,"segment":"../etc/passwd"}"#;
+        assert!(serde_json::from_str::<StoragePath>(json).is_err());
+
+        // Valid path should deserialize fine
+        let json = r#"{"collection":"products","backend":"vector","shard":"shard_0","segment":"index.bin"}"#;
+        let path: StoragePath = serde_json::from_str(json).unwrap();
+        assert_eq!(path.collection(), "products");
     }
 
     #[test]

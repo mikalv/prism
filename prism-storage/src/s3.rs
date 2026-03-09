@@ -384,10 +384,10 @@ mod tests {
         let obj_path = ObjectPath::from("data/products/vector/shard_0/index.bin");
         let storage_path = storage.from_object_path(&obj_path).unwrap();
 
-        assert_eq!(storage_path.collection, "products");
-        assert_eq!(storage_path.backend, StorageBackend::Vector);
-        assert_eq!(storage_path.shard, Some("shard_0".to_string()));
-        assert_eq!(storage_path.segment, "index.bin");
+        assert_eq!(storage_path.collection(), "products");
+        assert_eq!(storage_path.backend(), StorageBackend::Vector);
+        assert_eq!(storage_path.shard(), Some("shard_0"));
+        assert_eq!(storage_path.segment(), "index.bin");
     }
 
     // Integration tests require actual S3/MinIO - run with:
