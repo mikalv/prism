@@ -131,3 +131,42 @@ fn test_glob_pattern_matching() {
     assert!(checker.check_permission(&user, "logs-", Permission::Read));
     assert!(!checker.check_permission(&user, "logs", Permission::Read)); // no dash, no match
 }
+
+#[test]
+fn test_wrong_content_correct_length_rejected() {
+    let config = test_config();
+    let checker = PermissionChecker::new(&config);
+
+    // Same length as "prism_ak_admin" (14 chars) but wrong content
+    assert!(checker.authenticate("prism_ak_XXXXX").is_none());
+    assert!(checker.authenticate("XXXXXXXXXXXXXX").is_none());
+    // Off-by-one character
+    assert!(checker.authenticate("prism_ak_admio").is_none());
+}
+
+#[test]
+fn test_wrong_length_rejected() {
+    let config = test_config();
+    let checker = PermissionChecker::new(&config);
+
+    assert!(checker.authenticate("prism_ak_adm").is_none());
+    assert!(checker.authenticate("prism_ak_admin_extra").is_none());
+    assert!(checker.authenticate("").is_none());
+    assert!(checker.authenticate("x").is_none());
+}
+
+#[test]
+fn test_all_keys_authenticated_correctly() {
+    let config = test_config();
+    let checker = PermissionChecker::new(&config);
+
+    // Every key should authenticate to the right user
+    let admin = checker.authenticate("prism_ak_admin").unwrap();
+    assert_eq!(admin.name, "admin");
+
+    let analyst = checker.authenticate("prism_ak_analyst").unwrap();
+    assert_eq!(analyst.name, "analyst");
+
+    let writer = checker.authenticate("prism_ak_writer").unwrap();
+    assert_eq!(writer.name, "writer");
+}
