@@ -214,7 +214,7 @@ impl CachedStorage {
         };
 
         for path_str in paths {
-            if let Some(path) = StoragePath::parse(&path_str) {
+            if let Ok(path) = StoragePath::parse(&path_str) {
                 self.l1.delete(&path).await.ok();
             }
         }
@@ -241,7 +241,7 @@ impl CachedStorage {
             match to_evict {
                 Some(path_str) => {
                     debug!("Evicting from L1 cache: {}", path_str);
-                    if let Some(path) = StoragePath::parse(&path_str) {
+                    if let Ok(path) = StoragePath::parse(&path_str) {
                         self.l1.delete(&path).await.ok();
                     }
                 }
@@ -489,7 +489,7 @@ mod tests {
     async fn test_write_through() {
         let (storage, l1_dir, l2_dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         let data = Bytes::from("test data");
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -506,7 +506,7 @@ mod tests {
     async fn test_read_cache_hit() {
         let (storage, _l1_dir, _l2_dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         let data = Bytes::from("test data");
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -523,7 +523,7 @@ mod tests {
     async fn test_read_cache_miss_populate() {
         let (storage, l1_dir, l2_dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         let data = Bytes::from("test data");
 
         // Write directly to L2 (bypassing cache)
@@ -548,7 +548,7 @@ mod tests {
 
         // Write more than max_size (10 KB)
         for i in 0..20 {
-            let path = StoragePath::vector("test", "shard_0", format!("file_{}.bin", i));
+            let path = StoragePath::vector("test", "shard_0", &format!("file_{}.bin", i)).unwrap();
             let data = Bytes::from(vec![0u8; 1024]); // 1 KB each
             storage.write(&path, data).await.unwrap();
         }
@@ -562,7 +562,7 @@ mod tests {
     async fn test_delete() {
         let (storage, l1_dir, l2_dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         let data = Bytes::from("test data");
 
         storage.write(&path, data).await.unwrap();
@@ -586,7 +586,7 @@ mod tests {
         assert_eq!(initial_stats.misses, 0);
 
         // Write some data
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         storage.write(&path, Bytes::from("data")).await.unwrap();
 
         let stats = storage.stats();
@@ -597,7 +597,7 @@ mod tests {
     async fn test_clear_cache() {
         let (storage, l1_dir, l2_dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         storage
             .write(&path, Bytes::from("test data"))
             .await

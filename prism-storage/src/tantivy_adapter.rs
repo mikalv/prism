@@ -212,7 +212,7 @@ impl TantivyStorageAdapter {
     /// Convert a Tantivy path to a StoragePath.
     fn to_storage_path(&self, path: &Path) -> StoragePath {
         let segment = path.to_string_lossy().to_string();
-        StoragePath::tantivy(&self.collection, &self.shard, segment)
+        StoragePath::tantivy(&self.collection, &self.shard, segment).expect("invalid tantivy storage path")
     }
 
 }

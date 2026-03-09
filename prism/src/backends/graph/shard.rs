@@ -432,11 +432,11 @@ impl GraphShard {
     // --- Storage helpers ---
 
     fn nodes_path(&self) -> StoragePath {
-        StoragePath::graph(&self.collection, &self.shard_name, "nodes.json")
+        StoragePath::graph(&self.collection, &self.shard_name, "nodes.json").unwrap()
     }
 
     fn edges_path(&self) -> StoragePath {
-        StoragePath::graph(&self.collection, &self.shard_name, "edges.json")
+        StoragePath::graph(&self.collection, &self.shard_name, "edges.json").unwrap()
     }
 
     async fn persist(&self) -> Result<()> {

@@ -237,7 +237,7 @@ impl LocalStorage {
 
                 // Only include if it matches the prefix
                 if path_str.starts_with(prefix) || prefix.is_empty() {
-                    if let Some(storage_path) = StoragePath::parse(&path_str) {
+                    if let Ok(storage_path) = StoragePath::parse(&path_str) {
                         results.push(ObjectMeta {
                             path: storage_path,
                             size: metadata.len(),
@@ -324,7 +324,7 @@ mod tests {
     async fn test_write_and_read() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         let data = Bytes::from("hello world");
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -337,7 +337,7 @@ mod tests {
     async fn test_read_not_found() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "nonexistent.bin");
+        let path = StoragePath::vector("test", "shard_0", "nonexistent.bin").unwrap();
         let result = storage.read(&path).await;
 
         assert!(result.is_err());
@@ -348,7 +348,7 @@ mod tests {
     async fn test_exists() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
 
         assert!(!storage.exists(&path).await.unwrap());
 
@@ -361,7 +361,7 @@ mod tests {
     async fn test_delete() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         storage.write(&path, Bytes::from("data")).await.unwrap();
 
         assert!(storage.exists(&path).await.unwrap());
@@ -375,7 +375,7 @@ mod tests {
     async fn test_delete_idempotent() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "nonexistent.bin");
+        let path = StoragePath::vector("test", "shard_0", "nonexistent.bin").unwrap();
 
         // Should not error on non-existent file
         storage.delete(&path).await.unwrap();
@@ -385,8 +385,8 @@ mod tests {
     async fn test_rename() {
         let (storage, _temp) = create_test_storage().await;
 
-        let from = StoragePath::vector("test", "shard_0", "old.bin");
-        let to = StoragePath::vector("test", "shard_0", "new.bin");
+        let from = StoragePath::vector("test", "shard_0", "old.bin").unwrap();
+        let to = StoragePath::vector("test", "shard_0", "new.bin").unwrap();
         let data = Bytes::from("test data");
 
         storage.write(&from, data.clone()).await.unwrap();
@@ -401,8 +401,8 @@ mod tests {
     async fn test_copy() {
         let (storage, _temp) = create_test_storage().await;
 
-        let from = StoragePath::vector("test", "shard_0", "source.bin");
-        let to = StoragePath::vector("test", "shard_1", "copy.bin");
+        let from = StoragePath::vector("test", "shard_0", "source.bin").unwrap();
+        let to = StoragePath::vector("test", "shard_1", "copy.bin").unwrap();
         let data = Bytes::from("test data");
 
         storage.write(&from, data.clone()).await.unwrap();
@@ -420,28 +420,28 @@ mod tests {
         // Write some files
         storage
             .write(
-                &StoragePath::vector("test", "shard_0", "a.bin"),
+                &StoragePath::vector("test", "shard_0", "a.bin").unwrap(),
                 Bytes::from("a"),
             )
             .await
             .unwrap();
         storage
             .write(
-                &StoragePath::vector("test", "shard_0", "b.bin"),
+                &StoragePath::vector("test", "shard_0", "b.bin").unwrap(),
                 Bytes::from("bb"),
             )
             .await
             .unwrap();
         storage
             .write(
-                &StoragePath::vector("test", "shard_1", "c.bin"),
+                &StoragePath::vector("test", "shard_1", "c.bin").unwrap(),
                 Bytes::from("ccc"),
             )
             .await
             .unwrap();
 
         // List all in collection
-        let prefix = StoragePath::new("test", StorageBackend::Vector);
+        let prefix = StoragePath::new("test", StorageBackend::Vector).unwrap();
         let results = storage.list(&prefix).await.unwrap();
 
         assert_eq!(results.len(), 3);
@@ -451,7 +451,7 @@ mod tests {
     async fn test_head() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "index.bin");
+        let path = StoragePath::vector("test", "shard_0", "index.bin").unwrap();
         let data = Bytes::from("hello world");
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -465,7 +465,7 @@ mod tests {
     async fn test_sync_operations() {
         let (storage, _temp) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "sync.bin");
+        let path = StoragePath::vector("test", "shard_0", "sync.bin").unwrap();
         let data = b"sync test data";
 
         storage.write_sync(&path, data).unwrap();
@@ -485,20 +485,20 @@ mod tests {
         // Write some files
         storage
             .write(
-                &StoragePath::vector("test", "shard_0", "a.bin"),
+                &StoragePath::vector("test", "shard_0", "a.bin").unwrap(),
                 Bytes::from("a"),
             )
             .await
             .unwrap();
         storage
             .write(
-                &StoragePath::vector("test", "shard_0", "b.bin"),
+                &StoragePath::vector("test", "shard_0", "b.bin").unwrap(),
                 Bytes::from("b"),
             )
             .await
             .unwrap();
 
-        let prefix = StoragePath::new("test", StorageBackend::Vector).with_shard("shard_0");
+        let prefix = StoragePath::new("test", StorageBackend::Vector).unwrap().with_shard("shard_0").unwrap();
         let deleted = storage.delete_prefix(&prefix).await.unwrap();
 
         assert_eq!(deleted, 2);
@@ -510,8 +510,8 @@ mod tests {
     #[tokio::test]
     async fn test_rename_not_found() {
         let (storage, _temp) = create_test_storage().await;
-        let from = StoragePath::vector("test", "shard_0", "missing.bin");
-        let to = StoragePath::vector("test", "shard_0", "new.bin");
+        let from = StoragePath::vector("test", "shard_0", "missing.bin").unwrap();
+        let to = StoragePath::vector("test", "shard_0", "new.bin").unwrap();
 
         let result = storage.rename(&from, &to).await;
         assert!(result.is_err());
@@ -521,7 +521,7 @@ mod tests {
     #[tokio::test]
     async fn test_head_not_found() {
         let (storage, _temp) = create_test_storage().await;
-        let path = StoragePath::vector("test", "shard_0", "missing.bin");
+        let path = StoragePath::vector("test", "shard_0", "missing.bin").unwrap();
 
         let result = storage.head(&path).await;
         assert!(result.is_err());
@@ -531,8 +531,8 @@ mod tests {
     #[tokio::test]
     async fn test_copy_not_found() {
         let (storage, _temp) = create_test_storage().await;
-        let from = StoragePath::vector("test", "shard_0", "missing.bin");
-        let to = StoragePath::vector("test", "shard_0", "copy.bin");
+        let from = StoragePath::vector("test", "shard_0", "missing.bin").unwrap();
+        let to = StoragePath::vector("test", "shard_0", "copy.bin").unwrap();
 
         let result = storage.copy(&from, &to).await;
         assert!(result.is_err());
@@ -543,7 +543,7 @@ mod tests {
     fn test_sync_read_not_found() {
         let temp = TempDir::new().unwrap();
         let storage = LocalStorage::new(temp.path());
-        let path = StoragePath::vector("test", "shard_0", "missing.bin");
+        let path = StoragePath::vector("test", "shard_0", "missing.bin").unwrap();
 
         let result = storage.read_sync(&path);
         assert!(result.is_err());
@@ -554,8 +554,8 @@ mod tests {
     fn test_sync_rename_not_found() {
         let temp = TempDir::new().unwrap();
         let storage = LocalStorage::new(temp.path());
-        let from = StoragePath::vector("test", "shard_0", "missing.bin");
-        let to = StoragePath::vector("test", "shard_0", "new.bin");
+        let from = StoragePath::vector("test", "shard_0", "missing.bin").unwrap();
+        let to = StoragePath::vector("test", "shard_0", "new.bin").unwrap();
 
         let result = storage.rename_sync(&from, &to);
         assert!(result.is_err());
@@ -582,13 +582,13 @@ mod tests {
 
         storage
             .write(
-                &StoragePath::vector("test", "shard_0", "a.bin"),
+                &StoragePath::vector("test", "shard_0", "a.bin").unwrap(),
                 Bytes::from("a"),
             )
             .await
             .unwrap();
 
-        let prefix = StoragePath::new("test", StorageBackend::Vector).with_shard("shard_0");
+        let prefix = StoragePath::new("test", StorageBackend::Vector).unwrap().with_shard("shard_0").unwrap();
         let results = storage.list(&prefix).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].size, 1);
@@ -601,14 +601,14 @@ mod tests {
         for i in 0..5 {
             storage
                 .write(
-                    &StoragePath::vector("test", "shard_0", &format!("f{}.bin", i)),
+                    &StoragePath::vector("test", "shard_0", &format!("f{}.bin", i)).unwrap(),
                     Bytes::from("x"),
                 )
                 .await
                 .unwrap();
         }
 
-        let prefix = StoragePath::new("test", StorageBackend::Vector);
+        let prefix = StoragePath::new("test", StorageBackend::Vector).unwrap();
         let opts = ListOptions {
             limit: Some(3),
             ..Default::default()
@@ -621,7 +621,7 @@ mod tests {
     fn test_sync_delete_idempotent() {
         let temp = TempDir::new().unwrap();
         let storage = LocalStorage::new(temp.path());
-        let path = StoragePath::vector("test", "shard_0", "missing.bin");
+        let path = StoragePath::vector("test", "shard_0", "missing.bin").unwrap();
         // Should not error
         storage.delete_sync(&path).unwrap();
     }
@@ -629,7 +629,7 @@ mod tests {
     #[tokio::test]
     async fn test_overwrite() {
         let (storage, _temp) = create_test_storage().await;
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
 
         storage
             .write(&path, Bytes::from("version 1"))

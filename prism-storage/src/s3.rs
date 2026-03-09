@@ -159,7 +159,7 @@ impl S3Storage {
         } else {
             path_str
         };
-        StoragePath::parse(relative)
+        StoragePath::parse(relative).ok()
     }
 }
 
@@ -352,7 +352,7 @@ mod tests {
             prefix: String::new(),
         };
 
-        let path = StoragePath::vector("products", "shard_0", "index.bin");
+        let path = StoragePath::vector("products", "shard_0", "index.bin").unwrap();
         let obj_path = storage.to_object_path(&path);
 
         assert_eq!(obj_path.as_ref(), "products/vector/shard_0/index.bin");
@@ -365,7 +365,7 @@ mod tests {
             prefix: "collections/".to_string(),
         };
 
-        let path = StoragePath::vector("products", "shard_0", "index.bin");
+        let path = StoragePath::vector("products", "shard_0", "index.bin").unwrap();
         let obj_path = storage.to_object_path(&path);
 
         assert_eq!(
@@ -399,7 +399,7 @@ mod tests {
             .with_credentials("minioadmin", "minioadmin");
 
         let storage = S3Storage::new(config).unwrap();
-        let path = StoragePath::vector("test", "shard_0", "integration_test.bin");
+        let path = StoragePath::vector("test", "shard_0", "integration_test.bin").unwrap();
         let data = Bytes::from("integration test data");
 
         // Write

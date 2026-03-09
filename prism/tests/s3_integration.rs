@@ -39,7 +39,7 @@ fn create_s3_storage() -> Arc<dyn SegmentStorage> {
 async fn test_s3_segment_storage_roundtrip() {
     let storage = create_s3_storage();
 
-    let path = StoragePath::vector("test-collection", "default", "index.bin");
+    let path = StoragePath::vector("test-collection", "default", "index.bin").unwrap();
     let data = Bytes::from_static(b"serialized hnsw index data for testing");
 
     storage
@@ -59,7 +59,7 @@ async fn test_s3_segment_storage_roundtrip() {
 async fn test_s3_segment_storage_not_found() {
     let storage = create_s3_storage();
 
-    let path = StoragePath::vector("nonexistent", "shard", "missing.bin");
+    let path = StoragePath::vector("nonexistent", "shard", "missing.bin").unwrap();
     let result = storage.read(&path).await;
 
     // Should return error for non-existent file
@@ -70,7 +70,7 @@ async fn test_s3_segment_storage_not_found() {
 #[ignore]
 async fn test_s3_segment_storage_overwrite() {
     let storage = create_s3_storage();
-    let path = StoragePath::vector("overwrite-test", "default", "data.bin");
+    let path = StoragePath::vector("overwrite-test", "default", "data.bin").unwrap();
 
     // Write initial data
     storage
@@ -95,7 +95,7 @@ async fn test_s3_segment_storage_overwrite() {
 #[ignore]
 async fn test_s3_segment_storage_delete() {
     let storage = create_s3_storage();
-    let path = StoragePath::vector("delete-test", "default", "data.bin");
+    let path = StoragePath::vector("delete-test", "default", "data.bin").unwrap();
 
     // Save data
     storage
@@ -119,7 +119,7 @@ async fn test_s3_segment_storage_delete() {
 #[ignore]
 async fn test_s3_segment_storage_large_data() {
     let storage = create_s3_storage();
-    let path = StoragePath::vector("large-test", "default", "large.bin");
+    let path = StoragePath::vector("large-test", "default", "large.bin").unwrap();
 
     // Create ~1MB of data (simulating a real HNSW index)
     let large_data: Vec<u8> = (0..1_000_000).map(|i| (i % 256) as u8).collect();
@@ -147,8 +147,8 @@ async fn test_s3_segment_storage_list() {
     let collection = "list-test";
 
     // Write multiple files
-    let path1 = StoragePath::vector(collection, "shard1", "index.bin");
-    let path2 = StoragePath::vector(collection, "shard2", "index.bin");
+    let path1 = StoragePath::vector(collection, "shard1", "index.bin").unwrap();
+    let path2 = StoragePath::vector(collection, "shard2", "index.bin").unwrap();
 
     storage
         .write(&path1, Bytes::from_static(b"shard1"))
@@ -160,7 +160,7 @@ async fn test_s3_segment_storage_list() {
         .unwrap();
 
     // List collection files using StoragePath prefix
-    let prefix = StoragePath::new(collection, StorageBackend::Vector);
+    let prefix = StoragePath::new(collection, StorageBackend::Vector).unwrap();
     let files = storage.list(&prefix).await.expect("Failed to list");
     assert!(files.len() >= 2);
 
@@ -175,7 +175,7 @@ async fn test_s3_segment_storage_text_backend_path() {
     let storage = create_s3_storage();
 
     // Test text backend path format (uses tantivy for text search)
-    let path = StoragePath::tantivy("documents", "default", "meta.json");
+    let path = StoragePath::tantivy("documents", "default", "meta.json").unwrap();
     let data = Bytes::from_static(b"{\"version\": 1}");
 
     storage
@@ -199,7 +199,7 @@ async fn test_s3_segment_storage_graph_backend_path() {
     let storage = create_s3_storage();
 
     // Test graph backend path format
-    let path = StoragePath::graph("knowledge", "default", "nodes.json");
+    let path = StoragePath::graph("knowledge", "default", "nodes.json").unwrap();
     let data = Bytes::from_static(b"{}");
 
     storage

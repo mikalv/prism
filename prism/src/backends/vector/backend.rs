@@ -298,11 +298,11 @@ impl VectorBackend {
     // --- Storage helpers using SegmentStorage ---
 
     fn index_path(collection: &str) -> StoragePath {
-        StoragePath::vector(collection, "default", "sharded_index.json")
+        StoragePath::vector(collection, "default", "sharded_index.json").unwrap()
     }
 
     fn legacy_index_path(collection: &str) -> StoragePath {
-        StoragePath::vector(collection, "default", "vector_index.json")
+        StoragePath::vector(collection, "default", "vector_index.json").unwrap()
     }
 
     async fn save_index(&self, collection: &str, data: &[u8]) -> Result<()> {

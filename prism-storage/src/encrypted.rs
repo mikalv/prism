@@ -384,7 +384,7 @@ mod tests {
     async fn test_roundtrip() {
         let (storage, _dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         let data = Bytes::from("Hello, World! This is sensitive data.");
 
         storage.write(&path, data.clone()).await.unwrap();
@@ -397,7 +397,7 @@ mod tests {
     async fn test_large_data() {
         let (storage, _dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "large.bin");
+        let path = StoragePath::vector("test", "shard_0", "large.bin").unwrap();
         // 1MB of data
         let data = Bytes::from(vec![0x42u8; 1024 * 1024]);
 
@@ -411,7 +411,7 @@ mod tests {
     async fn test_binary_data() {
         let (storage, _dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "binary.bin");
+        let path = StoragePath::vector("test", "shard_0", "binary.bin").unwrap();
         // All possible byte values
         let data: Vec<u8> = (0..=255).collect();
         let data = Bytes::from(data);
@@ -426,7 +426,7 @@ mod tests {
     async fn test_data_actually_encrypted() {
         let (storage, dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "secret.bin");
+        let path = StoragePath::vector("test", "shard_0", "secret.bin").unwrap();
         let plaintext = b"This is a secret message that should not appear in ciphertext";
         let data = Bytes::copy_from_slice(plaintext);
 
@@ -456,7 +456,7 @@ mod tests {
         let config1 = EncryptionConfig::generate("key1");
         let storage1 = EncryptedStorage::new(inner.clone(), config1).unwrap();
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         let data = Bytes::from("Secret data");
         storage1.write(&path, data).await.unwrap();
 
@@ -476,7 +476,7 @@ mod tests {
     async fn test_exists_and_delete() {
         let (storage, _dir) = create_test_storage().await;
 
-        let path = StoragePath::vector("test", "shard_0", "data.bin");
+        let path = StoragePath::vector("test", "shard_0", "data.bin").unwrap();
         let data = Bytes::from("test data");
 
         assert!(!storage.exists(&path).await.unwrap());
@@ -492,8 +492,8 @@ mod tests {
     async fn test_unique_nonces() {
         let (storage, dir) = create_test_storage().await;
 
-        let path1 = StoragePath::vector("test", "shard_0", "data1.bin");
-        let path2 = StoragePath::vector("test", "shard_0", "data2.bin");
+        let path1 = StoragePath::vector("test", "shard_0", "data1.bin").unwrap();
+        let path2 = StoragePath::vector("test", "shard_0", "data2.bin").unwrap();
         let data = Bytes::from("Same data");
 
         // Write same data twice
