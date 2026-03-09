@@ -30,7 +30,10 @@ async fn setup_server(pipelines_yaml: &[(&str, &str)]) -> (TempDir, String) {
     let server = ApiServer::with_pipelines(
         manager,
         CorsConfig::default(),
-        SecurityConfig::default(),
+        SecurityConfig {
+            enabled: false,
+            ..SecurityConfig::default()
+        },
         registry,
     );
 

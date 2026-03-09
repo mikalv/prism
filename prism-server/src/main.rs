@@ -222,6 +222,12 @@ async fn main() -> Result<()> {
         tracing::info!("TLS enabled");
     }
     if config.security.enabled {
+        if config.security.api_keys.is_empty() {
+            tracing::warn!(
+                "Security is enabled but no API keys are configured — all authenticated endpoints will return 401. \
+                 Configure api_keys in [security] or set security.enabled = false."
+            );
+        }
         tracing::info!(
             "Security enabled ({} API keys, {} roles)",
             config.security.api_keys.len(),

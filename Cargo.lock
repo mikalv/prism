@@ -2666,6 +2666,7 @@ dependencies = [
  "object_store",
  "parking_lot",
  "serde",
+ "serde_json",
  "tantivy",
  "tempfile",
  "thiserror 2.0.18",

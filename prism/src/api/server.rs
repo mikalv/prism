@@ -122,7 +122,14 @@ impl ApiServer {
     }
 
     pub fn with_cors(manager: Arc<CollectionManager>, cors_config: CorsConfig) -> Self {
-        Self::with_security(manager, cors_config, SecurityConfig::default())
+        Self::with_security(
+            manager,
+            cors_config,
+            SecurityConfig {
+                enabled: false,
+                ..SecurityConfig::default()
+            },
+        )
     }
 
     pub fn with_security(
