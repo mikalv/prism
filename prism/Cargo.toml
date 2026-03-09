@@ -95,6 +95,7 @@ prism-storage = { workspace = true, features = ["tantivy-adapter"] }
 
 # Tree-sitter code tokenizer (optional)
 prism-treesitter = { workspace = true, optional = true }
+subtle = "2.6.1"
 
 [features]
 default = ["vector-instant", "provider-ollama"]
