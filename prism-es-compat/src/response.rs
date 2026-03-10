@@ -397,6 +397,56 @@ pub struct EsFieldMapping {
     pub format: Option<String>,
 }
 
+/// ES document get response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EsGetResponse {
+    #[serde(rename = "_index")]
+    pub index: String,
+    #[serde(rename = "_id")]
+    pub id: String,
+    #[serde(rename = "_version")]
+    pub version: u64,
+    pub found: bool,
+    #[serde(rename = "_source", skip_serializing_if = "Option::is_none")]
+    pub source: Option<HashMap<String, Value>>,
+}
+
+/// ES index document response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EsIndexResponse {
+    #[serde(rename = "_index")]
+    pub index: String,
+    #[serde(rename = "_id")]
+    pub id: String,
+    #[serde(rename = "_version")]
+    pub version: u64,
+    pub result: String,
+    #[serde(rename = "_shards")]
+    pub shards: ShardStats,
+}
+
+/// ES delete document response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EsDeleteResponse {
+    #[serde(rename = "_index")]
+    pub index: String,
+    #[serde(rename = "_id")]
+    pub id: String,
+    #[serde(rename = "_version")]
+    pub version: u64,
+    pub result: String,
+    #[serde(rename = "_shards")]
+    pub shards: ShardStats,
+}
+
+/// ES count response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EsCountResponse {
+    pub count: u64,
+    #[serde(rename = "_shards")]
+    pub shards: ShardStats,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

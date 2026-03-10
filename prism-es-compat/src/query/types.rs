@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// Root ES search request body
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct EsSearchRequest {
     /// The query to execute
     #[serde(default)]

@@ -2,10 +2,11 @@
 
 use crate::endpoints::search::EsCompatState;
 use crate::endpoints::{
-    bulk_handler, cat_indices_handler, cluster_health_handler, mapping_handler, msearch_handler,
-    root_handler, search_handler,
+    bulk_handler, cat_indices_handler, cluster_health_handler, count_handler, delete_doc_handler,
+    get_doc_handler, get_search_handler, head_doc_handler, head_index_handler, mapping_handler,
+    msearch_handler, post_doc_handler, put_doc_handler, root_handler, search_handler,
 };
-use axum::routing::{get, post};
+use axum::routing::{get, head, post};
 use axum::Router;
 use prism::collection::CollectionManager;
 use std::sync::Arc;
@@ -19,12 +20,19 @@ use std::sync::Arc;
 /// - `GET /_elastic/` - Cluster info
 /// - `GET /_elastic/_cluster/health` - Cluster health
 /// - `GET /_elastic/_cat/indices` - List indices
+/// - `GET|POST /_elastic/{index}/_search` - Search specific index
 /// - `POST /_elastic/_search` - Search all indices
-/// - `POST /_elastic/{index}/_search` - Search specific index
 /// - `POST /_elastic/_msearch` - Multi-search
 /// - `POST /_elastic/_bulk` - Bulk operations
 /// - `POST /_elastic/{index}/_bulk` - Bulk with default index
 /// - `GET /_elastic/{index}/_mapping` - Get mappings
+/// - `GET /_elastic/{index}/_doc/{id}` - Get document
+/// - `POST /_elastic/{index}/_doc` - Index document (auto ID)
+/// - `PUT /_elastic/{index}/_doc/{id}` - Index document (explicit ID)
+/// - `DELETE /_elastic/{index}/_doc/{id}` - Delete document
+/// - `HEAD /_elastic/{index}/_doc/{id}` - Check document exists
+/// - `HEAD /_elastic/{index}` - Check index exists
+/// - `GET /_elastic/{index}/_count` - Count documents
 pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
     let state = EsCompatState { manager };
 
@@ -35,7 +43,10 @@ pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
         .route("/_cat/indices", get(cat_indices_handler))
         // Search endpoints
         .route("/_search", post(search_handler_no_index))
-        .route("/:index/_search", post(search_handler))
+        .route(
+            "/:index/_search",
+            get(get_search_handler).post(search_handler),
+        )
         // Multi-search
         .route("/_msearch", post(msearch_handler))
         // Bulk endpoints
@@ -43,6 +54,18 @@ pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
         .route("/:index/_bulk", post(bulk_handler))
         // Mapping endpoints
         .route("/:index/_mapping", get(mapping_handler))
+        // Document CRUD endpoints
+        .route("/:index/_doc", post(post_doc_handler))
+        .route(
+            "/:index/_doc/:id",
+            get(get_doc_handler)
+                .put(put_doc_handler)
+                .delete(delete_doc_handler)
+                .head(head_doc_handler),
+        )
+        // Index-level endpoints
+        .route("/:index", head(head_index_handler))
+        .route("/:index/_count", get(count_handler))
         .with_state(state)
 }
 
@@ -83,24 +106,37 @@ mod tests {
     async fn test_index_specific_routes_match() {
         // Build a minimal router with dummy handlers that always return 200.
         // This isolates the routing logic from the actual handler logic.
+        let ok = || async { StatusCode::OK };
         let router = Router::new()
-            .route("/_search", post(|| async { StatusCode::OK }))
-            .route("/:index/_search", post(|| async { StatusCode::OK }))
-            .route("/_bulk", post(|| async { StatusCode::OK }))
-            .route("/:index/_bulk", post(|| async { StatusCode::OK }))
-            .route("/:index/_mapping", get(|| async { StatusCode::OK }))
-            .route("/_cat/indices", get(|| async { StatusCode::OK }))
-            .route("/_cluster/health", get(|| async { StatusCode::OK }));
+            .route("/_search", post(ok))
+            .route("/:index/_search", get(ok).post(ok))
+            .route("/_bulk", post(ok))
+            .route("/:index/_bulk", post(ok))
+            .route("/:index/_mapping", get(ok))
+            .route("/_cat/indices", get(ok))
+            .route("/_cluster/health", get(ok))
+            .route("/:index/_doc", post(ok))
+            .route("/:index/_doc/:id", get(ok).put(ok).delete(ok).head(ok))
+            .route("/:index", head(ok))
+            .route("/:index/_count", get(ok));
 
         let cases = vec![
             ("POST", "/_search"),
             ("POST", "/my_index/_search"),
+            ("GET", "/my_index/_search"),
             ("POST", "/logs-2024-01/_search"),
             ("POST", "/_bulk"),
             ("POST", "/my_index/_bulk"),
             ("GET", "/my_index/_mapping"),
             ("GET", "/_cat/indices"),
             ("GET", "/_cluster/health"),
+            ("POST", "/my_index/_doc"),
+            ("GET", "/my_index/_doc/1"),
+            ("PUT", "/my_index/_doc/1"),
+            ("DELETE", "/my_index/_doc/1"),
+            ("HEAD", "/my_index/_doc/1"),
+            ("HEAD", "/my_index"),
+            ("GET", "/my_index/_count"),
         ];
 
         for (method, path) in cases {
