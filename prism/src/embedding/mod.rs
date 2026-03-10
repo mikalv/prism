@@ -175,16 +175,37 @@ impl CachedEmbeddingProvider {
     }
 }
 
+/// Maximum character length for embedding input text.
+/// nomic-embed-text supports 8192 tokens; we use ~24000 chars as a conservative
+/// approximation (~3 chars/token) to avoid "input length exceeds context length" errors.
+const MAX_EMBED_CHARS: usize = 24000;
+
+/// Truncate text to fit within embedding model context limits.
+/// Truncation happens at the nearest UTF-8 char boundary at or before MAX_EMBED_CHARS.
+fn truncate_for_embedding(text: &str) -> &str {
+    if text.len() <= MAX_EMBED_CHARS {
+        return text;
+    }
+    // Find a safe UTF-8 boundary
+    let mut end = MAX_EMBED_CHARS;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 /// Embed texts in chunks, sending chunk_size texts per provider call.
 /// Chunks are processed sequentially to avoid Send lifetime issues in async traits.
+/// Long texts are automatically truncated to fit model context limits.
 async fn chunked_embed(
     provider: &dyn EmbeddingProvider,
     texts: &[&str],
     chunk_size: usize,
     _max_concurrent: usize,
 ) -> anyhow::Result<Vec<Vec<f32>>> {
-    let mut all = Vec::with_capacity(texts.len());
-    for chunk in texts.chunks(chunk_size) {
+    let truncated: Vec<&str> = texts.iter().map(|t| truncate_for_embedding(t)).collect();
+    let mut all = Vec::with_capacity(truncated.len());
+    for chunk in truncated.chunks(chunk_size) {
         all.extend(provider.embed_batch(chunk).await?);
     }
     Ok(all)
