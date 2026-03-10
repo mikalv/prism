@@ -176,16 +176,14 @@ impl CachedEmbeddingProvider {
 }
 
 /// Maximum character length for a single embedding input text.
-/// Most embedding models (nomic-embed-text, all-MiniLM, etc.) have 8192 token
-/// context limits. For code, ~4 chars/token is typical, so 8000 chars ≈ 2000
-/// tokens — safely within limits even with tokenizer overhead.
-const MAX_EMBED_CHARS: usize = 8000;
+/// nomic-embed-text has 8192 token context. Code tokenizes at ~2-3 chars/token,
+/// so 2000 chars ≈ 700-1000 tokens — safely within limits.
+const MAX_EMBED_CHARS: usize = 2000;
 
 /// Maximum total characters across all texts in a single batch request.
-/// Ollama shares the context window across the entire batch, so sending 50
-/// texts of 8000 chars each would far exceed the 8192 token limit.
-/// We cap at ~32000 chars total per batch (~8000 tokens) to stay safe.
-const MAX_BATCH_TOTAL_CHARS: usize = 32000;
+/// Ollama shares the context window across the entire batch.
+/// 8000 chars ≈ 3000-4000 tokens total, well under 8192 limit.
+const MAX_BATCH_TOTAL_CHARS: usize = 8000;
 
 /// Truncate text to fit within embedding model context limits.
 /// Truncation happens at the nearest UTF-8 char boundary.
