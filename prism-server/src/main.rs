@@ -13,13 +13,13 @@ struct Args {
     #[arg(short, long, default_value = "prism.toml", env = "PRISM_CONFIG_PATH")]
     config: String,
 
-    /// Host to bind to (env: PRISM_HOST)
-    #[arg(long, default_value = "127.0.0.1", env = "PRISM_HOST")]
-    host: String,
+    /// Host to bind to — overrides config file (env: PRISM_HOST)
+    #[arg(long, env = "PRISM_HOST")]
+    host: Option<String>,
 
-    /// Port to listen on (env: PRISM_PORT)
-    #[arg(short, long, default_value = "3080", env = "PRISM_PORT")]
-    port: u16,
+    /// Port to listen on — overrides config file (env: PRISM_PORT)
+    #[arg(short, long, env = "PRISM_PORT")]
+    port: Option<u16>,
 
     /// Schemas directory path (env: PRISM_SCHEMAS_DIR)
     #[arg(long, default_value = "schemas", env = "PRISM_SCHEMAS_DIR")]
@@ -78,7 +78,23 @@ async fn main() -> Result<()> {
         None
     };
 
-    tracing::info!("Starting Prism server on {}:{}", args.host, args.port);
+    // Resolve bind address: CLI args override config file
+    let addr = match (args.host, args.port) {
+        (Some(h), Some(p)) => format!("{}:{}", h, p),
+        (Some(h), None) => {
+            // CLI host + port from config
+            let port = config.server.bind_addr.rsplit(':').next().unwrap_or("3080");
+            format!("{}:{}", h, port)
+        }
+        (None, Some(p)) => {
+            // Host from config + CLI port
+            let host = config.server.bind_addr.rsplitn(2, ':').last().unwrap_or("127.0.0.1");
+            format!("{}:{}", host, p)
+        }
+        (None, None) => config.server.bind_addr.clone(),
+    };
+
+    tracing::info!("Starting Prism server on {}", addr);
     tracing::info!("Schemas dir: {}", args.schemas_dir);
     tracing::info!("Data dir: {}", args.data_dir);
     if let Some(ref log_dir) = args.log_dir {
@@ -93,7 +109,6 @@ async fn main() -> Result<()> {
     config.ensure_dirs()?;
     let data_path = Path::new(&args.data_dir);
     std::fs::create_dir_all(data_path)?;
-    let addr = format!("{}:{}", args.host, args.port);
 
     // Create backends
     let text_backend = Arc::new(prism::backends::text::TextBackend::new(
