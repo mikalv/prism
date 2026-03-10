@@ -2,6 +2,42 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.7] - 2026-03-10
+
+### Security
+
+- **Security enabled by default** — `[security] enabled = true` is now the default; API keys must be configured or security explicitly disabled for development
+- **Path traversal protection** — `StoragePath` rejects `../` sequences in collection names and document IDs, with defense-in-depth assertions
+- **Constant-time API key comparison** — prevents timing side-channel attacks on authentication
+- **StoragePath deserialization bypass fix** — closes a vulnerability where crafted deserialized paths could skip validation
+
+### Added
+
+- **Async indexing queue** — `POST /collections/:col/documents` now returns `202 Accepted` immediately, processing in background via `tokio::mpsc` channel. Falls back to synchronous `201 Created` when queue is full. Use `?sync=true` to force synchronous indexing
+- **ES document CRUD endpoints** — `GET/PUT/POST/DELETE /_elastic/{index}/_doc/{id}`, `HEAD /_elastic/{index}/_doc/{id}`, `HEAD /_elastic/{index}`, `GET /_elastic/{index}/_count`, `GET /_elastic/{index}/_search?q=...` for Elasticsearch client compatibility
+- **Embedding error propagation** — embedding generation failures now return clear errors instead of cryptic "Missing embedding field" messages
+
+### Fixes
+
+- **Dimension mismatch detection** — persisted vector indexes with wrong dimensions are detected on load instead of silently corrupting search results
+- **Embedding text truncation** — texts are truncated to 2000 chars before embedding to prevent Ollama context overflow
+- **Dynamic batch splitting** — large embedding batches are automatically split when they exceed provider limits
+- **Server bind_addr from config** — `[server] bind_addr` in config file is now respected (was previously ignored in favor of CLI args only)
+
+### Documentation
+
+- Updated API reference with async indexing (202/201), `?sync=true` param, proper request format
+- New Elasticsearch Compatibility guide (`docs/guides/elasticsearch-compat.md`)
+- Updated security docs for enabled-by-default, constant-time auth, path traversal protection
+- Updated configuration docs for security default change
+- Elixir client (`prismsearch`) hex.pm metadata: description, maintainers, links to Prism repo and docs
+
+### Client Libraries
+
+- **Elixir** — hex.pm-ready metadata with proper description, links, and README
+
+---
+
 ## [0.6.6] - 2026-02-23
 
 ### Security

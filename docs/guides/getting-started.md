@@ -27,6 +27,7 @@ Binaries are placed in `target/release/`:
 | `cache-redis` | Redis embedding cache backend |
 | `storage-s3` | S3/MinIO object storage |
 | `vector-usearch` | USearch vector backend (alternative to instant-distance) |
+| `es-compat` | Elasticsearch-compatible REST API at `/_elastic/` |
 | `full` | All features enabled |
 
 ```bash

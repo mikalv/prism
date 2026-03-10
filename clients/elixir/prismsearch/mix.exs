@@ -12,7 +12,7 @@ defmodule Prismsearch.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),
-      description: "Elixir client for Prism search engine",
+      description: "Elixir client for Prism — a high-performance hybrid search engine combining full-text (Tantivy/BM25) and vector search (HNSW) for AI/RAG applications. See https://github.com/mikalv/prism",
       source_url: @source_url,
       docs: docs()
     ]
@@ -33,7 +33,14 @@ defmodule Prismsearch.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url}
+      links: %{
+        "GitHub" => @source_url,
+        "Prism Search Engine" => "https://github.com/mikalv/prism",
+        "Documentation" => "https://mikalv.github.io/prism/",
+        "Changelog" => "https://github.com/mikalv/prism/releases"
+      },
+      files: ~w(lib .formatter.exs mix.exs README* LICENSE*),
+      maintainers: ["Mikael Voss"]
     ]
   end
 

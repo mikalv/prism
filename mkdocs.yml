@@ -102,6 +102,7 @@ nav:
     - Code Search: guides/code-search.md
     - Ranking: guides/ranking.md
     - Collections: guides/collections.md
+    - Elasticsearch Compatibility: guides/elasticsearch-compat.md
     - Export & Import: guides/export-import.md
     - Encryption: guides/encryption.md
 

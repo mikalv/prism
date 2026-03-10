@@ -17,11 +17,12 @@ use futures::stream::Stream;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, watch, RwLock};
+use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tokio_rustls::TlsAcceptor;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
+use crate::backends::Document;
 use crate::mcp::handler::{JsonRpcRequest, JsonRpcResponse, McpHandler};
 use crate::mcp::session::{SessionManager, SseEvent};
 use crate::mcp::tools::register_basic_tools;
@@ -56,6 +57,12 @@ async fn metrics_middleware(
     response
 }
 
+/// A job submitted to the background indexing queue.
+pub struct IndexJob {
+    pub collection: String,
+    pub documents: Vec<Document>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub manager: Arc<CollectionManager>,
@@ -65,6 +72,7 @@ pub struct AppState {
     pub metrics_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
     pub security_config: Arc<RwLock<SecurityConfig>>,
     pub ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
+    pub index_queue_tx: mpsc::Sender<IndexJob>,
 }
 
 /// Handle for reloading server configuration at runtime (via SIGHUP)
@@ -470,6 +478,30 @@ impl ApiServer {
     /// extension routes (e.g. ES-compat) can be merged before middleware
     /// is added, ensuring all routes are covered by auth/audit/limits.
     async fn build_routes(&self) -> Router {
+        // Background indexing queue (capacity 1000 jobs)
+        let (index_queue_tx, mut index_queue_rx) = mpsc::channel::<IndexJob>(1000);
+
+        let worker_manager = self.manager.clone();
+        tokio::spawn(async move {
+            while let Some(job) = index_queue_rx.recv().await {
+                let doc_count = job.documents.len();
+                let collection = job.collection.clone();
+                match worker_manager.index(&job.collection, job.documents).await {
+                    Ok(()) => tracing::debug!(
+                        collection = %collection,
+                        doc_count,
+                        "Async index complete"
+                    ),
+                    Err(e) => tracing::error!(
+                        collection = %collection,
+                        doc_count,
+                        error = %e,
+                        "Async index failed"
+                    ),
+                }
+            }
+        });
+
         let app_state = AppState {
             manager: self.manager.clone(),
             session_manager: self.session_manager.clone(),
@@ -478,6 +510,7 @@ impl ApiServer {
             metrics_handle: self.metrics_handle.clone(),
             security_config: self.security_config.clone(),
             ilm_manager: self.ilm_manager.clone(),
+            index_queue_tx,
         };
 
         // ILM state for ILM routes

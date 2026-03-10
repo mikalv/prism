@@ -1,4 +1,5 @@
-use crate::api::server::AppState;
+use crate::api::server::{AppState, IndexJob};
+use tokio::sync::mpsc::error::TrySendError;
 use crate::backends::{
     Document, GraphEdge, GraphNode, GraphStats, HighlightConfig, Query, SearchResult, SearchResults,
 };
@@ -258,6 +259,10 @@ pub struct IndexRequest {
 #[derive(Deserialize)]
 pub struct IndexQuery {
     pub pipeline: Option<String>,
+    /// Force synchronous indexing (bypasses async queue). Useful for tests
+    /// and clients that need documents to be searchable immediately.
+    #[serde(default)]
+    pub sync: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -266,6 +271,9 @@ pub struct IndexResponse {
     pub failed: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<IndexError>,
+    /// True when documents were accepted into the async queue (202 Accepted).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub queued: bool,
 }
 
 #[derive(Serialize)]
@@ -323,7 +331,11 @@ pub async fn index_documents(
     let indexed = documents.len();
     let failed = errors.len();
 
-    if !documents.is_empty() {
+    let force_sync = query.sync.unwrap_or(false);
+
+    let (status_code, queued) = if documents.is_empty() {
+        (StatusCode::CREATED, false)
+    } else if force_sync {
         state
             .manager
             .index(&collection, documents)
@@ -332,7 +344,46 @@ pub async fn index_documents(
                 tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
                 (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
             })?;
-    }
+        (StatusCode::CREATED, false)
+    } else {
+        let job = IndexJob {
+            collection: collection.clone(),
+            documents,
+        };
+        match state.index_queue_tx.try_send(job) {
+            Ok(()) => {
+                tracing::info!(
+                    "Queued {}/{} documents for async indexing to '{}' ({} failed)",
+                    indexed, total, collection, failed
+                );
+                (StatusCode::ACCEPTED, true)
+            }
+            Err(TrySendError::Full(job)) => {
+                tracing::warn!("Index queue full, indexing {} documents synchronously", indexed);
+                state
+                    .manager
+                    .index(&job.collection, job.documents)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+                    })?;
+                (StatusCode::CREATED, false)
+            }
+            Err(TrySendError::Closed(job)) => {
+                tracing::warn!("Index queue closed, indexing synchronously");
+                state
+                    .manager
+                    .index(&job.collection, job.documents)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
+                        (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+                    })?;
+                (StatusCode::CREATED, false)
+            }
+        }
+    };
 
     let duration = start.elapsed().as_secs_f64();
     let pipeline_label = query.pipeline.as_deref().unwrap_or("none").to_string();
@@ -354,19 +405,19 @@ pub async fn index_documents(
     )
     .record(total as f64);
 
-    tracing::info!(
-        "Indexed {}/{} documents to '{}' ({} failed)",
-        indexed,
-        total,
-        collection,
-        failed
-    );
+    if !queued {
+        tracing::info!(
+            "Indexed {}/{} documents to '{}' ({} failed)",
+            indexed, total, collection, failed
+        );
+    }
     Ok((
-        StatusCode::CREATED,
+        status_code,
         Json(IndexResponse {
             indexed,
             failed,
             errors,
+            queued,
         }),
     ))
 }

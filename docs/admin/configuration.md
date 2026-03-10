@@ -124,8 +124,11 @@ See [Monitoring](monitoring.md) for metrics details.
 
 ```toml
 [security]
-enabled = false
+enabled = true   # Enabled by default since v0.6.7
 ```
+
+!!! note
+    Security is **enabled by default** since v0.6.7. You must configure at least one API key to access the server, or set `enabled = false` for local development.
 
 See [Security](security.md) for API keys, RBAC, and audit logging.
 

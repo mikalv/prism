@@ -1,11 +1,26 @@
 defmodule Prismsearch do
   @moduledoc """
-  Elixir client for Prism search engine.
+  Elixir client for [Prism](https://github.com/mikalv/prism) — a high-performance
+  hybrid search engine combining full-text search (Tantivy/BM25) and vector search
+  (HNSW) for AI/RAG applications.
 
   ## Quick Start
 
       client = Prismsearch.client(base_url: "http://localhost:3080")
-      {:ok, results} = Prismsearch.search(client, Prismsearch.Query.new("products", "headphones"))
+
+      # Index documents
+      docs = [%{"id" => "1", "fields" => %{"title" => "Hello", "content" => "World"}}]
+      {:ok, _} = Prismsearch.index(client, "my_collection", docs)
+
+      # Search
+      query = Prismsearch.Query.new("my_collection", "hello")
+      {:ok, results} = Prismsearch.search(client, query)
+
+  ## Authentication
+
+      client = Prismsearch.client(base_url: "http://localhost:3080", api_key: "sk-...")
+
+  See the [Prism documentation](https://mikalv.github.io/prism/) for server setup and configuration.
   """
 
   alias Prismsearch.{Client, Query, SearchResults}

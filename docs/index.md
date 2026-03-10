@@ -99,9 +99,9 @@ backends:
 EOF
 
 # 3. Index documents
-curl -X POST http://localhost:3080/collections/docs/documents \
+curl -X POST http://localhost:3080/collections/docs/documents?sync=true \
   -H "Content-Type: application/json" \
-  -d '[{"id": "1", "title": "Hello", "content": "World"}]'
+  -d '{"documents": [{"id": "1", "fields": {"title": "Hello", "content": "World"}}]}'
 
 # 4. Search
 curl -X POST http://localhost:3080/collections/docs/search \
@@ -111,4 +111,4 @@ curl -X POST http://localhost:3080/collections/docs/search \
 
 ## Version
 
-This documentation covers Prism v0.5.0.
+This documentation covers Prism v0.6.7.

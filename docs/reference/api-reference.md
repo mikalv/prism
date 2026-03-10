@@ -17,7 +17,7 @@ Check server health. Returns node status, version, collection count, and uptime.
 ```json
 {
   "status": "ok",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "collections": 4,
   "uptime_secs": 3621
 }
@@ -192,20 +192,47 @@ Advanced Lucene-style query DSL with facets, boosting, and context.
 
 ### POST /collections/:collection/documents
 
-Index documents (bulk).
+Index documents into a collection.
 
-**Request:** Array of JSON documents.
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sync` | boolean | `false` | Force synchronous indexing (returns `201` instead of `202`) |
+| `pipeline` | string | — | Name of an ingest pipeline to apply before indexing |
+
+**Request:**
 
 ```json
-[
-  { "id": "1", "title": "First Document", "content": "..." },
-  { "id": "2", "title": "Second Document", "content": "..." }
-]
+{
+  "documents": [
+    { "id": "1", "title": "First Document", "content": "..." },
+    { "id": "2", "title": "Second Document", "content": "..." }
+  ]
+}
 ```
 
 Each document must have an `id` field. Other fields must match the collection schema.
 
-**Response:** `200 OK`
+**Response:** `202 Accepted` (async, default)
+
+By default, documents are placed on an internal queue for asynchronous indexing. When the queue is full or `?sync=true` is set, the server indexes synchronously and returns `201 Created`.
+
+```json
+{
+  "indexed": 2,
+  "failed": 0,
+  "errors": [],
+  "queued": true
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `indexed` | integer | Number of documents successfully indexed (sync) or accepted (async) |
+| `failed` | integer | Number of documents that failed |
+| `errors` | array | Per-document error messages, if any |
+| `queued` | boolean | `true` when documents were queued for async indexing, `false` for sync |
 
 **Errors:**
 - `404` — Collection not found
@@ -901,12 +928,253 @@ Get graph statistics.
 
 ---
 
+## Elasticsearch Compatibility
+
+These endpoints are available when Prism is built with the `es-compat` feature. They are mounted under the `/_elastic/` prefix and follow the Elasticsearch REST API conventions, making it possible to use existing ES clients and tooling with Prism.
+
+### GET /_elastic/
+
+Cluster info endpoint. Returns an ES-compatible root response with version and cluster metadata.
+
+---
+
+### Document CRUD
+
+#### GET /_elastic/{index}/_doc/{id}
+
+Get a document by ID.
+
+**Response:** `200 OK`
+
+```json
+{
+  "_index": "articles",
+  "_id": "doc-1",
+  "_version": 1,
+  "found": true,
+  "_source": {
+    "title": "Document Title",
+    "content": "Full document content..."
+  }
+}
+```
+
+Returns `404` with `"found": false` when the document does not exist.
+
+---
+
+#### HEAD /_elastic/{index}/_doc/{id}
+
+Check whether a document exists. Returns `200 OK` if found, `404 Not Found` otherwise. No response body.
+
+---
+
+#### POST /_elastic/{index}/_doc
+
+Index a document with an auto-generated ID.
+
+**Request:**
+
+```json
+{
+  "title": "New Document",
+  "content": "..."
+}
+```
+
+**Response:** `201 Created`
+
+```json
+{
+  "_index": "articles",
+  "_id": "generated-uuid",
+  "result": "created"
+}
+```
+
+---
+
+#### PUT /_elastic/{index}/_doc/{id}
+
+Index a document with an explicit ID. Creates the document if it does not exist, or replaces it if it does.
+
+**Request:**
+
+```json
+{
+  "title": "Updated Document",
+  "content": "..."
+}
+```
+
+**Response:** `200 OK` or `201 Created`
+
+```json
+{
+  "_index": "articles",
+  "_id": "doc-1",
+  "result": "created"
+}
+```
+
+---
+
+#### DELETE /_elastic/{index}/_doc/{id}
+
+Delete a document by ID.
+
+**Response:** `200 OK`
+
+```json
+{
+  "_index": "articles",
+  "_id": "doc-1",
+  "result": "deleted"
+}
+```
+
+Returns `404` if the document does not exist.
+
+---
+
+### Index Operations
+
+#### HEAD /_elastic/{index}
+
+Check if an index (collection) exists. Returns `200 OK` if it exists, `404 Not Found` otherwise. No response body.
+
+---
+
+#### GET /_elastic/{index}/_mapping
+
+Get the index mapping (field schema).
+
+**Response:** `200 OK`
+
+```json
+{
+  "articles": {
+    "mappings": {
+      "properties": {
+        "title": { "type": "text" },
+        "content": { "type": "text" }
+      }
+    }
+  }
+}
+```
+
+---
+
+#### GET /_elastic/_cat/indices
+
+List all indices. Returns a summary of each index in the cluster.
+
+**Response:** `200 OK`
+
+```json
+[
+  { "index": "articles", "docs.count": "5000", "store.size": "10mb" }
+]
+```
+
+---
+
+### Search
+
+#### GET /_elastic/{index}/_search?q=...&size=...&from=...
+
+Query string search. Accepts Lucene-style `q` parameter with optional `size` and `from` for pagination.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | — | Query string (Lucene syntax) |
+| `size` | integer | 10 | Maximum results to return |
+| `from` | integer | 0 | Offset for pagination |
+
+**Response:** `200 OK` — ES-compatible hits format.
+
+---
+
+#### POST /_elastic/{index}/_search
+
+Full search using Elasticsearch query DSL in the request body.
+
+**Request:**
+
+```json
+{
+  "query": {
+    "match": { "title": "search engine" }
+  },
+  "size": 10,
+  "from": 0
+}
+```
+
+**Response:** `200 OK` — ES-compatible hits format.
+
+---
+
+#### POST /_elastic/_msearch
+
+Multi-search. Execute multiple searches in a single request using newline-delimited JSON (NDJSON) format.
+
+---
+
+#### GET /_elastic/{index}/_count
+
+Count documents in an index.
+
+**Response:** `200 OK`
+
+```json
+{
+  "count": 5000
+}
+```
+
+---
+
+### Bulk
+
+#### POST /_elastic/{index}/_bulk
+
+Bulk operations using NDJSON format. Supports `index`, `create`, `update`, and `delete` actions.
+
+**Request (NDJSON):**
+
+```
+{"index": {"_id": "1"}}
+{"title": "First", "content": "..."}
+{"index": {"_id": "2"}}
+{"title": "Second", "content": "..."}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "took": 30,
+  "errors": false,
+  "items": [
+    { "index": { "_id": "1", "status": 201, "result": "created" } },
+    { "index": { "_id": "2", "status": 201, "result": "created" } }
+  ]
+}
+```
+
+---
+
 ## Error responses
 
 All error responses use standard HTTP status codes:
 
 | Code | Meaning |
 |------|---------|
+| `202` | Accepted — documents queued for async indexing |
 | `400` | Bad request (invalid query syntax, missing required field) |
 | `404` | Collection or document not found |
 | `409` | Conflict (collection already exists) |

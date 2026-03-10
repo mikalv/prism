@@ -101,7 +101,10 @@ async fn create_test_collection(client: &Client, base_url: &str) {
 /// Helper: index a batch of documents into a collection.
 async fn index_docs(client: &Client, base_url: &str, collection: &str, docs: &Value) {
     let resp = client
-        .post(format!("{}/collections/{}/documents", base_url, collection))
+        .post(format!(
+            "{}/collections/{}/documents?sync=true",
+            base_url, collection
+        ))
         .json(&json!({ "documents": docs }))
         .send()
         .await

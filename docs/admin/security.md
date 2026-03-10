@@ -4,12 +4,14 @@ Prism supports API key authentication with role-based access control (RBAC) and 
 
 ## Enabling Security
 
+As of v0.6.7, security is **enabled by default** (`enabled = true`). This means you must configure at least one API key before Prism will accept requests. If you are running Prism in a local development environment and do not need authentication, you can explicitly disable it:
+
 ```toml
 [security]
-enabled = true
+enabled = false   # Only for local development!
 ```
 
-When enabled, all requests must include a valid API key in the `Authorization` header:
+When security is enabled (the default), all requests must include a valid API key in the `Authorization` header:
 
 ```bash
 curl -H "Authorization: Bearer sk-abc123..." http://localhost:3080/collections/docs/search
@@ -178,6 +180,14 @@ roles = ["tenant-b"]
 3. **Use least privilege** — Grant minimum necessary permissions
 4. **Enable audit logging** — Track access for compliance
 5. **Use TLS in production** — Encrypt traffic with HTTPS
+6. **Keep security enabled** — As of v0.6.7, security is on by default. Only disable it for local development
+
+## Built-in Protections
+
+Prism includes several built-in security measures:
+
+- **Constant-time API key comparison** — API keys are compared using constant-time algorithms to prevent timing side-channel attacks. This ensures that an attacker cannot infer a valid key by measuring response times.
+- **Path traversal protection** — Collection names and document IDs are validated against directory traversal attacks. Inputs containing sequences like `../` are rejected, preventing access to files outside the data directory.
 
 ## See Also
 
