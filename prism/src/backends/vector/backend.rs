@@ -140,9 +140,20 @@ impl VectorBackend {
             // Try new sharded format first, then legacy format
             match deserialize_sharded_index(&bytes) {
                 Ok(restored) => {
-                    let mut indexes = self.indexes.write();
-                    indexes.insert(collection.to_string(), restored);
-                    return Ok(());
+                    // Verify persisted dimensions match schema
+                    let persisted_dims = restored.shards.first().map(|s| s.dimensions).unwrap_or(0);
+                    if persisted_dims != vector_config.dimension && persisted_dims > 0 {
+                        tracing::warn!(
+                            collection,
+                            persisted = persisted_dims,
+                            schema = vector_config.dimension,
+                            "Persisted vector index dimensions mismatch, rebuilding"
+                        );
+                    } else {
+                        let mut indexes = self.indexes.write();
+                        indexes.insert(collection.to_string(), restored);
+                        return Ok(());
+                    }
                 }
                 Err(_) => {
                     // Try legacy format
