@@ -175,39 +175,66 @@ impl CachedEmbeddingProvider {
     }
 }
 
-/// Maximum character length for embedding input text.
-/// nomic-embed-text supports 8192 tokens; we use ~24000 chars as a conservative
-/// approximation (~3 chars/token) to avoid "input length exceeds context length" errors.
-const MAX_EMBED_CHARS: usize = 24000;
+/// Maximum character length for a single embedding input text.
+/// Most embedding models (nomic-embed-text, all-MiniLM, etc.) have 8192 token
+/// context limits. For code, ~4 chars/token is typical, so 8000 chars ≈ 2000
+/// tokens — safely within limits even with tokenizer overhead.
+const MAX_EMBED_CHARS: usize = 8000;
+
+/// Maximum total characters across all texts in a single batch request.
+/// Ollama shares the context window across the entire batch, so sending 50
+/// texts of 8000 chars each would far exceed the 8192 token limit.
+/// We cap at ~32000 chars total per batch (~8000 tokens) to stay safe.
+const MAX_BATCH_TOTAL_CHARS: usize = 32000;
 
 /// Truncate text to fit within embedding model context limits.
-/// Truncation happens at the nearest UTF-8 char boundary at or before MAX_EMBED_CHARS.
+/// Truncation happens at the nearest UTF-8 char boundary.
 fn truncate_for_embedding(text: &str) -> &str {
     if text.len() <= MAX_EMBED_CHARS {
         return text;
     }
-    // Find a safe UTF-8 boundary
     let mut end = MAX_EMBED_CHARS;
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
     }
+    tracing::debug!(
+        "Truncating embedding input from {} to {} chars",
+        text.len(),
+        end
+    );
     &text[..end]
 }
 
-/// Embed texts in chunks, sending chunk_size texts per provider call.
-/// Chunks are processed sequentially to avoid Send lifetime issues in async traits.
-/// Long texts are automatically truncated to fit model context limits.
+/// Embed texts in chunks, respecting both per-text and total batch token limits.
+/// Long texts are truncated, and batches are split to avoid exceeding context windows.
 async fn chunked_embed(
     provider: &dyn EmbeddingProvider,
     texts: &[&str],
-    chunk_size: usize,
+    _chunk_size: usize,
     _max_concurrent: usize,
 ) -> anyhow::Result<Vec<Vec<f32>>> {
     let truncated: Vec<&str> = texts.iter().map(|t| truncate_for_embedding(t)).collect();
+
+    // Build batches that respect the total character budget
     let mut all = Vec::with_capacity(truncated.len());
-    for chunk in truncated.chunks(chunk_size) {
-        all.extend(provider.embed_batch(chunk).await?);
+    let mut batch: Vec<&str> = Vec::new();
+    let mut batch_chars: usize = 0;
+
+    for &text in &truncated {
+        if !batch.is_empty() && batch_chars + text.len() > MAX_BATCH_TOTAL_CHARS {
+            // Flush current batch
+            all.extend(provider.embed_batch(&batch).await?);
+            batch.clear();
+            batch_chars = 0;
+        }
+        batch.push(text);
+        batch_chars += text.len();
     }
+
+    if !batch.is_empty() {
+        all.extend(provider.embed_batch(&batch).await?);
+    }
+
     Ok(all)
 }
 
