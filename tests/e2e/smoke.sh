@@ -40,7 +40,7 @@ assert_json "pipeline count is 1" ".pipelines | length" "1"
 assert_json "normalize pipeline loaded" ".pipelines[0].name" "normalize"
 
 # --- Test: Index documents ---
-http_post_file "/collections/articles/documents" "$SCRIPT_DIR/testdata/documents/articles.json"
+http_post_file "/collections/articles/documents?sync=true" "$SCRIPT_DIR/testdata/documents/articles.json"
 assert_status "POST documents returns 201" "201"
 
 # Give indexer a moment to commit
@@ -58,7 +58,7 @@ assert_status "Empty search returns 200" "200"
 assert_json "Empty search has 0 results" ".total" "0"
 
 # --- Test: Index with pipeline ---
-http_post "/collections/articles/documents?pipeline=normalize" \
+http_post "/collections/articles/documents?pipeline=normalize&sync=true" \
     '{"documents": [{"id": "6", "fields": {"title": "UPPERCASE TITLE", "content": "testing pipeline", "category": "test"}}]}'
 assert_status "Pipeline index returns 201" "201"
 assert_json "Pipeline indexed 1 doc" ".indexed" "1"

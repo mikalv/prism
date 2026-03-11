@@ -47,7 +47,7 @@ http_get "/admin/pipelines"
 assert_status "GET /admin/pipelines returns 200" "200"
 assert_json "normalize pipeline loaded" ".pipelines[0].name" "normalize"
 
-http_post_file "/collections/articles/documents" "$SCRIPT_DIR/testdata/documents/articles.json"
+http_post_file "/collections/articles/documents?sync=true" "$SCRIPT_DIR/testdata/documents/articles.json"
 assert_status "POST documents returns 201" "201"
 sleep 1
 
@@ -59,7 +59,7 @@ http_post "/collections/articles/search" '{"query": "xyznonexistent123", "limit"
 assert_status "Empty search returns 200" "200"
 assert_json "Empty search has 0 results" ".total" "0"
 
-http_post "/collections/articles/documents?pipeline=normalize" \
+http_post "/collections/articles/documents?pipeline=normalize&sync=true" \
     '{"documents": [{"id": "6", "fields": {"title": "UPPERCASE TITLE", "content": "testing pipeline", "category": "test"}}]}'
 assert_status "Pipeline index returns 201" "201"
 sleep 1
@@ -102,7 +102,7 @@ for i in $(seq 10 30); do
 done
 BULK_DOCS+=']}'
 
-http_post "/collections/articles/documents" "$BULK_DOCS"
+http_post "/collections/articles/documents?sync=true" "$BULK_DOCS"
 assert_status "Bulk index 21 docs returns 201" "201"
 assert_json "Bulk indexed count" ".indexed" "21"
 sleep 2
