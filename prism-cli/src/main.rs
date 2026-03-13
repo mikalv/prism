@@ -430,7 +430,12 @@ async fn main() -> Result<()> {
 }
 
 fn list_collections(data_dir: &std::path::Path) -> Result<()> {
-    let collections_dir = data_dir.join("collections");
+    // Try direct path first, then legacy collections/ subdir
+    let collections_dir = if data_dir.exists() {
+        data_dir.to_path_buf()
+    } else {
+        data_dir.join("collections")
+    };
 
     if !collections_dir.exists() {
         println!(
@@ -446,6 +451,10 @@ fn list_collections(data_dir: &std::path::Path) -> Result<()> {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             if let Some(name) = entry.file_name().to_str() {
+                // Skip internal directories
+                if name == "cache" || name == "data" {
+                    continue;
+                }
                 collections.push(name.to_string());
             }
         }
