@@ -29,11 +29,18 @@ pub fn export_snapshot(
     output_path: &Path,
     progress: Option<&dyn ExportProgress>,
 ) -> Result<ExportMetadata> {
-    let collection_dir = data_dir.join("collections").join(collection);
-
-    if !collection_dir.exists() {
-        return Err(Error::CollectionNotFound(collection.to_string()));
-    }
+    // Try direct path first (data/{collection}), then legacy path (data/collections/{collection})
+    let collection_dir = data_dir.join(collection);
+    let collection_dir = if collection_dir.exists() {
+        collection_dir
+    } else {
+        let legacy_dir = data_dir.join("collections").join(collection);
+        if legacy_dir.exists() {
+            legacy_dir
+        } else {
+            return Err(Error::CollectionNotFound(collection.to_string()));
+        }
+    };
 
     // Calculate total size for progress
     let total_size = calculate_dir_size(&collection_dir)?;
@@ -199,8 +206,8 @@ pub fn import_snapshot(
         .map(|s| s.to_string())
         .unwrap_or(meta.collection.clone());
 
-    // Create collection directory
-    let collection_dir = data_dir.join("collections").join(&collection_name);
+    // Create collection directory (use direct path, not legacy collections/ subdir)
+    let collection_dir = data_dir.join(&collection_name);
     fs::create_dir_all(&collection_dir)
         .map_err(|e| Error::Import(format!("Cannot create collection directory: {}", e)))?;
 

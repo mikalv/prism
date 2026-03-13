@@ -284,7 +284,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_collection(data_dir: &Path, name: &str) {
-        let collection_dir = data_dir.join("collections").join(name);
+        let collection_dir = data_dir.join(name);
         fs::create_dir_all(&collection_dir).unwrap();
 
         // Create minimal collection files
@@ -342,7 +342,7 @@ mod tests {
         assert_eq!(result.collection, "restored_collection");
         assert!(import_dir
             .path()
-            .join("collections/restored_collection")
+            .join("restored_collection")
             .exists());
     }
 
