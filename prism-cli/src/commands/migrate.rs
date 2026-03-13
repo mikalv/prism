@@ -129,17 +129,15 @@ pub async fn run_migrate(
             break;
         }
 
-        // Convert scroll results to indexable documents: {id, ...fields}
+        // Convert scroll results to Document format: {id, fields: {...}}
         let docs: Vec<serde_json::Value> = scroll
             .documents
             .into_iter()
             .map(|doc| {
-                let mut out = serde_json::Map::new();
-                out.insert("id".to_string(), serde_json::Value::String(doc.id));
-                for (k, v) in doc.fields {
-                    out.insert(k, v);
-                }
-                serde_json::Value::Object(out)
+                serde_json::json!({
+                    "id": doc.id,
+                    "fields": doc.fields,
+                })
             })
             .collect();
 
