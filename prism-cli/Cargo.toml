@@ -21,6 +21,7 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 tantivy = { workspace = true }
 tantivy-common = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 reqwest = { workspace = true }

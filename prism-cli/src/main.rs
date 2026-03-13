@@ -181,6 +181,29 @@ enum CollectionCommands {
         schemas_dir: PathBuf,
     },
 
+    /// Migrate a collection between Prism instances via HTTP API
+    Migrate {
+        /// Source Prism API URL
+        #[arg(long)]
+        source_url: String,
+
+        /// Target Prism API URL
+        #[arg(long)]
+        target_url: String,
+
+        /// Collection name to migrate
+        #[arg(short, long)]
+        name: String,
+
+        /// Target collection name (defaults to same as source)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Batch size for scroll/index operations
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+    },
+
     /// Merge multiple collections into a new target collection
     Merge {
         /// Source collection names (at least 2)
@@ -344,6 +367,22 @@ async fn main() -> Result<()> {
                 api_url,
             } => {
                 commands::run_attach(&api_url, input, target).await?;
+            }
+            CollectionCommands::Migrate {
+                source_url,
+                target_url,
+                name,
+                target,
+                batch_size,
+            } => {
+                commands::run_migrate(
+                    &source_url,
+                    &target_url,
+                    &name,
+                    target.as_deref(),
+                    batch_size,
+                )
+                .await?;
             }
             CollectionCommands::GraphMerge { name, schemas_dir } => {
                 commands::run_graph_merge(&cli.data_dir, &schemas_dir, &name).await?;

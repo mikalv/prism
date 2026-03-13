@@ -537,6 +537,10 @@ impl ApiServer {
                 post(crate::api::routes::search),
             )
             .route(
+                "/collections/:collection/documents",
+                get(crate::api::routes::list_documents),
+            )
+            .route(
                 "/collections/:collection/documents/:id",
                 get(crate::api::routes::get_document),
             )

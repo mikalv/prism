@@ -7,6 +7,7 @@ pub mod graph_merge;
 pub mod import;
 pub mod inspect;
 pub mod merge;
+pub mod migrate;
 pub mod optimize;
 pub mod restore;
 
@@ -19,5 +20,6 @@ pub use graph_merge::run_graph_merge;
 pub use import::run_import;
 pub use inspect::run_inspect;
 pub use merge::run_merge;
+pub use migrate::run_migrate;
 pub use optimize::run_optimize;
 pub use restore::run_restore;

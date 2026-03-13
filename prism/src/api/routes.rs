@@ -463,6 +463,89 @@ pub async fn get_document(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[derive(Deserialize)]
+pub struct ScrollQuery {
+    #[serde(default = "default_scroll_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_scroll_limit() -> usize {
+    100
+}
+
+#[derive(Serialize)]
+pub struct ScrollResponse {
+    pub collection: String,
+    pub documents: Vec<SearchResult>,
+    pub offset: usize,
+    pub limit: usize,
+    pub total: usize,
+    pub has_more: bool,
+}
+
+/// List/scroll all documents in a collection with pagination.
+/// GET /collections/:collection/documents?offset=0&limit=100
+pub async fn list_documents(
+    Path(collection): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<ScrollQuery>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<ScrollResponse>, (StatusCode, String)> {
+    let stats = manager.stats(&collection).await.map_err(|e| {
+        (StatusCode::NOT_FOUND, format!("Collection not found: {}", e))
+    })?;
+
+    let total = stats.document_count;
+
+    if query.offset >= total || total == 0 {
+        return Ok(Json(ScrollResponse {
+            collection,
+            documents: vec![],
+            offset: query.offset,
+            limit: query.limit,
+            total,
+            has_more: false,
+        }));
+    }
+
+    let search_query = Query {
+        query_string: "*".to_string(),
+        fields: vec![],
+        limit: query.limit,
+        offset: query.offset,
+        merge_strategy: None,
+        text_weight: None,
+        vector_weight: None,
+        highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: true,
+    };
+
+    let results = manager
+        .search(&collection, search_query, None)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Search failed: {}", e),
+            )
+        })?;
+
+    let next_offset = query.offset + results.results.len();
+
+    Ok(Json(ScrollResponse {
+        collection,
+        documents: results.results,
+        offset: query.offset,
+        limit: query.limit,
+        total,
+        has_more: next_offset < total,
+    }))
+}
+
 #[derive(Serialize)]
 pub struct CollectionsList {
     pub collections: Vec<String>,
