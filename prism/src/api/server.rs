@@ -550,6 +550,10 @@ impl ApiServer {
                 get(crate::api::routes::get_collection_schema),
             )
             .route(
+                "/collections/:collection/schema/raw",
+                get(crate::api::routes::get_collection_schema_raw),
+            )
+            .route(
                 "/collections/:collection/stats",
                 get(crate::api::routes::get_collection_stats),
             )

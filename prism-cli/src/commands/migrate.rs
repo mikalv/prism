@@ -56,49 +56,40 @@ pub async fn run_migrate(
         return Ok(());
     }
 
-    // 2. Try to get and create schema on target
+    // 2. Get raw schema from source and create collection on target
     let schema_url = format!(
-        "{}/collections/{}/schema",
+        "{}/collections/{}/schema/raw",
         source_url.trim_end_matches('/'),
         collection
     );
     let schema_resp = client.get(&schema_url).send().await;
-    if let Ok(resp) = schema_resp {
-        if resp.status().is_success() {
+    match schema_resp {
+        Ok(resp) if resp.status().is_success() => {
             let schema: serde_json::Value = resp.json().await.unwrap_or_default();
-            if !schema.is_null() {
-                let create_url = format!(
-                    "{}/admin/collections",
-                    target_url.trim_end_matches('/')
-                );
-                let mut create_body = schema.clone();
-                if let Some(obj) = create_body.as_object_mut() {
-                    obj.insert(
-                        "collection".to_string(),
-                        serde_json::Value::String(target_name.to_string()),
-                    );
+            let create_url = format!(
+                "{}/collections/{}",
+                target_url.trim_end_matches('/'),
+                target_name
+            );
+            let create_resp = client.put(&create_url).json(&schema).send().await;
+            match create_resp {
+                Ok(r) if r.status().is_success() => {
+                    println!("Created collection '{}' on target", target_name);
                 }
-                let create_resp = client
-                    .post(&create_url)
-                    .json(&create_body)
-                    .send()
-                    .await;
-                match create_resp {
-                    Ok(r) if r.status().is_success() => {
-                        println!("Created collection '{}' on target", target_name);
-                    }
-                    Ok(r) if r.status().as_u16() == 409 => {
-                        println!("Collection '{}' already exists on target", target_name);
-                    }
-                    Ok(r) => {
-                        let body = r.text().await.unwrap_or_default();
-                        println!("Warning: could not create collection on target: {}", body);
-                    }
-                    Err(e) => {
-                        println!("Warning: could not create collection on target: {}", e);
-                    }
+                Ok(r) if r.status().as_u16() == 409 => {
+                    println!("Collection '{}' already exists on target", target_name);
+                }
+                Ok(r) => {
+                    let body = r.text().await.unwrap_or_default();
+                    println!("Warning: could not create collection on target: {}", body);
+                }
+                Err(e) => {
+                    println!("Warning: could not create collection on target: {}", e);
                 }
             }
+        }
+        _ => {
+            println!("Warning: could not fetch schema from source, target collection must exist");
         }
     }
 

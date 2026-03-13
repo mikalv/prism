@@ -937,6 +937,18 @@ pub async fn get_collection_schema(
     }))
 }
 
+/// GET /collections/:collection/schema/raw — returns internal CollectionSchema format
+/// (needed for cross-instance migration: create collection on target with same schema)
+pub async fn get_collection_schema_raw(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+) -> Result<Json<CollectionSchema>, StatusCode> {
+    let schema = manager
+        .get_schema(&collection)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(schema.clone()))
+}
+
 /// Collection stats response
 #[derive(Serialize)]
 pub struct CollectionStatsResponse {
