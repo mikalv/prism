@@ -20,6 +20,7 @@ all-providers = ["prism/all-providers"]
 cluster = ["dep:prism-cluster"]
 es-compat = ["dep:prism-es-compat"]
 ui = ["dep:prism-ui"]
+tokenizer-treesitter = ["prism/tokenizer-treesitter"]
 
 [dependencies]
 prism = { workspace = true }

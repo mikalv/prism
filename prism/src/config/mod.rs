@@ -54,8 +54,8 @@ pub struct Config {
 /// ```toml
 /// [optimize]
 /// enabled = true
-/// interval_secs = 3600
-/// max_segments = 5
+/// interval_secs = 600
+/// max_segments = 3
 /// max_segment_size = "1GB"
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,11 +80,11 @@ pub struct OptimizeConfig {
 }
 
 fn default_optimize_interval() -> u64 {
-    3600
+    600 // 10 minutes — NoMergePolicy means segments only get merged here
 }
 
 fn default_max_segments() -> usize {
-    5
+    3
 }
 
 impl Default for OptimizeConfig {

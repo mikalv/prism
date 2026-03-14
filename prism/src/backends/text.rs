@@ -310,7 +310,12 @@ impl TextBackend {
             .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
 
-        let writer = index.writer(50_000_000)?;
+        // Use single-threaded writer to avoid spawning num_cpus threads per
+        // collection. With 60+ collections, the default writer() would create
+        // hundreds of merge threads. Heap is sized per collection: small
+        // collections get 15 MB, larger ones get 50 MB.
+        let heap_bytes = if existing_field_map.len() > 8 { 50_000_000 } else { 15_000_000 };
+        let writer = index.writer_with_num_threads(1, heap_bytes)?;
         let writer = Arc::new(parking_lot::Mutex::new(writer));
 
         // Check if system fields exist in the loaded schema

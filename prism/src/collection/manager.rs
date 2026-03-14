@@ -944,6 +944,10 @@ impl CollectionManager {
 
     /// Optimize all collections, skipping those already at or below max_segments.
     ///
+    /// Small collections (< 1000 docs) are merged down to 1 segment since the
+    /// merge is cheap and eliminates per-segment overhead. Larger collections
+    /// use the configured `max_segments` threshold.
+    ///
     /// When `max_segment_size_bytes` is set, the effective max_segments is raised
     /// so that merging never produces segments larger than the threshold.
     pub fn optimize_all(
@@ -965,18 +969,22 @@ impl CollectionManager {
                 }
             };
 
+            // Small collections are cheap to merge — always compact to 1 segment.
+            // Larger collections use the configured max_segments.
+            let base_max = if info.total_docs < 1000 { 1 } else { max_segments };
+
             // Compute effective max_segments respecting size cap
             let effective_max = if let Some(max_bytes) = max_segment_size_bytes {
                 let total_bytes: u64 = info.segments.iter().map(|s| s.size_bytes).sum();
                 if total_bytes > 0 && max_bytes > 0 {
                     // Need at least ceil(total / max_bytes) segments to stay under the cap
                     let size_min = ((total_bytes + max_bytes - 1) / max_bytes) as usize;
-                    max_segments.max(size_min)
+                    base_max.max(size_min)
                 } else {
-                    max_segments
+                    base_max
                 }
             } else {
-                max_segments
+                base_max
             };
 
             if info.segments.len() <= effective_max {
@@ -988,6 +996,21 @@ impl CollectionManager {
                 );
                 continue;
             }
+
+            // Also merge when delete ratio is high (> 20%) to reclaim space
+            let high_deletes = info.delete_ratio > 0.2;
+            if !high_deletes && info.segments.len() <= effective_max {
+                continue;
+            }
+
+            tracing::info!(
+                "Optimize '{}': {} segments (max {}), {} docs, {:.0}% deleted",
+                name,
+                info.segments.len(),
+                effective_max,
+                info.total_docs,
+                info.delete_ratio * 100.0,
+            );
 
             let result = self.text_backend.optimize(&name, Some(effective_max));
             results.push((name, result));
