@@ -38,13 +38,33 @@ struct CollectionIndex {
     schema: Schema,
     field_map: HashMap<String, Field>,
     reader: IndexReader,
-    writer: Arc<parking_lot::Mutex<IndexWriter>>,
+    /// Lazy-initialized writer. Each writer spawns 6 threads (1 indexing +
+    /// 1 segment_updater + 4 merge_threads), so we only create it on first
+    /// write to avoid ~370 idle threads across 61 collections.
+    writer: parking_lot::Mutex<Option<IndexWriter>>,
     /// Whether _indexed_at system field is enabled
     indexed_at_enabled: bool,
     /// Whether _boost system field is enabled
     boost_enabled: bool,
     /// Boosting configuration for ranking adjustments
     boosting_config: Option<crate::schema::BoostingConfig>,
+}
+
+impl CollectionIndex {
+    /// Get or lazily create the IndexWriter. The writer is created with a
+    /// single indexing thread and NoMergePolicy to minimise thread overhead.
+    fn writer(&self) -> parking_lot::MappedMutexGuard<'_, IndexWriter> {
+        let mut guard = self.writer.lock();
+        if guard.is_none() {
+            let heap_bytes = if self.field_map.len() > 8 { 50_000_000 } else { 15_000_000 };
+            let w = self.index.writer_with_num_threads(1, heap_bytes)
+                .expect("failed to create IndexWriter");
+            w.set_merge_policy(Box::new(tantivy::merge_policy::NoMergePolicy));
+            *guard = Some(w);
+            tracing::debug!("Lazy-initialized IndexWriter (heap={}MB)", heap_bytes / 1_000_000);
+        }
+        parking_lot::MutexGuard::map(guard, |opt| opt.as_mut().unwrap())
+    }
 }
 
 /// Convert a Tantivy OwnedValue to a serde_json::Value.
@@ -310,13 +330,8 @@ impl TextBackend {
             .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
 
-        // Use single-threaded writer to avoid spawning num_cpus threads per
-        // collection. With 60+ collections, the default writer() would create
-        // hundreds of merge threads. Heap is sized per collection: small
-        // collections get 15 MB, larger ones get 50 MB.
-        let heap_bytes = if existing_field_map.len() > 8 { 50_000_000 } else { 15_000_000 };
-        let writer = index.writer_with_num_threads(1, heap_bytes)?;
-        let writer = Arc::new(parking_lot::Mutex::new(writer));
+        // Writer is lazy-initialized on first write (see CollectionIndex::writer()).
+        // This avoids spawning 6 threads per collection at startup.
 
         // Check if system fields exist in the loaded schema
         let indexed_at_enabled = existing_field_map.contains_key("_indexed_at");
@@ -327,7 +342,7 @@ impl TextBackend {
             schema: existing_schema,
             field_map: existing_field_map,
             reader,
-            writer,
+            writer: parking_lot::Mutex::new(None),
             indexed_at_enabled,
             boost_enabled,
             boosting_config: schema.boosting.clone(),
@@ -351,7 +366,7 @@ impl SearchBackend for TextBackend {
             .get(collection)
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
-        let mut writer = coll.writer.lock();
+        let mut writer = coll.writer();
 
         // Get current timestamp for _indexed_at
         let now = DateTime::from_timestamp_micros(
@@ -744,7 +759,7 @@ impl SearchBackend for TextBackend {
             .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
 
         let id_field = coll.field_map.get("id").unwrap();
-        let mut writer = coll.writer.lock();
+        let mut writer = coll.writer();
 
         for id in ids {
             let term = Term::from_field_text(*id_field, &id);
@@ -2142,7 +2157,7 @@ impl TextBackend {
         let before = coll.reader.searcher().segment_readers().len();
 
         // Acquire exclusive writer lock — blocks indexing during merge
-        let mut writer = coll.writer.lock();
+        let mut writer = coll.writer();
 
         let segment_ids: Vec<_> = coll.index.searchable_segment_ids()?;
 
