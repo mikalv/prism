@@ -175,6 +175,15 @@ async fn main() -> Result<()> {
     )?);
     manager.initialize().await?;
 
+    // Re-persist vector indexes in the background to convert legacy JSON
+    // serialization to binary format for faster subsequent startups.
+    {
+        let mgr = manager.clone();
+        tokio::spawn(async move {
+            mgr.persist_vector_indexes().await;
+        });
+    }
+
     // Load ingest pipelines
     let config_dir = std::path::Path::new(&args.config)
         .parent()

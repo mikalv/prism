@@ -251,38 +251,118 @@ impl CollectionManager {
 
     pub async fn initialize(&self) -> Result<()> {
         let schemas = self.schemas.read().clone();
+        let total = schemas.len();
+        let start = std::time::Instant::now();
+        tracing::info!("Initializing {} collections...", total);
+
+        // Phase 1: Initialize text backends (fast, mostly Index::open)
         for (name, schema) in &schemas {
-            // Storage is configured at backend construction time via SegmentStorage.
-            // Initialize just sets up the collection schema/indexes.
             if schema.backends.text.is_some() {
                 self.text_backend.initialize(name, schema).await?;
             }
-            if schema.backends.vector.is_some() {
-                self.vector_backend.initialize(name, schema).await?;
+        }
+        tracing::info!(
+            "Text backends initialized in {:.1}s",
+            start.elapsed().as_secs_f64()
+        );
+
+        // Phase 2: Initialize vector backends in parallel (HNSW rebuild is CPU-bound)
+        let vector_start = std::time::Instant::now();
+        let vector_collections: Vec<_> = schemas
+            .iter()
+            .filter(|(_, s)| s.backends.vector.is_some())
+            .map(|(n, s)| (n.clone(), s.clone()))
+            .collect();
+
+        if !vector_collections.is_empty() {
+            let vector_backend = self.vector_backend.clone();
+            let mut handles = Vec::new();
+            for (name, schema) in vector_collections {
+                let vb = vector_backend.clone();
+                handles.push(tokio::task::spawn(async move {
+                    let coll_start = std::time::Instant::now();
+                    let result = vb.initialize(&name, &schema).await;
+                    let elapsed = coll_start.elapsed().as_secs_f64();
+                    if elapsed > 1.0 {
+                        tracing::info!("Vector '{}' loaded in {:.1}s", name, elapsed);
+                    }
+                    (name, result)
+                }));
             }
+            for handle in handles {
+                let (name, result) = handle.await.map_err(|e| {
+                    crate::Error::Backend(format!("Vector init task panicked: {}", e))
+                })?;
+                if let Err(e) = result {
+                    tracing::error!("Failed to initialize vector backend for '{}': {}", name, e);
+                    return Err(e);
+                }
+            }
+            tracing::info!(
+                "Vector backends initialized in {:.1}s",
+                vector_start.elapsed().as_secs_f64()
+            );
         }
 
-        // Initialize graph backends
+        // Phase 3: Initialize graph backends in parallel
         let graph_entries: Vec<_> = {
             let graphs = self.per_collection_graphs.read();
             graphs.iter().map(|(n, g)| (n.clone(), g.clone())).collect()
         };
-        for (name, graph) in &graph_entries {
-            graph.initialize().await?;
-            tracing::info!(
-                "Initialized graph backend for '{}' ({} shards)",
-                name,
-                graph.num_shards()
-            );
+        if !graph_entries.is_empty() {
+            let mut handles = Vec::new();
+            for (name, graph) in graph_entries {
+                handles.push(tokio::task::spawn(async move {
+                    let result = graph.initialize().await;
+                    (name, graph.num_shards(), result)
+                }));
+            }
+            for handle in handles {
+                let (name, num_shards, result) = handle.await.map_err(|e| {
+                    crate::Error::Backend(format!("Graph init task panicked: {}", e))
+                })?;
+                result?;
+                tracing::info!(
+                    "Initialized graph backend for '{}' ({} shards)",
+                    name,
+                    num_shards
+                );
+            }
         }
 
-        // Initialize async rerankers (cross-encoders)
+        // Phase 4: Initialize async rerankers (cross-encoders)
         self.initialize_rerankers().await;
 
         // Update collections count gauge
         metrics::gauge!("prism_collections_count").set(schemas.len() as f64);
 
+        tracing::info!(
+            "All {} collections initialized in {:.1}s",
+            total,
+            start.elapsed().as_secs_f64()
+        );
+
         Ok(())
+    }
+
+    /// Re-persist all vector indexes in the background. This converts any
+    /// legacy JSON-serialized HNSW data to binary format for faster startup.
+    pub async fn persist_vector_indexes(&self) {
+        let start = std::time::Instant::now();
+        let results = self.vector_backend.persist_all().await;
+        let ok_count = results.iter().filter(|(_, r)| r.is_ok()).count();
+        let err_count = results.iter().filter(|(_, r)| r.is_err()).count();
+        for (name, result) in &results {
+            if let Err(e) = result {
+                tracing::warn!("Failed to re-persist vector index '{}': {}", name, e);
+            }
+        }
+        tracing::info!(
+            "Re-persisted {} vector indexes in {:.1}s ({} errors)",
+            ok_count,
+            start.elapsed().as_secs_f64(),
+            err_count,
+        );
     }
 
     pub async fn index(&self, collection: &str, docs: Vec<Document>) -> Result<()> {

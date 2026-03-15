@@ -91,6 +91,35 @@ impl VectorBackend {
         })
     }
 
+    /// Re-persist all loaded vector indexes. Useful after format upgrades
+    /// (e.g. JSON → binary HNSW) to speed up subsequent startups.
+    pub async fn persist_all(&self) -> Vec<(String, Result<()>)> {
+        let names: Vec<String> = {
+            let indexes = self.indexes.read();
+            indexes.keys().cloned().collect()
+        };
+        let mut results = Vec::new();
+        for name in names {
+            let data = {
+                let indexes = self.indexes.read();
+                match indexes.get(&name) {
+                    Some(index) => serialize_sharded_index(index),
+                    None => continue,
+                }
+            };
+            match data {
+                Ok(data) => {
+                    let result = self.save_index(&name, &data).await;
+                    results.push((name, result));
+                }
+                Err(e) => {
+                    results.push((name, Err(e)));
+                }
+            }
+        }
+        results
+    }
+
     /// Remove a collection from this backend, persisting state before dropping.
     pub async fn remove_collection(&self, name: &str) -> Result<()> {
         let data = {

@@ -211,18 +211,127 @@ impl HnswIndex for InstantDistanceAdapter {
     }
 
     fn save(&self, path: &Path) -> Result<()> {
-        let data = serde_json::json!({
-            "dimensions": self.dimensions,
-            "keys": self.keys,
-            "points": self.points.iter().map(|p| p.v.clone()).collect::<Vec<_>>(),
-            "rebuild_threshold": self.rebuild_threshold,
+        // Binary format: header + keys + flat f32 vectors
+        // Much faster to serialize/deserialize than JSON for large indexes.
+        // Header: [magic(4)] [version(1)] [metric(1)] [dimensions(4)] [num_points(4)]
+        //         [m(2)] [ef_construction(2)] [rebuild_threshold(4)]
+        // Body:   [keys: num_points * 4 bytes] [points: num_points * dimensions * 4 bytes]
+        let num_points = self.keys.len() as u32;
+        let mut buf = Vec::with_capacity(
+            22 + (num_points as usize * 4) + (num_points as usize * self.dimensions * 4),
+        );
+        buf.extend_from_slice(b"PRHW"); // magic
+        buf.push(1u8); // version
+        buf.push(match self.metric {
+            Metric::Cosine => 0,
+            Metric::Euclidean => 1,
+            Metric::DotProduct => 2,
         });
-        std::fs::write(path, serde_json::to_vec(&data)?)?;
+        buf.extend_from_slice(&(self.dimensions as u32).to_le_bytes());
+        buf.extend_from_slice(&num_points.to_le_bytes());
+        buf.extend_from_slice(&(self.m as u16).to_le_bytes());
+        buf.extend_from_slice(&(self.ef_construction as u16).to_le_bytes());
+        buf.extend_from_slice(&(self.rebuild_threshold as u32).to_le_bytes());
+        // Keys
+        for &k in &self.keys {
+            buf.extend_from_slice(&k.to_le_bytes());
+        }
+        // Points (flat f32 arrays)
+        for p in &self.points {
+            for &f in &p.v {
+                buf.extend_from_slice(&f.to_le_bytes());
+            }
+        }
+        std::fs::write(path, &buf)?;
         Ok(())
     }
 
     fn load(path: &Path) -> Result<Self> {
-        let data: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let data = std::fs::read(path)?;
+
+        // Try binary format first (starts with "PRHW" magic)
+        if data.len() >= 22 && &data[0..4] == b"PRHW" {
+            return Self::load_binary(&data);
+        }
+
+        // Fallback: legacy JSON format
+        Self::load_json(&data)
+    }
+
+    fn len(&self) -> usize {
+        self.keys.len()
+    }
+}
+
+#[cfg(feature = "vector-instant")]
+impl InstantDistanceAdapter {
+    fn load_binary(data: &[u8]) -> Result<Self> {
+        if data.len() < 22 {
+            return Err(crate::error::Error::Backend("Binary index too short".into()));
+        }
+        let _version = data[4];
+        let metric = match data[5] {
+            0 => Metric::Cosine,
+            1 => Metric::Euclidean,
+            2 => Metric::DotProduct,
+            _ => Metric::Cosine,
+        };
+        let dimensions = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+        let num_points = u32::from_le_bytes(data[10..14].try_into().unwrap()) as usize;
+        let m = u16::from_le_bytes(data[14..16].try_into().unwrap()) as usize;
+        let ef_construction = u16::from_le_bytes(data[16..18].try_into().unwrap()) as usize;
+        let rebuild_threshold = u32::from_le_bytes(data[18..22].try_into().unwrap()) as usize;
+
+        let keys_start = 22;
+        let keys_end = keys_start + num_points * 4;
+        let points_end = keys_end + num_points * dimensions * 4;
+
+        if data.len() < points_end {
+            return Err(crate::error::Error::Backend(format!(
+                "Binary index truncated: expected {} bytes, got {}",
+                points_end,
+                data.len()
+            )));
+        }
+
+        // Read keys
+        let mut keys = Vec::with_capacity(num_points);
+        for i in 0..num_points {
+            let off = keys_start + i * 4;
+            keys.push(u32::from_le_bytes(data[off..off + 4].try_into().unwrap()));
+        }
+
+        // Read points — flat f32 arrays
+        let mut points = Vec::with_capacity(num_points);
+        let float_data = &data[keys_end..points_end];
+        for i in 0..num_points {
+            let off = i * dimensions * 4;
+            let mut v = Vec::with_capacity(dimensions);
+            for d in 0..dimensions {
+                let fo = off + d * 4;
+                v.push(f32::from_le_bytes(float_data[fo..fo + 4].try_into().unwrap()));
+            }
+            points.push(PointVec { v, metric });
+        }
+
+        let mut adapter = Self {
+            dimensions,
+            metric,
+            m,
+            ef_construction,
+            points,
+            keys,
+            hnsw: None,
+            searcher: Mutex::new(Search::default()),
+            rebuild_threshold,
+            built_size: 0,
+        };
+        adapter.rebuild()?;
+        Ok(adapter)
+    }
+
+    fn load_json(data: &[u8]) -> Result<Self> {
+        let data: serde_json::Value = serde_json::from_slice(data)?;
         let dimensions = data["dimensions"].as_u64().unwrap() as usize;
         let keys: Vec<u32> = serde_json::from_value(data["keys"].clone())?;
         let points_data: Vec<Vec<f32>> = serde_json::from_value(data["points"].clone())?;
@@ -252,10 +361,6 @@ impl HnswIndex for InstantDistanceAdapter {
         };
         adapter.rebuild()?;
         Ok(adapter)
-    }
-
-    fn len(&self) -> usize {
-        self.keys.len()
     }
 }
 
