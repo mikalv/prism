@@ -2,6 +2,34 @@
 
 All notable changes to Prism are documented in this file.
 
+## [0.6.8] - 2026-03-15
+
+### Performance
+
+- **174x faster startup** — HNSW vector indexes now serialize the full graph structure (layers, neighbor connections) via bincode, eliminating O(n log n) graph rebuild on load. Startup with 65 vector indexes: 1220s → 7.6s
+- **Parallel collection loading** — vector and graph backends initialize concurrently via `tokio::spawn` instead of sequentially
+- **Binary HNSW format** — new V2 format ("PRH2" magic) with auto-detection; falls back to V1 binary ("PRHW") and legacy JSON with automatic re-persist
+- **Lazy IndexWriter** — tantivy `IndexWriter` is created on first write, not on collection load. Read-only collections use zero writer threads
+- **NoMergePolicy** — disables tantivy's background merge threads; segment merging handled by Prism's own optimize cycle
+- **Single-threaded writer** — `writer_with_num_threads(1, heap)` with dynamic heap sizing (15MB small / 50MB large schemas)
+- **Smarter segment merging** — small collections (<1000 docs) always merge to 1 segment; merge triggered on >20% delete ratio
+
+### Fixes
+
+- **HTTP error codes** — `CollectionNotFound` returns 404, `CollectionAlreadyExists` returns 409, `InvalidQuery`/`Schema` returns 400, `Unauthorized` returns 401, `ReadOnly` returns 403 (were all 500)
+- **Export/import path** — corrected collection data path resolution
+- **CLI list_collections** — fixed wrong subdirectory path
+- **Migrate command** — uses correct `Document {id, fields}` format
+
+### Added
+
+- **Document scroll endpoint** — `GET /collections/:name/documents/scroll` for paginated document export
+- **Schema raw endpoint** — `GET /collections/:name/schema/raw` returns the original schema definition
+- **CLI migrate command** — migrate collections between Prism instances
+- **Tree-sitter feature** — exposed `tokenizer-treesitter` in prism-server for production builds
+
+---
+
 ## [0.6.7] - 2026-03-10
 
 ### Security
