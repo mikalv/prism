@@ -51,7 +51,7 @@ use instant_distance::{Builder, HnswMap, Point as IDPoint, Search};
 use parking_lot::Mutex;
 
 #[cfg(feature = "vector-instant")]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct PointVec {
     v: Vec<f32>,
     metric: Metric,
@@ -87,6 +87,21 @@ impl IDPoint for PointVec {
             }
         }
     }
+}
+
+/// On-disk header for the v2 graph format.
+/// Magic "PRH2" + bincode-serialized metadata + HnswMap (includes full graph structure).
+const MAGIC_V2: &[u8; 4] = b"PRH2";
+
+/// Metadata header serialized before the HnswMap
+#[cfg(feature = "vector-instant")]
+#[derive(Serialize, Deserialize)]
+struct GraphMeta {
+    dimensions: usize,
+    metric: Metric,
+    m: usize,
+    ef_construction: usize,
+    rebuild_threshold: usize,
 }
 
 #[cfg(feature = "vector-instant")]
@@ -171,12 +186,7 @@ impl HnswIndex for InstantDistanceAdapter {
     }
 
     fn search(&self, vector: &[f32], k: usize, _ef_search: usize) -> Result<Vec<(u32, f32)>> {
-        // Ensure index is built before searching
         if self.hnsw.is_none() {
-            // Mutable borrow needed to rebuild; perform a transient mutable borrow on a cloned self is not possible here
-            // so convert by temporarily acquiring a mutable reference via unsafe interior mutability: clone minimal state and rebuild
-            // Simpler approach: error if not built to force caller to trigger a build via a committed path. However, to maintain
-            // usability, we'll assume that search is called on an adapter that has been built at least once. If not, return empty.
             return Ok(Vec::new());
         }
 
@@ -211,11 +221,103 @@ impl HnswIndex for InstantDistanceAdapter {
     }
 
     fn save(&self, path: &Path) -> Result<()> {
-        // Binary format: header + keys + flat f32 vectors
-        // Much faster to serialize/deserialize than JSON for large indexes.
-        // Header: [magic(4)] [version(1)] [metric(1)] [dimensions(4)] [num_points(4)]
-        //         [m(2)] [ef_construction(2)] [rebuild_threshold(4)]
-        // Body:   [keys: num_points * 4 bytes] [points: num_points * dimensions * 4 bytes]
+        // V2 format: "PRH2" magic + bincode(GraphMeta) + bincode(HnswMap)
+        // This serializes the full HNSW graph structure so load is O(n) not O(n log n).
+        if let Some(ref hnsw) = self.hnsw {
+            let meta = GraphMeta {
+                dimensions: self.dimensions,
+                metric: self.metric,
+                m: self.m,
+                ef_construction: self.ef_construction,
+                rebuild_threshold: self.rebuild_threshold,
+            };
+            let meta_bytes = bincode::serialize(&meta).map_err(|e| {
+                crate::error::Error::Backend(format!("bincode serialize meta: {}", e))
+            })?;
+            let hnsw_bytes = bincode::serialize(hnsw).map_err(|e| {
+                crate::error::Error::Backend(format!("bincode serialize hnsw: {}", e))
+            })?;
+            let meta_len = meta_bytes.len() as u32;
+            let mut buf = Vec::with_capacity(4 + 4 + meta_bytes.len() + hnsw_bytes.len());
+            buf.extend_from_slice(MAGIC_V2);
+            buf.extend_from_slice(&meta_len.to_le_bytes());
+            buf.extend_from_slice(&meta_bytes);
+            buf.extend_from_slice(&hnsw_bytes);
+            std::fs::write(path, &buf)?;
+            return Ok(());
+        }
+
+        // Fallback: save v1 binary (points only) if no graph built yet
+        self.save_v1(path)
+    }
+
+    fn load(path: &Path) -> Result<Self> {
+        let data = std::fs::read(path)?;
+
+        // V2 graph format (starts with "PRH2")
+        if data.len() >= 4 && &data[0..4] == MAGIC_V2 {
+            return Self::load_v2(&data[4..]);
+        }
+
+        // V1 binary format (starts with "PRHW")
+        if data.len() >= 22 && &data[0..4] == b"PRHW" {
+            return Self::load_binary(&data);
+        }
+
+        // Legacy JSON format
+        Self::load_json(&data)
+    }
+
+    fn len(&self) -> usize {
+        self.keys.len()
+    }
+}
+
+#[cfg(feature = "vector-instant")]
+impl InstantDistanceAdapter {
+    /// Load v2 format: bincode-serialized GraphMeta + HnswMap — no rebuild needed
+    fn load_v2(data: &[u8]) -> Result<Self> {
+        if data.len() < 4 {
+            return Err(crate::error::Error::Backend("V2 index too short".into()));
+        }
+        let meta_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+        if data.len() < 4 + meta_len {
+            return Err(crate::error::Error::Backend("V2 index meta truncated".into()));
+        }
+        let meta: GraphMeta = bincode::deserialize(&data[4..4 + meta_len]).map_err(|e| {
+            crate::error::Error::Backend(format!("bincode deserialize meta: {}", e))
+        })?;
+        let hnsw: HnswMap<PointVec, u32> =
+            bincode::deserialize(&data[4 + meta_len..]).map_err(|e| {
+                crate::error::Error::Backend(format!("bincode deserialize hnsw: {}", e))
+            })?;
+
+        // Reconstruct flat point/key arrays from the HnswMap for mutation support.
+        // iter() yields (PointId, &P) in internal order; values[] is parallel to points.
+        let mut points = Vec::new();
+        let mut keys = Vec::new();
+        for (_pid, point) in hnsw.iter() {
+            points.push(point.clone());
+        }
+        keys.extend_from_slice(&hnsw.values);
+
+        let built_size = keys.len();
+        Ok(Self {
+            dimensions: meta.dimensions,
+            metric: meta.metric,
+            m: meta.m,
+            ef_construction: meta.ef_construction,
+            points,
+            keys,
+            hnsw: Some(hnsw),
+            searcher: Mutex::new(Search::default()),
+            rebuild_threshold: meta.rebuild_threshold,
+            built_size,
+        })
+    }
+
+    /// Save v1 binary format (points only, no graph — requires rebuild on load)
+    fn save_v1(&self, path: &Path) -> Result<()> {
         let num_points = self.keys.len() as u32;
         let mut buf = Vec::with_capacity(
             22 + (num_points as usize * 4) + (num_points as usize * self.dimensions * 4),
@@ -232,11 +334,9 @@ impl HnswIndex for InstantDistanceAdapter {
         buf.extend_from_slice(&(self.m as u16).to_le_bytes());
         buf.extend_from_slice(&(self.ef_construction as u16).to_le_bytes());
         buf.extend_from_slice(&(self.rebuild_threshold as u32).to_le_bytes());
-        // Keys
         for &k in &self.keys {
             buf.extend_from_slice(&k.to_le_bytes());
         }
-        // Points (flat f32 arrays)
         for p in &self.points {
             for &f in &p.v {
                 buf.extend_from_slice(&f.to_le_bytes());
@@ -246,25 +346,6 @@ impl HnswIndex for InstantDistanceAdapter {
         Ok(())
     }
 
-    fn load(path: &Path) -> Result<Self> {
-        let data = std::fs::read(path)?;
-
-        // Try binary format first (starts with "PRHW" magic)
-        if data.len() >= 22 && &data[0..4] == b"PRHW" {
-            return Self::load_binary(&data);
-        }
-
-        // Fallback: legacy JSON format
-        Self::load_json(&data)
-    }
-
-    fn len(&self) -> usize {
-        self.keys.len()
-    }
-}
-
-#[cfg(feature = "vector-instant")]
-impl InstantDistanceAdapter {
     fn load_binary(data: &[u8]) -> Result<Self> {
         if data.len() < 22 {
             return Err(crate::error::Error::Backend("Binary index too short".into()));
