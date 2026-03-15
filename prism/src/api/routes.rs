@@ -1,4 +1,5 @@
 use crate::api::server::{AppState, IndexJob};
+use crate::Error;
 use tokio::sync::mpsc::error::TrySendError;
 use crate::backends::{
     Document, GraphEdge, GraphNode, GraphStats, HighlightConfig, Query, SearchResult, SearchResults,
@@ -14,6 +15,29 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Map domain errors to appropriate HTTP status codes instead of blanket 500s.
+fn error_to_status(e: &Error) -> StatusCode {
+    match e {
+        Error::CollectionNotFound(_) | Error::AliasNotFound(_) | Error::PolicyNotFound(_) => {
+            StatusCode::NOT_FOUND
+        }
+        Error::CollectionAlreadyExists(_) => StatusCode::CONFLICT,
+        Error::InvalidQuery(_) => StatusCode::BAD_REQUEST,
+        Error::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+        Error::Forbidden(_) => StatusCode::FORBIDDEN,
+        Error::ReadOnly(_) => StatusCode::FORBIDDEN,
+        Error::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+        Error::Schema(_) => StatusCode::BAD_REQUEST,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// Convert a domain error into an HTTP error tuple.
+fn into_http_error(e: Error) -> (StatusCode, String) {
+    let status = error_to_status(&e);
+    (status, format!("{}", e))
+}
 
 #[derive(Deserialize)]
 pub struct SearchRequest {
@@ -199,7 +223,7 @@ pub async fn search(
             )
             .increment(1);
             tracing::error!("Search error: {:?}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e)))
+            Err(into_http_error(e))
         }
     }
 }
@@ -342,7 +366,7 @@ pub async fn index_documents(
             .await
             .map_err(|e| {
                 tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+                into_http_error(e)
             })?;
         (StatusCode::CREATED, false)
     } else {
@@ -366,7 +390,7 @@ pub async fn index_documents(
                     .await
                     .map_err(|e| {
                         tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
-                        (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+                        into_http_error(e)
                     })?;
                 (StatusCode::CREATED, false)
             }
@@ -378,7 +402,7 @@ pub async fn index_documents(
                     .await
                     .map_err(|e| {
                         tracing::error!("Failed to index documents to '{}': {:?}", collection, e);
-                        (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+                        into_http_error(e)
                     })?;
                 (StatusCode::CREATED, false)
             }
@@ -1195,7 +1219,7 @@ pub async fn optimize_collection(
 
     let result = manager.optimize(&collection, max_segments).map_err(|e| {
         tracing::error!("Failed to optimize '{}': {:?}", collection, e);
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e))
+        into_http_error(e)
     })?;
 
     Ok(Json(result))
