@@ -1060,9 +1060,7 @@ mod tests {
 
     #[test]
     fn test_aggregation_result_serde_value() {
-        let result = EsAggregationResult::Value {
-            value: Some(2.78),
-        };
+        let result = EsAggregationResult::Value { value: Some(2.78) };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("2.78"));
     }
