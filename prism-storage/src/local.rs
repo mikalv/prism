@@ -601,7 +601,7 @@ mod tests {
         for i in 0..5 {
             storage
                 .write(
-                    &StoragePath::vector("test", "shard_0", &format!("f{}.bin", i)).unwrap(),
+                    &StoragePath::vector("test", "shard_0", format!("f{}.bin", i)).unwrap(),
                     Bytes::from("x"),
                 )
                 .await

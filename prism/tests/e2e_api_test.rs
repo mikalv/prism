@@ -434,7 +434,7 @@ async fn test_index_with_all_field_types() {
             "string_field": "exact-match-value",
             "i64_field": -42,
             "u64_field": 123456,
-            "f64_field": 3.14159,
+            "f64_field": std::f64::consts::PI,
             "bool_field": true,
             "date_field": "2025-06-15T10:30:00Z"
         }

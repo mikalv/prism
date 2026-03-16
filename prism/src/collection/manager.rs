@@ -1058,7 +1058,7 @@ impl CollectionManager {
                 let total_bytes: u64 = info.segments.iter().map(|s| s.size_bytes).sum();
                 if total_bytes > 0 && max_bytes > 0 {
                     // Need at least ceil(total / max_bytes) segments to stay under the cap
-                    let size_min = ((total_bytes + max_bytes - 1) / max_bytes) as usize;
+                    let size_min = total_bytes.div_ceil(max_bytes) as usize;
                     base_max.max(size_min)
                 } else {
                     base_max

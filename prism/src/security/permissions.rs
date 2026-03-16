@@ -49,10 +49,10 @@ impl PermissionChecker {
             // Only compare if lengths match (length itself is not secret
             // since an attacker can enumerate valid key lengths from the
             // config format, but the content must remain hidden)
-            if stored_bytes.len() == input_bytes.len() {
-                if stored_bytes.ct_eq(input_bytes).into() {
-                    matched = Some((name.as_str(), roles.as_slice()));
-                }
+            if stored_bytes.len() == input_bytes.len()
+                && stored_bytes.ct_eq(input_bytes).into()
+            {
+                matched = Some((name.as_str(), roles.as_slice()));
             }
         }
 

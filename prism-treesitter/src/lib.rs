@@ -283,7 +283,7 @@ mod tests {
         {
             let lang = Language::Rust;
             let copied = lang;
-            let cloned = lang.clone();
+            let cloned = lang;
             assert_eq!(copied, cloned);
         }
     }

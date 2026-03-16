@@ -241,7 +241,7 @@ mod tests {
         // Write 5 files
         for i in 0..5 {
             let path =
-                StoragePath::vector("test", "shard_0", &format!("file_{}.bin", i)).unwrap();
+                StoragePath::vector("test", "shard_0", format!("file_{}.bin", i)).unwrap();
             storage
                 .write(&path, Bytes::from(format!("data {}", i)))
                 .await
@@ -264,7 +264,7 @@ mod tests {
 
         for i in 0..3 {
             let path =
-                StoragePath::vector("test", "shard_0", &format!("f_{}.bin", i)).unwrap();
+                StoragePath::vector("test", "shard_0", format!("f_{}.bin", i)).unwrap();
             storage
                 .write(&path, Bytes::from("data"))
                 .await
