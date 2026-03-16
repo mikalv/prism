@@ -675,9 +675,7 @@ min_age = "7d"
             .unwrap();
 
         // Add a second policy
-        ilm.upsert_policy(IlmPolicy::new("metrics"))
-            .await
-            .unwrap();
+        ilm.upsert_policy(IlmPolicy::new("metrics")).await.unwrap();
 
         let policies = ilm.list_policies().await;
         assert_eq!(policies.len(), 2);

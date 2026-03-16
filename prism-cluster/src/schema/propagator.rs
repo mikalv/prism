@@ -577,8 +577,7 @@ mod tests {
 
     #[test]
     fn test_propagation_status_failure() {
-        let mut status =
-            PropagationStatus::new("products", 2, vec!["node-1".into()]);
+        let mut status = PropagationStatus::new("products", 2, vec!["node-1".into()]);
 
         status.failed.push("node-1".into());
         status.pending.clear();

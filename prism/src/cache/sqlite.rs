@@ -248,7 +248,8 @@ impl EmbeddingCache for SqliteCache {
             .map(|k| &k.hash as &dyn rusqlite::types::ToSql)
             .collect();
 
-        let mut found: std::collections::HashMap<String, Vec<f32>> = std::collections::HashMap::new();
+        let mut found: std::collections::HashMap<String, Vec<f32>> =
+            std::collections::HashMap::new();
         let mut rows = stmt.query(params.as_slice())?;
         while let Some(row) = rows.next()? {
             let hash: String = row.get(0)?;

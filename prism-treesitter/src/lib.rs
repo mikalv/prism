@@ -199,7 +199,11 @@ mod tests {
     fn test_language_all_returns_all_enabled() {
         let all = Language::all();
         // With default features, all 16 languages should be present
-        assert!(all.len() >= 16, "Expected at least 16 languages, got {}", all.len());
+        assert!(
+            all.len() >= 16,
+            "Expected at least 16 languages, got {}",
+            all.len()
+        );
     }
 
     #[test]

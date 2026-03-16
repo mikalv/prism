@@ -46,6 +46,7 @@ fn parse_msearch_body(
 
     let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
 
+    #[allow(clippy::manual_is_multiple_of)]
     if lines.len() % 2 != 0 {
         return Err(EsCompatError::InvalidRequestBody(
             "msearch body must have header/body pairs".to_string(),

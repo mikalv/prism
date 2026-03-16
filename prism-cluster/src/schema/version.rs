@@ -577,7 +577,10 @@ mod tests {
             .with_metadata("env", "production")
             .with_metadata("user", "admin");
 
-        assert_eq!(versioned.metadata.get("env"), Some(&"production".to_string()));
+        assert_eq!(
+            versioned.metadata.get("env"),
+            Some(&"production".to_string())
+        );
         assert_eq!(versioned.metadata.get("user"), Some(&"admin".to_string()));
         assert_eq!(versioned.metadata.len(), 2);
     }

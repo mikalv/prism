@@ -9,11 +9,11 @@ use prism::aggregations::types::{
 };
 use prism::backends::text::TextBackend;
 use prism::backends::{Document, HighlightConfig, Query, SearchBackend};
+use prism::schema::types::SystemFieldsConfig;
 use prism::schema::{
     Backends, CollectionSchema, FieldType, IndexingConfig, QuotaConfig, TextBackendConfig,
     TextField,
 };
-use prism::schema::types::SystemFieldsConfig;
 use serde_json::json;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -303,9 +303,7 @@ async fn test_index_document_with_f64_field() {
 async fn test_index_to_nonexistent_collection_errors() {
     let (_tmp, backend) = setup().await;
 
-    let result = backend
-        .index("nonexistent", vec![doc("x", "X", "X")])
-        .await;
+    let result = backend.index("nonexistent", vec![doc("x", "X", "X")]).await;
     assert!(result.is_err());
 }
 
@@ -383,10 +381,7 @@ async fn test_delete_then_stats_reflects_change() {
     let before = backend.stats("test").await.unwrap();
     assert_eq!(before.document_count, 2);
 
-    backend
-        .delete("test", vec!["a".to_string()])
-        .await
-        .unwrap();
+    backend.delete("test", vec!["a".to_string()]).await.unwrap();
 
     // After delete + commit + reload the count drops
     let after = backend.stats("test").await.unwrap();
@@ -665,11 +660,51 @@ async fn setup_agg_data() -> (TempDir, TextBackend) {
     let (tmp, backend) = setup().await;
 
     let docs = vec![
-        doc_full("1", "Alpha item", "Body one", 10, "2025-01-15T00:00:00Z", "electronics", 99.99),
-        doc_full("2", "Beta item", "Body two", 20, "2025-01-16T00:00:00Z", "electronics", 149.50),
-        doc_full("3", "Gamma item", "Body three", 30, "2025-02-10T00:00:00Z", "books", 12.99),
-        doc_full("4", "Delta item", "Body four", 40, "2025-02-20T00:00:00Z", "books", 24.99),
-        doc_full("5", "Epsilon item", "Body five", 50, "2025-03-01T00:00:00Z", "clothing", 59.99),
+        doc_full(
+            "1",
+            "Alpha item",
+            "Body one",
+            10,
+            "2025-01-15T00:00:00Z",
+            "electronics",
+            99.99,
+        ),
+        doc_full(
+            "2",
+            "Beta item",
+            "Body two",
+            20,
+            "2025-01-16T00:00:00Z",
+            "electronics",
+            149.50,
+        ),
+        doc_full(
+            "3",
+            "Gamma item",
+            "Body three",
+            30,
+            "2025-02-10T00:00:00Z",
+            "books",
+            12.99,
+        ),
+        doc_full(
+            "4",
+            "Delta item",
+            "Body four",
+            40,
+            "2025-02-20T00:00:00Z",
+            "books",
+            24.99,
+        ),
+        doc_full(
+            "5",
+            "Epsilon item",
+            "Body five",
+            50,
+            "2025-03-01T00:00:00Z",
+            "clothing",
+            59.99,
+        ),
     ];
     backend.index("test", docs).await.unwrap();
 
@@ -855,10 +890,7 @@ async fn test_agg_percentiles() {
     if let AggregationValue::Percentiles(pct) = &agg.value {
         // With values [10, 20, 30, 40, 50], the median (p50) should be 30
         let p50 = pct.values.get("50").unwrap().unwrap();
-        assert!(
-            (p50 - 30.0).abs() < 0.1,
-            "p50 should be ~30, got {p50}"
-        );
+        assert!((p50 - 30.0).abs() < 0.1, "p50 should be ~30, got {p50}");
         // p99 should be close to 50
         let p99 = pct.values.get("99").unwrap().unwrap();
         assert!(p99 >= 49.0, "p99 should be near 50, got {p99}");
@@ -956,7 +988,11 @@ async fn test_agg_histogram_with_extended_bounds() {
     let agg = result.aggregations.get("hist_bounds").unwrap();
     if let AggregationValue::Buckets(buckets) = &agg.value {
         // With bounds 0..60 and interval 10, we should have buckets 0,10,20,30,40,50,60
-        assert!(buckets.len() >= 6, "Extended bounds should create at least 6 buckets, got {}", buckets.len());
+        assert!(
+            buckets.len() >= 6,
+            "Extended bounds should create at least 6 buckets, got {}",
+            buckets.len()
+        );
     } else {
         panic!("Expected Buckets value");
     }
@@ -1146,10 +1182,7 @@ async fn test_agg_global() {
     if let AggregationValue::Buckets(buckets) = &agg.value {
         assert_eq!(buckets.len(), 1);
         assert_eq!(buckets[0].key, "global");
-        assert_eq!(
-            buckets[0].doc_count, 5,
-            "Global should see all 5 documents"
-        );
+        assert_eq!(buckets[0].doc_count, 5, "Global should see all 5 documents");
     } else {
         panic!("Expected Buckets value for Global");
     }
@@ -1298,7 +1331,11 @@ async fn test_suggest_terms_prefix() {
     assert!(!suggestions.is_empty());
     // All suggestions should start with "pro"
     for s in &suggestions {
-        assert!(s.term.starts_with("pro"), "Expected prefix 'pro', got '{}'", s.term);
+        assert!(
+            s.term.starts_with("pro"),
+            "Expected prefix 'pro', got '{}'",
+            s.term
+        );
     }
 }
 
@@ -1309,10 +1346,7 @@ async fn test_suggest_terms_fuzzy() {
     backend
         .index(
             "test",
-            vec![
-                doc("1", "programming", "body"),
-                doc("2", "rust", "body"),
-            ],
+            vec![doc("1", "programming", "body"), doc("2", "rust", "body")],
         )
         .await
         .unwrap();

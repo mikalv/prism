@@ -491,10 +491,7 @@ mod tests {
         let manager = AliasManager::new(temp.path()).await.unwrap();
 
         manager
-            .get_or_create_read_alias(
-                "logs",
-                vec!["logs-001".to_string(), "logs-002".to_string()],
-            )
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string(), "logs-002".to_string()])
             .await
             .unwrap();
 
@@ -669,10 +666,7 @@ mod tests {
 
         // Set up read alias with multiple targets
         manager
-            .get_or_create_read_alias(
-                "logs",
-                vec!["logs-001".to_string(), "logs-002".to_string()],
-            )
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string(), "logs-002".to_string()])
             .await
             .unwrap();
 
@@ -720,10 +714,7 @@ mod tests {
 
         // Expand an alias returns its targets
         manager
-            .get_or_create_read_alias(
-                "logs",
-                vec!["logs-001".to_string(), "logs-002".to_string()],
-            )
+            .get_or_create_read_alias("logs", vec!["logs-001".to_string(), "logs-002".to_string()])
             .await
             .unwrap();
 
@@ -754,7 +745,10 @@ mod tests {
             .await
             .unwrap();
 
-        manager.remove_read_target("logs", "logs-002").await.unwrap();
+        manager
+            .remove_read_target("logs", "logs-002")
+            .await
+            .unwrap();
 
         let targets = manager.resolve_read_targets("logs").await.unwrap();
         assert_eq!(targets.len(), 2);

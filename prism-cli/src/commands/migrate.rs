@@ -9,6 +9,7 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 struct ScrollResponse {
     documents: Vec<ScrollDoc>,
+    #[allow(dead_code)]
     total: usize,
     has_more: bool,
 }
@@ -150,12 +151,7 @@ pub async fn run_migrate(
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!(
-                "Index failed at offset {} ({}): {}",
-                offset,
-                status,
-                body
-            );
+            anyhow::bail!("Index failed at offset {} ({}): {}", offset, status, body);
         }
 
         migrated += batch_count;

@@ -212,9 +212,9 @@ impl TantivyStorageAdapter {
     /// Convert a Tantivy path to a StoragePath.
     fn to_storage_path(&self, path: &Path) -> StoragePath {
         let segment = path.to_string_lossy().to_string();
-        StoragePath::tantivy(&self.collection, &self.shard, segment).expect("invalid tantivy storage path")
+        StoragePath::tantivy(&self.collection, &self.shard, segment)
+            .expect("invalid tantivy storage path")
     }
-
 }
 
 impl std::fmt::Debug for TantivyStorageAdapter {
@@ -375,9 +375,10 @@ impl Directory for TantivyStorageAdapter {
         let storage_path = self.to_storage_path(path);
         let storage = self.storage.clone();
 
-        let data = block_on_safe(&self.runtime, async move {
-            storage.read(&storage_path).await
-        })
+        let data = block_on_safe(
+            &self.runtime,
+            async move { storage.read(&storage_path).await },
+        )
         .map_err(|e| match e {
             StorageError::NotFound(_) => OpenReadError::FileDoesNotExist(path.to_path_buf()),
             _ => OpenReadError::wrap_io_error(io::Error::other(e.to_string()), path.to_path_buf()),

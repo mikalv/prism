@@ -51,9 +51,8 @@ system_fields:
 
     let text_backend = Arc::new(TextBackend::new(&data_dir).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(&data_dir).unwrap());
-    let manager = Arc::new(
-        CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap(),
-    );
+    let manager =
+        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap());
     manager.initialize().await.unwrap();
 
     (temp, manager)
@@ -197,10 +196,16 @@ async fn test_export_returns_checksum() {
         .unwrap();
 
     // The returned metadata should have a computed checksum
-    assert!(metadata.checksum.is_some(), "Export should return a checksum");
+    assert!(
+        metadata.checksum.is_some(),
+        "Export should return a checksum"
+    );
     let checksum = metadata.checksum.unwrap();
     assert!(!checksum.is_empty(), "Checksum should not be empty");
-    assert!(checksum.chars().all(|c| c.is_ascii_hexdigit()), "Checksum should be hex");
+    assert!(
+        checksum.chars().all(|c| c.is_ascii_hexdigit()),
+        "Checksum should be hex"
+    );
 }
 
 #[tokio::test]
@@ -241,7 +246,10 @@ async fn test_checksum_not_in_header_so_import_skips_verification() {
         .unwrap();
 
     // Import succeeds because header has checksum=null (verification skipped)
-    assert!(result.checksum_valid, "With null checksum in header, import should consider checksum valid");
+    assert!(
+        result.checksum_valid,
+        "With null checksum in header, import should consider checksum valid"
+    );
 }
 
 // =========================================================================
@@ -337,7 +345,10 @@ async fn test_export_nonexistent_collection_errors() {
     let mut export_buf = Vec::new();
     let result = export_portable(&manager, "nonexistent", &mut export_buf, None).await;
 
-    assert!(result.is_err(), "Exporting nonexistent collection should error");
+    assert!(
+        result.is_err(),
+        "Exporting nonexistent collection should error"
+    );
 }
 
 // =========================================================================

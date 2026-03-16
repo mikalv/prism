@@ -467,12 +467,10 @@ mod tests {
     #[tokio::test]
     async fn test_get_version_from_history_nonexistent_collection() {
         let registry = SchemaRegistry::new("node-1");
-        assert!(
-            registry
-                .get_version_from_history("nonexistent", 1)
-                .await
-                .is_none()
-        );
+        assert!(registry
+            .get_version_from_history("nonexistent", 1)
+            .await
+            .is_none());
     }
 
     // --- list_collections ---
@@ -484,7 +482,10 @@ mod tests {
         let collections = registry.list_collections().await;
         assert!(collections.is_empty());
 
-        registry.register("products", json!({"a": 1})).await.unwrap();
+        registry
+            .register("products", json!({"a": 1}))
+            .await
+            .unwrap();
         registry.register("orders", json!({"b": 2})).await.unwrap();
 
         let collections = registry.list_collections().await;
@@ -525,7 +526,11 @@ mod tests {
     async fn test_needs_migration_nonexistent() {
         let registry = SchemaRegistry::new("node-1");
         // Nonexistent collection always needs migration
-        assert!(registry.needs_migration("test", SchemaVersion::new(1)).await);
+        assert!(
+            registry
+                .needs_migration("test", SchemaVersion::new(1))
+                .await
+        );
     }
 
     #[tokio::test]
@@ -534,9 +539,17 @@ mod tests {
         registry.register("test", json!({"a": 1})).await.unwrap();
 
         // Current version = 1, target = 1, no migration needed
-        assert!(!registry.needs_migration("test", SchemaVersion::new(1)).await);
+        assert!(
+            !registry
+                .needs_migration("test", SchemaVersion::new(1))
+                .await
+        );
         // Target = 2, needs migration
-        assert!(registry.needs_migration("test", SchemaVersion::new(2)).await);
+        assert!(
+            registry
+                .needs_migration("test", SchemaVersion::new(2))
+                .await
+        );
     }
 
     // --- remove ---
@@ -567,21 +580,12 @@ mod tests {
     async fn test_apply_remote_schema_same_version() {
         let registry = SchemaRegistry::new("node-1");
 
-        let v1 = VersionedSchema::new(
-            "test",
-            SchemaVersion::new(3),
-            json!({"a": 1}),
-            "node-2",
-        );
+        let v1 = VersionedSchema::new("test", SchemaVersion::new(3), json!({"a": 1}), "node-2");
         registry.apply_remote_schema(v1).await.unwrap();
 
         // Same version should be rejected
-        let v1_again = VersionedSchema::new(
-            "test",
-            SchemaVersion::new(3),
-            json!({"a": 2}),
-            "node-3",
-        );
+        let v1_again =
+            VersionedSchema::new("test", SchemaVersion::new(3), json!({"a": 2}), "node-3");
         let applied = registry.apply_remote_schema(v1_again).await.unwrap();
         assert!(!applied);
     }

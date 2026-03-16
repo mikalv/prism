@@ -498,7 +498,10 @@ mod tests {
             .await
             .unwrap();
 
-        let prefix = StoragePath::new("test", StorageBackend::Vector).unwrap().with_shard("shard_0").unwrap();
+        let prefix = StoragePath::new("test", StorageBackend::Vector)
+            .unwrap()
+            .with_shard("shard_0")
+            .unwrap();
         let deleted = storage.delete_prefix(&prefix).await.unwrap();
 
         assert_eq!(deleted, 2);
@@ -588,7 +591,10 @@ mod tests {
             .await
             .unwrap();
 
-        let prefix = StoragePath::new("test", StorageBackend::Vector).unwrap().with_shard("shard_0").unwrap();
+        let prefix = StoragePath::new("test", StorageBackend::Vector)
+            .unwrap()
+            .with_shard("shard_0")
+            .unwrap();
         let results = storage.list(&prefix).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].size, 1);

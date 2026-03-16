@@ -340,10 +340,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.collection, "restored_collection");
-        assert!(import_dir
-            .path()
-            .join("restored_collection")
-            .exists());
+        assert!(import_dir.path().join("restored_collection").exists());
     }
 
     #[test]

@@ -88,7 +88,12 @@ async fn main() -> Result<()> {
         }
         (None, Some(p)) => {
             // Host from config + CLI port
-            let host = config.server.bind_addr.rsplitn(2, ':').last().unwrap_or("127.0.0.1");
+            let host = config
+                .server
+                .bind_addr
+                .rsplitn(2, ':')
+                .last()
+                .unwrap_or("127.0.0.1");
             format!("{}:{}", host, p)
         }
         (None, None) => config.server.bind_addr.clone(),
@@ -136,13 +141,14 @@ async fn main() -> Result<()> {
                     )
                     .expect("Failed to create embedding cache"),
                 );
-                let cached_provider = Arc::new(prism::embedding::CachedEmbeddingProvider::with_config(
-                    provider,
-                    cache,
-                    prism::cache::KeyStrategy::ModelText,
-                    config.embedding.batch_size,
-                    config.embedding.concurrency,
-                ));
+                let cached_provider =
+                    Arc::new(prism::embedding::CachedEmbeddingProvider::with_config(
+                        provider,
+                        cache,
+                        prism::cache::KeyStrategy::ModelText,
+                        config.embedding.batch_size,
+                        config.embedding.concurrency,
+                    ));
                 vector_backend.set_embedding_provider(cached_provider);
                 tracing::info!(
                     "Embedding provider configured (cache: {})",
@@ -314,10 +320,7 @@ async fn main() -> Result<()> {
         let max_segments = config.optimize.max_segments;
         let max_segment_size_bytes = config.optimize.max_segment_size_bytes();
         if let Some(bytes) = max_segment_size_bytes {
-            tracing::info!(
-                "Background optimize: max_segment_size = {} bytes",
-                bytes,
-            );
+            tracing::info!("Background optimize: max_segment_size = {} bytes", bytes,);
         }
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
@@ -325,11 +328,15 @@ async fn main() -> Result<()> {
             interval.tick().await;
             loop {
                 interval.tick().await;
-                tracing::info!("Background optimize cycle starting (max_segments={})", max_segments);
+                tracing::info!(
+                    "Background optimize cycle starting (max_segments={})",
+                    max_segments
+                );
                 let mgr = optimize_manager.clone();
                 let max_seg = max_segments;
                 let max_size = max_segment_size_bytes;
-                match tokio::task::spawn_blocking(move || mgr.optimize_all(max_seg, max_size)).await {
+                match tokio::task::spawn_blocking(move || mgr.optimize_all(max_seg, max_size)).await
+                {
                     Ok(results) => {
                         for (name, result) in &results {
                             match result {

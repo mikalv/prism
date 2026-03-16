@@ -357,16 +357,7 @@ async fn test_wildcard_patterns() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
     let cases = vec![
-        "te*",
-        "*est",
-        "t?st",
-        "*",
-        "**",
-        "???",
-        "rust*",
-        "*python*",
-        "?",
-        "a*b*c",
+        "te*", "*est", "t?st", "*", "**", "???", "rust*", "*python*", "?", "a*b*c",
     ];
 
     for case in cases {

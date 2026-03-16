@@ -282,7 +282,9 @@ impl InstantDistanceAdapter {
         }
         let meta_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
         if data.len() < 4 + meta_len {
-            return Err(crate::error::Error::Backend("V2 index meta truncated".into()));
+            return Err(crate::error::Error::Backend(
+                "V2 index meta truncated".into(),
+            ));
         }
         let meta: GraphMeta = bincode::deserialize(&data[4..4 + meta_len]).map_err(|e| {
             crate::error::Error::Backend(format!("bincode deserialize meta: {}", e))
@@ -348,7 +350,9 @@ impl InstantDistanceAdapter {
 
     fn load_binary(data: &[u8]) -> Result<Self> {
         if data.len() < 22 {
-            return Err(crate::error::Error::Backend("Binary index too short".into()));
+            return Err(crate::error::Error::Backend(
+                "Binary index too short".into(),
+            ));
         }
         let _version = data[4];
         let metric = match data[5] {
@@ -390,7 +394,9 @@ impl InstantDistanceAdapter {
             let mut v = Vec::with_capacity(dimensions);
             for d in 0..dimensions {
                 let fo = off + d * 4;
-                v.push(f32::from_le_bytes(float_data[fo..fo + 4].try_into().unwrap()));
+                v.push(f32::from_le_bytes(
+                    float_data[fo..fo + 4].try_into().unwrap(),
+                ));
             }
             points.push(PointVec { v, metric });
         }

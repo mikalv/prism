@@ -583,10 +583,7 @@ mod tests {
         fields.insert("body".to_string(), Value::String("text".to_string()));
 
         let mut hl = HashMap::new();
-        hl.insert(
-            "body".to_string(),
-            vec!["<em>highlighted</em>".to_string()],
-        );
+        hl.insert("body".to_string(), vec!["<em>highlighted</em>".to_string()]);
 
         let results = SearchResultsWithAggs {
             results: vec![SearchResult {
@@ -699,9 +696,7 @@ mod tests {
             "lat_pct".to_string(),
             AggregationResult {
                 name: "lat_pct".to_string(),
-                value: AggregationValue::Percentiles(PercentilesResult {
-                    values: pct_values,
-                }),
+                value: AggregationValue::Percentiles(PercentilesResult { values: pct_values }),
             },
         );
 
@@ -763,10 +758,7 @@ mod tests {
                 assert_eq!(buckets.len(), 2);
                 assert_eq!(buckets[0].key, Value::String("active".to_string()));
                 assert_eq!(buckets[0].doc_count, 42);
-                assert_eq!(
-                    buckets[0].key_as_string,
-                    Some("active".to_string())
-                );
+                assert_eq!(buckets[0].key_as_string, Some("active".to_string()));
                 assert!(buckets[0].sub_aggs.is_empty());
             }
             _ => panic!("Expected Buckets aggregation result"),
@@ -836,7 +828,7 @@ mod tests {
                 // "3.14" can't parse as i64, should parse as f64
                 match &buckets[0].key {
                     Value::Number(n) => {
-                        assert!((n.as_f64().unwrap() - 3.14).abs() < 0.001);
+                        assert!((n.as_f64().unwrap() - 3.14_f64).abs() < 0.001);
                     }
                     _ => panic!("Expected numeric key"),
                 }
@@ -1068,7 +1060,9 @@ mod tests {
 
     #[test]
     fn test_aggregation_result_serde_value() {
-        let result = EsAggregationResult::Value { value: Some(3.14) };
+        let result = EsAggregationResult::Value {
+            value: Some(3.14_f64),
+        };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("3.14"));
     }

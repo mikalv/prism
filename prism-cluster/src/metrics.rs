@@ -999,8 +999,8 @@ mod tests {
 
     #[test]
     fn test_update_rebalance_status_metrics_in_progress() {
-        use crate::rebalance::RebalanceStatus;
         use crate::rebalance::RebalancePhase;
+        use crate::rebalance::RebalanceStatus;
         let status = RebalanceStatus {
             in_progress: true,
             phase: RebalancePhase::Executing,

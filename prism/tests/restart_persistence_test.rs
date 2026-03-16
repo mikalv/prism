@@ -80,10 +80,7 @@ fn make_article(id: &str, title: &str, body: &str, author: &str) -> Document {
             ("title".to_string(), json!(title)),
             ("body".to_string(), json!(body)),
             ("author".to_string(), json!(author)),
-            (
-                "published_at".to_string(),
-                json!("2026-02-17T12:00:00Z"),
-            ),
+            ("published_at".to_string(), json!("2026-02-17T12:00:00Z")),
         ]),
     }
 }
@@ -131,7 +128,10 @@ async fn test_disk_schema_survives_restart() {
 
         // Stats show 100 docs
         let stats = manager.stats("articles").await.unwrap();
-        assert_eq!(stats.document_count, 100, "Should have 100 docs after restart");
+        assert_eq!(
+            stats.document_count, 100,
+            "Should have 100 docs after restart"
+        );
 
         // Get by ID works
         let doc = manager.get("articles", "art-42").await.unwrap();
@@ -144,7 +144,10 @@ async fn test_disk_schema_survives_restart() {
             .search("articles", make_query("article", 10), None)
             .await
             .unwrap();
-        assert!(results.total > 0, "Search should return results after restart");
+        assert!(
+            results.total > 0,
+            "Search should return results after restart"
+        );
     }
 }
 
@@ -272,13 +275,19 @@ backends:
 
         // Index into articles (from disk schema)
         // Since we wrote the YAML after boot, we need to add it via API too for this boot.
-        let articles_schema: CollectionSchema =
-            serde_yaml::from_str(ARTICLES_SCHEMA_YAML).unwrap();
+        let articles_schema: CollectionSchema = serde_yaml::from_str(ARTICLES_SCHEMA_YAML).unwrap();
         manager.add_collection(articles_schema).await.unwrap();
 
         // Index 10 articles
         let article_docs: Vec<Document> = (0..10)
-            .map(|i| make_article(&format!("a-{}", i), &format!("Article {}", i), "text", "alice"))
+            .map(|i| {
+                make_article(
+                    &format!("a-{}", i),
+                    &format!("Article {}", i),
+                    "text",
+                    "alice",
+                )
+            })
             .collect();
         manager.index("articles", article_docs).await.unwrap();
 
@@ -302,10 +311,7 @@ backends:
                 fields: HashMap::from([
                     ("message".to_string(), json!(format!("Log message {}", i))),
                     ("level".to_string(), json!("info")),
-                    (
-                        "timestamp".to_string(),
-                        json!("2026-02-17T12:00:00Z"),
-                    ),
+                    ("timestamp".to_string(), json!("2026-02-17T12:00:00Z")),
                 ]),
             })
             .collect();
@@ -588,7 +594,14 @@ async fn test_multiple_restarts() {
     {
         let manager = build_manager(&schemas_dir, &data_dir).await;
         let docs: Vec<Document> = (0..33)
-            .map(|i| make_article(&format!("m-{}", i), &format!("Batch1 {}", i), "body1", "eve"))
+            .map(|i| {
+                make_article(
+                    &format!("m-{}", i),
+                    &format!("Batch1 {}", i),
+                    "body1",
+                    "eve",
+                )
+            })
             .collect();
         manager.index("articles", docs).await.unwrap();
     }
@@ -602,7 +615,14 @@ async fn test_multiple_restarts() {
         assert_eq!(stats.document_count, 33, "Batch 1 should persist");
 
         let docs: Vec<Document> = (33..66)
-            .map(|i| make_article(&format!("m-{}", i), &format!("Batch2 {}", i), "body2", "eve"))
+            .map(|i| {
+                make_article(
+                    &format!("m-{}", i),
+                    &format!("Batch2 {}", i),
+                    "body2",
+                    "eve",
+                )
+            })
             .collect();
         manager.index("articles", docs).await.unwrap();
     }
@@ -615,7 +635,14 @@ async fn test_multiple_restarts() {
         assert_eq!(stats.document_count, 66, "Batches 1+2 should persist");
 
         let docs: Vec<Document> = (66..100)
-            .map(|i| make_article(&format!("m-{}", i), &format!("Batch3 {}", i), "body3", "eve"))
+            .map(|i| {
+                make_article(
+                    &format!("m-{}", i),
+                    &format!("Batch3 {}", i),
+                    "body3",
+                    "eve",
+                )
+            })
             .collect();
         manager.index("articles", docs).await.unwrap();
     }
@@ -788,7 +815,10 @@ backends:
                     id: format!("b-{}", i),
                     fields: HashMap::from([
                         ("name".to_string(), json!(format!("Item {}", i))),
-                        ("description".to_string(), json!(format!("Description of item {}", i))),
+                        (
+                            "description".to_string(),
+                            json!(format!("Description of item {}", i)),
+                        ),
                         ("active".to_string(), json!(true)),
                         ("updated_at".to_string(), json!("2026-02-17T12:00:00Z")),
                     ]),
@@ -809,10 +839,16 @@ backends:
         assert!(manager.collection_exists("collection_b"));
 
         let stats_a = manager.stats("collection_a").await.unwrap();
-        assert_eq!(stats_a.document_count, 50, "collection_a should have 50 docs");
+        assert_eq!(
+            stats_a.document_count, 50,
+            "collection_a should have 50 docs"
+        );
 
         let stats_b = manager.stats("collection_b").await.unwrap();
-        assert_eq!(stats_b.document_count, 75, "collection_b should have 75 docs");
+        assert_eq!(
+            stats_b.document_count, 75,
+            "collection_b should have 75 docs"
+        );
 
         // Spot-check data in A
         let doc_a = manager

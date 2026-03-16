@@ -202,10 +202,7 @@ mod tests {
     #[test]
     fn test_classify_aggregate() {
         assert_eq!(
-            classify_event(
-                &axum::http::Method::POST,
-                "/collections/test/aggregate"
-            ),
+            classify_event(&axum::http::Method::POST, "/collections/test/aggregate"),
             "aggregate"
         );
     }
@@ -213,10 +210,7 @@ mod tests {
     #[test]
     fn test_classify_index() {
         assert_eq!(
-            classify_event(
-                &axum::http::Method::POST,
-                "/collections/test/documents"
-            ),
+            classify_event(&axum::http::Method::POST, "/collections/test/documents"),
             "index"
         );
     }
@@ -224,10 +218,7 @@ mod tests {
     #[test]
     fn test_classify_delete() {
         assert_eq!(
-            classify_event(
-                &axum::http::Method::DELETE,
-                "/collections/test/documents/1"
-            ),
+            classify_event(&axum::http::Method::DELETE, "/collections/test/documents/1"),
             "delete"
         );
     }
@@ -235,10 +226,7 @@ mod tests {
     #[test]
     fn test_classify_read() {
         assert_eq!(
-            classify_event(
-                &axum::http::Method::GET,
-                "/collections/test/documents/1"
-            ),
+            classify_event(&axum::http::Method::GET, "/collections/test/documents/1"),
             "read"
         );
         assert_eq!(
@@ -297,9 +285,7 @@ mod tests {
 
     #[test]
     fn test_extract_client_ip_missing() {
-        let req = Request::builder()
-            .body(axum::body::Body::empty())
-            .unwrap();
+        let req = Request::builder().body(axum::body::Body::empty()).unwrap();
         assert_eq!(extract_client_ip(&req), "unknown");
     }
 

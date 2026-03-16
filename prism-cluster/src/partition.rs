@@ -930,11 +930,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         *detector.state.write() = PartitionState::Partitioned {
             reachable_nodes: vec!["n1".into()],
@@ -959,11 +955,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         *detector.state.write() = PartitionState::Partitioned {
             reachable_nodes: vec!["n1".into()],
@@ -1021,11 +1013,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         *detector.state.write() = PartitionState::Partitioned {
             reachable_nodes: vec!["n1".into()],
@@ -1051,11 +1039,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         *detector.state.write() = PartitionState::Partitioned {
             reachable_nodes: vec!["n1".into()],
@@ -1082,11 +1066,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         *detector.state.write() = PartitionState::Partitioned {
             reachable_nodes: vec!["n1".into()],
@@ -1179,11 +1159,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         // Put into partitioned state with no quorum
         *detector.state.write() = PartitionState::Partitioned {
@@ -1213,11 +1189,7 @@ mod tests {
             cluster_config.clone(),
             cluster_state,
         ));
-        let detector = PartitionDetector::new(
-            consistency_config,
-            cluster_config,
-            health_checker,
-        );
+        let detector = PartitionDetector::new(consistency_config, cluster_config, health_checker);
 
         *detector.state.write() = PartitionState::Partitioned {
             reachable_nodes: vec!["n1".into()],

@@ -235,9 +235,6 @@ mod tests {
         let prism_err = prism::Error::CollectionNotFound("test".into());
         let es_err: EsCompatError = prism_err.into();
         assert_eq!(es_err.status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(
-            es_err.error_type(),
-            "index_not_found_exception"
-        );
+        assert_eq!(es_err.error_type(), "index_not_found_exception");
     }
 }

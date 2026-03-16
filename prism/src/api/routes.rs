@@ -1,12 +1,11 @@
 use crate::api::server::{AppState, IndexJob};
-use crate::Error;
-use tokio::sync::mpsc::error::TrySendError;
 use crate::backends::{
     Document, GraphEdge, GraphNode, GraphStats, HighlightConfig, Query, SearchResult, SearchResults,
 };
 use crate::collection::CollectionManager;
 use crate::ranking::reranker::{RerankOptions, RerankRequest};
 use crate::ranking::score_function::ScoreFunctionReranker;
+use crate::Error;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -15,6 +14,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc::error::TrySendError;
 
 /// Map domain errors to appropriate HTTP status codes instead of blanket 500s.
 fn error_to_status(e: &Error) -> StatusCode {
@@ -378,12 +378,18 @@ pub async fn index_documents(
             Ok(()) => {
                 tracing::info!(
                     "Queued {}/{} documents for async indexing to '{}' ({} failed)",
-                    indexed, total, collection, failed
+                    indexed,
+                    total,
+                    collection,
+                    failed
                 );
                 (StatusCode::ACCEPTED, true)
             }
             Err(TrySendError::Full(job)) => {
-                tracing::warn!("Index queue full, indexing {} documents synchronously", indexed);
+                tracing::warn!(
+                    "Index queue full, indexing {} documents synchronously",
+                    indexed
+                );
                 state
                     .manager
                     .index(&job.collection, job.documents)
@@ -432,7 +438,10 @@ pub async fn index_documents(
     if !queued {
         tracing::info!(
             "Indexed {}/{} documents to '{}' ({} failed)",
-            indexed, total, collection, failed
+            indexed,
+            total,
+            collection,
+            failed
         );
     }
     Ok((
@@ -517,7 +526,10 @@ pub async fn list_documents(
     State(manager): State<Arc<CollectionManager>>,
 ) -> Result<Json<ScrollResponse>, (StatusCode, String)> {
     let stats = manager.stats(&collection).await.map_err(|e| {
-        (StatusCode::NOT_FOUND, format!("Collection not found: {}", e))
+        (
+            StatusCode::NOT_FOUND,
+            format!("Collection not found: {}", e),
+        )
     })?;
 
     let total = stats.document_count;
@@ -728,9 +740,7 @@ pub fn record_start_time() {
     let _ = SERVER_START.set(std::time::Instant::now());
 }
 
-pub async fn health(
-    State(manager): State<Arc<CollectionManager>>,
-) -> Json<HealthResponse> {
+pub async fn health(State(manager): State<Arc<CollectionManager>>) -> Json<HealthResponse> {
     let uptime = SERVER_START
         .get()
         .map(|t| t.elapsed().as_secs())
@@ -787,9 +797,7 @@ pub struct DebugTotals {
 }
 
 /// GET /admin/debug — Server introspection: per-collection space usage, process memory, cache stats
-pub async fn debug_info(
-    State(manager): State<Arc<CollectionManager>>,
-) -> Json<DebugResponse> {
+pub async fn debug_info(State(manager): State<Arc<CollectionManager>>) -> Json<DebugResponse> {
     let uptime = SERVER_START
         .get()
         .map(|t| t.elapsed().as_secs())
@@ -1059,7 +1067,7 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
 // ============================================================================
 
 use crate::aggregations::{AggregationRequest as AggRequest, AggregationResult as AggResult};
-use crate::backends::text::{ReconstructedDocument, SegmentsInfo, TermInfo, OptimizeResult};
+use crate::backends::text::{OptimizeResult, ReconstructedDocument, SegmentsInfo, TermInfo};
 
 /// Aggregation API request
 #[derive(Deserialize)]
@@ -1212,7 +1220,10 @@ pub async fn optimize_collection(
     Json(params): Json<Option<OptimizeParams>>,
 ) -> Result<Json<OptimizeResult>, (StatusCode, String)> {
     if manager.get_schema(&collection).is_none() {
-        return Err((StatusCode::NOT_FOUND, format!("Collection '{}' not found", collection)));
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("Collection '{}' not found", collection),
+        ));
     }
 
     let max_segments = params.and_then(|p| p.max_segments);

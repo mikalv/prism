@@ -690,10 +690,7 @@ mod tests {
         fields.insert("title".to_string(), Value::String("Test".into()));
 
         let mut highlight = HashMap::new();
-        highlight.insert(
-            "title".to_string(),
-            vec!["<em>Test</em> doc".to_string()],
-        );
+        highlight.insert("title".to_string(), vec!["<em>Test</em> doc".to_string()]);
 
         let result = prism::backends::SearchResult {
             id: "res-1".into(),

@@ -104,7 +104,10 @@ pub async fn bulk_handler(
                         status: 400,
                         error: Some(EsError {
                             error_type: "invalid_index_name_exception".to_string(),
-                            reason: format!("Wildcard patterns not allowed in bulk index name: [{}]", index),
+                            reason: format!(
+                                "Wildcard patterns not allowed in bulk index name: [{}]",
+                                index
+                            ),
                         }),
                     }),
                     create: None,
@@ -365,8 +368,8 @@ fn parse_bulk_body(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Bytes;
     use crate::query::BulkAction;
+    use axum::body::Bytes;
 
     fn make_bytes(s: &str) -> Bytes {
         Bytes::from(s.to_string())

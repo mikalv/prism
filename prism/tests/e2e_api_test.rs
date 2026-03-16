@@ -22,9 +22,8 @@ async fn start_server() -> (TempDir, String, tokio::task::JoinHandle<()>) {
 
     let text_backend = Arc::new(TextBackend::new(&data_dir).unwrap());
     let vector_backend = Arc::new(VectorBackend::new(&data_dir).unwrap());
-    let manager = Arc::new(
-        CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap(),
-    );
+    let manager =
+        Arc::new(CollectionManager::new(&schemas_dir, text_backend, vector_backend, None).unwrap());
     manager.initialize().await.unwrap();
 
     let server = ApiServer::new(manager);
@@ -141,11 +140,7 @@ async fn test_root_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
 
-    let resp = client
-        .get(format!("{}/", base_url))
-        .send()
-        .await
-        .unwrap();
+    let resp = client.get(format!("{}/", base_url)).send().await.unwrap();
     assert_eq!(resp.status().as_u16(), 200);
 
     let body: Value = resp.json().await.unwrap();
@@ -253,10 +248,7 @@ async fn test_index_and_get_by_id() {
 
     // Get by ID
     let resp = client
-        .get(format!(
-            "{}/collections/test-e2e/documents/doc-1",
-            base_url
-        ))
+        .get(format!("{}/collections/test-e2e/documents/doc-1", base_url))
         .send()
         .await
         .unwrap();
@@ -387,10 +379,7 @@ async fn test_search_nonexistent_collection() {
 
     // Search on non-existent collection
     let resp = client
-        .post(format!(
-            "{}/collections/does-not-exist/search",
-            base_url
-        ))
+        .post(format!("{}/collections/does-not-exist/search", base_url))
         .json(&json!({ "query": "test", "limit": 10 }))
         .send()
         .await
@@ -757,7 +746,10 @@ async fn test_aggregate_endpoint() {
     // If the backend supports it, verify the response structure
     if status == 200 {
         let body: Value = resp.json().await.unwrap();
-        assert!(body["results"].is_object() || body["results"].is_null(), "Expected results in response");
+        assert!(
+            body["results"].is_object() || body["results"].is_null(),
+            "Expected results in response"
+        );
         assert!(body["took_ms"].is_number(), "Expected took_ms");
     }
 
@@ -770,10 +762,7 @@ async fn test_aggregate_nonexistent_collection() {
     let client = Client::new();
 
     let resp = client
-        .post(format!(
-            "{}/collections/nonexistent/aggregate",
-            base_url
-        ))
+        .post(format!("{}/collections/nonexistent/aggregate", base_url))
         .json(&json!({
             "aggregations": [
                 {
@@ -841,10 +830,7 @@ async fn test_get_top_terms_nonexistent_collection() {
     let client = Client::new();
 
     let resp = client
-        .get(format!(
-            "{}/collections/nonexistent/terms/title",
-            base_url
-        ))
+        .get(format!("{}/collections/nonexistent/terms/title", base_url))
         .send()
         .await
         .unwrap();
@@ -960,10 +946,7 @@ async fn test_suggest_nonexistent_collection() {
     let client = Client::new();
 
     let resp = client
-        .post(format!(
-            "{}/collections/nonexistent/_suggest",
-            base_url
-        ))
+        .post(format!("{}/collections/nonexistent/_suggest", base_url))
         .json(&json!({
             "prefix": "test",
             "field": "title"

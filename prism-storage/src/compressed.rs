@@ -550,15 +550,15 @@ mod tests {
         let path = StoragePath::vector("test", "shard_0", "bad.bin").unwrap();
         let mut bad_data = vec![0xC0u8, 0xFF, 0x00, 0x00]; // magic + unknown algo
         bad_data.extend_from_slice(b"some payload");
-        inner
-            .write(&path, Bytes::from(bad_data))
-            .await
-            .unwrap();
+        inner.write(&path, Bytes::from(bad_data)).await.unwrap();
 
         let storage = CompressedStorage::new(inner, CompressionConfig::lz4());
         let result = storage.read(&path).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown compression"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown compression"));
     }
 
     #[tokio::test]

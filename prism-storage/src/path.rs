@@ -598,7 +598,8 @@ mod tests {
         let json = r#"{"collection":"valid","backend":"vector","shard":"..","segment":"file.bin"}"#;
         assert!(serde_json::from_str::<StoragePath>(json).is_err());
 
-        let json = r#"{"collection":"valid","backend":"vector","shard":null,"segment":"../etc/passwd"}"#;
+        let json =
+            r#"{"collection":"valid","backend":"vector","shard":null,"segment":"../etc/passwd"}"#;
         assert!(serde_json::from_str::<StoragePath>(json).is_err());
 
         // Valid path should deserialize fine

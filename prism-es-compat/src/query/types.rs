@@ -584,7 +584,9 @@ mod tests {
             serde_json::from_value(json!({"match_phrase": {"msg": "quick brown fox"}})).unwrap();
         match q {
             EsQuery::MatchPhrase(m) => {
-                assert!(matches!(m.get("msg").unwrap(), MatchPhraseQuery::Simple(s) if s == "quick brown fox"));
+                assert!(
+                    matches!(m.get("msg").unwrap(), MatchPhraseQuery::Simple(s) if s == "quick brown fox")
+                );
             }
             _ => panic!("Expected MatchPhrase"),
         }
@@ -756,8 +758,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_wildcard() {
-        let q: EsQuery =
-            serde_json::from_value(json!({"wildcard": {"user": "ki*y"}})).unwrap();
+        let q: EsQuery = serde_json::from_value(json!({"wildcard": {"user": "ki*y"}})).unwrap();
         match q {
             EsQuery::Wildcard(m) => {
                 assert!(matches!(m.get("user").unwrap(), WildcardParams::Simple(s) if s == "ki*y"));

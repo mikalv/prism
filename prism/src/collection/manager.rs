@@ -1013,12 +1013,19 @@ impl CollectionManager {
     }
 
     /// Get detailed space usage for a single collection.
-    pub fn space_usage(&self, collection: &str) -> Result<crate::backends::text::CollectionSpaceUsage> {
+    pub fn space_usage(
+        &self,
+        collection: &str,
+    ) -> Result<crate::backends::text::CollectionSpaceUsage> {
         self.text_backend.space_usage(collection)
     }
 
     /// Synchronously merge segments for a collection to reduce search latency.
-    pub fn optimize(&self, collection: &str, max_segments: Option<usize>) -> Result<crate::backends::text::OptimizeResult> {
+    pub fn optimize(
+        &self,
+        collection: &str,
+        max_segments: Option<usize>,
+    ) -> Result<crate::backends::text::OptimizeResult> {
         self.text_backend.optimize(collection, max_segments)
     }
 
@@ -1034,7 +1041,10 @@ impl CollectionManager {
         &self,
         max_segments: usize,
         max_segment_size_bytes: Option<u64>,
-    ) -> Vec<(String, std::result::Result<crate::backends::text::OptimizeResult, crate::Error>)> {
+    ) -> Vec<(
+        String,
+        std::result::Result<crate::backends::text::OptimizeResult, crate::Error>,
+    )> {
         let collections = self.list_collections();
         let mut results = Vec::new();
 
@@ -1051,7 +1061,11 @@ impl CollectionManager {
 
             // Small collections are cheap to merge — always compact to 1 segment.
             // Larger collections use the configured max_segments.
-            let base_max = if info.total_docs < 1000 { 1 } else { max_segments };
+            let base_max = if info.total_docs < 1000 {
+                1
+            } else {
+                max_segments
+            };
 
             // Compute effective max_segments respecting size cap
             let effective_max = if let Some(max_bytes) = max_segment_size_bytes {
@@ -1346,10 +1360,7 @@ mod tests {
     use tempfile::TempDir;
 
     /// Helper to create a basic collection manager with a text-only collection.
-    async fn setup_manager(
-        temp: &TempDir,
-        collection_name: &str,
-    ) -> (CollectionManager, PathBuf) {
+    async fn setup_manager(temp: &TempDir, collection_name: &str) -> (CollectionManager, PathBuf) {
         let schemas_dir = temp.path().join("schemas");
         let data_dir = temp.path().join("data");
         std::fs::create_dir_all(&schemas_dir).unwrap();
@@ -1523,9 +1534,7 @@ backends:
             .await?;
 
         // Delete one document
-        manager
-            .delete("articles", vec!["d1".to_string()])
-            .await?;
+        manager.delete("articles", vec!["d1".to_string()]).await?;
 
         // Verify the deleted document is gone
         let doc = manager.get("articles", "d1").await?;
@@ -1543,9 +1552,7 @@ backends:
         let temp = TempDir::new().unwrap();
         let (manager, _) = setup_manager(&temp, "articles").await;
 
-        let result = manager
-            .delete("nonexistent", vec!["d1".to_string()])
-            .await;
+        let result = manager.delete("nonexistent", vec!["d1".to_string()]).await;
         assert!(result.is_err());
     }
 
@@ -1647,9 +1654,7 @@ backends:
         let (manager, _) = setup_manager(&temp, "articles").await;
 
         let q = make_query("test", 10);
-        let result = manager
-            .search_with_aggs("nonexistent", &q, vec![])
-            .await;
+        let result = manager.search_with_aggs("nonexistent", &q, vec![]).await;
         assert!(result.is_err());
     }
 
@@ -1724,7 +1729,9 @@ backends:
             )
             .await?;
 
-        let results = manager.search("dynamic", make_query("dynamic", 10), None).await?;
+        let results = manager
+            .search("dynamic", make_query("dynamic", 10), None)
+            .await?;
         assert!(results.total > 0);
 
         // Remove the collection

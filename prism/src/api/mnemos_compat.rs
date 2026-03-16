@@ -399,7 +399,8 @@ mod tests {
 
     #[test]
     fn test_mnemos_search_request_all_fields() {
-        let json = r#"{"mode": "grep", "query": "fn main", "limit": 20, "output_format": "compact"}"#;
+        let json =
+            r#"{"mode": "grep", "query": "fn main", "limit": 20, "output_format": "compact"}"#;
         let req: MnemosSearchRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.mode, "grep");
         assert_eq!(req.limit.unwrap(), 20);

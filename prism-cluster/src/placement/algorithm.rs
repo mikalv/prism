@@ -561,14 +561,20 @@ mod tests {
         let result = place_replicas("shard-1", 3, &nodes, &[], &strategy);
         assert!(matches!(
             result,
-            Err(PlacementError::InsufficientNodes { needed: 3, available: 1 })
+            Err(PlacementError::InsufficientNodes {
+                needed: 3,
+                available: 1
+            })
         ));
     }
 
     #[test]
     fn test_place_replicas_with_required_attributes() {
         let mut node1 = make_node("node-1", "zone-a", 0);
-        node1.topology.attributes.insert("tier".to_string(), "hot".to_string());
+        node1
+            .topology
+            .attributes
+            .insert("tier".to_string(), "hot".to_string());
         let node2 = make_node("node-2", "zone-b", 0);
         // node2 doesn't have the required attribute
 
@@ -609,7 +615,10 @@ mod tests {
     #[test]
     fn test_place_replicas_with_preferred_attributes() {
         let mut node1 = make_node("node-1", "zone-a", 0);
-        node1.topology.attributes.insert("tier".to_string(), "hot".to_string());
+        node1
+            .topology
+            .attributes
+            .insert("tier".to_string(), "hot".to_string());
         let node2 = make_node("node-2", "zone-b", 0);
 
         let mut preferred = HashMap::new();
@@ -680,7 +689,10 @@ mod tests {
 
         // 3 nodes, all same rack, need 3 replicas across racks -> insufficient racks
         let result = place_replicas("shard-1", 3, &[node1, node2, node3], &[], &strategy);
-        assert!(matches!(result, Err(PlacementError::InsufficientRacks { .. })));
+        assert!(matches!(
+            result,
+            Err(PlacementError::InsufficientRacks { .. })
+        ));
     }
 
     #[test]
@@ -734,7 +746,10 @@ mod tests {
     #[test]
     fn test_score_node_ssd_preference() {
         let mut ssd_node = make_node("node-1", "zone-a", 0);
-        ssd_node.topology.attributes.insert("disk_type".to_string(), "ssd".to_string());
+        ssd_node
+            .topology
+            .attributes
+            .insert("disk_type".to_string(), "ssd".to_string());
         let hdd_node = make_node("node-2", "zone-b", 0);
 
         let strategy = PlacementStrategy {

@@ -1,7 +1,9 @@
 //! ES-compatible document CRUD endpoints
 
 use crate::error::EsCompatError;
-use crate::response::{EsCountResponse, EsDeleteResponse, EsGetResponse, EsIndexResponse, ShardStats};
+use crate::response::{
+    EsCountResponse, EsDeleteResponse, EsGetResponse, EsIndexResponse, ShardStats,
+};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;

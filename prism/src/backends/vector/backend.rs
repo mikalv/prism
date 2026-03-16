@@ -435,9 +435,10 @@ impl SearchBackend for VectorBackend {
                             }
                         }
                         Err(e) => {
-                            return Err(crate::error::Error::Schema(
-                                format!("Embedding generation failed: {}", e)
-                            ));
+                            return Err(crate::error::Error::Schema(format!(
+                                "Embedding generation failed: {}",
+                                e
+                            )));
                         }
                     }
                 }

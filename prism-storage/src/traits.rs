@@ -182,7 +182,10 @@ mod tests {
     #[test]
     fn test_object_meta_debug() {
         let meta = ObjectMeta {
-            path: StoragePath::new("test", StorageBackend::Vector).unwrap().with_segment("index.bin").unwrap(),
+            path: StoragePath::new("test", StorageBackend::Vector)
+                .unwrap()
+                .with_segment("index.bin")
+                .unwrap(),
             size: 1024,
             last_modified: Some(1234567890),
             etag: Some("abc123".to_string()),
@@ -220,10 +223,7 @@ mod tests {
         let src = StoragePath::vector("test", "shard_0", "src.bin").unwrap();
         let dst = StoragePath::vector("test", "shard_0", "dst.bin").unwrap();
 
-        storage
-            .write(&src, Bytes::from("copy me"))
-            .await
-            .unwrap();
+        storage.write(&src, Bytes::from("copy me")).await.unwrap();
 
         // Use the trait default copy (LocalStorage overrides it, but let's test the trait path)
         let data = storage.read(&src).await.unwrap();
@@ -240,8 +240,7 @@ mod tests {
 
         // Write 5 files
         for i in 0..5 {
-            let path =
-                StoragePath::vector("test", "shard_0", format!("file_{}.bin", i)).unwrap();
+            let path = StoragePath::vector("test", "shard_0", format!("file_{}.bin", i)).unwrap();
             storage
                 .write(&path, Bytes::from(format!("data {}", i)))
                 .await
@@ -263,16 +262,14 @@ mod tests {
         let storage = LocalStorage::new(dir.path());
 
         for i in 0..3 {
-            let path =
-                StoragePath::vector("test", "shard_0", format!("f_{}.bin", i)).unwrap();
-            storage
-                .write(&path, Bytes::from("data"))
-                .await
-                .unwrap();
+            let path = StoragePath::vector("test", "shard_0", format!("f_{}.bin", i)).unwrap();
+            storage.write(&path, Bytes::from("data")).await.unwrap();
         }
 
-        let prefix =
-            StoragePath::new("test", StorageBackend::Vector).unwrap().with_shard("shard_0").unwrap();
+        let prefix = StoragePath::new("test", StorageBackend::Vector)
+            .unwrap()
+            .with_shard("shard_0")
+            .unwrap();
         let deleted = storage.delete_prefix(&prefix).await.unwrap();
         assert_eq!(deleted, 3);
 

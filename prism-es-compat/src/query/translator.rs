@@ -610,10 +610,7 @@ mod tests {
     #[test]
     fn test_term_query_bool() {
         let mut fields = HashMap::new();
-        fields.insert(
-            "active".to_string(),
-            TermValue::Simple(Value::Bool(true)),
-        );
+        fields.insert("active".to_string(), TermValue::Simple(Value::Bool(true)));
         let query = EsQuery::Term(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
         assert_eq!(result, "active:true");
@@ -622,10 +619,7 @@ mod tests {
     #[test]
     fn test_term_query_null() {
         let mut fields = HashMap::new();
-        fields.insert(
-            "tag".to_string(),
-            TermValue::Simple(Value::Null),
-        );
+        fields.insert("tag".to_string(), TermValue::Simple(Value::Null));
         let query = EsQuery::Term(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
         assert_eq!(result, "tag:null");
@@ -665,10 +659,7 @@ mod tests {
     #[test]
     fn test_match_query_single_word() {
         let mut fields = HashMap::new();
-        fields.insert(
-            "title".to_string(),
-            MatchQuery::Simple("hello".to_string()),
-        );
+        fields.insert("title".to_string(), MatchQuery::Simple("hello".to_string()));
         let query = EsQuery::Match(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
         assert_eq!(result, "title:hello");
@@ -994,12 +985,7 @@ mod tests {
                 let mut m = HashMap::new();
                 m.insert(
                     "@timestamp".to_string(),
-                    range_params(
-                        Some(Value::String("now-15m".to_string())),
-                        None,
-                        None,
-                        None,
-                    ),
+                    range_params(Some(Value::String("now-15m".to_string())), None, None, None),
                 );
                 m
             })])),
@@ -1029,12 +1015,18 @@ mod tests {
             must: Some(QueryList::Multiple(vec![
                 EsQuery::Term({
                     let mut m = HashMap::new();
-                    m.insert("a".to_string(), TermValue::Simple(Value::String("1".to_string())));
+                    m.insert(
+                        "a".to_string(),
+                        TermValue::Simple(Value::String("1".to_string())),
+                    );
                     m
                 }),
                 EsQuery::Term({
                     let mut m = HashMap::new();
-                    m.insert("b".to_string(), TermValue::Simple(Value::String("2".to_string())));
+                    m.insert(
+                        "b".to_string(),
+                        TermValue::Simple(Value::String("2".to_string())),
+                    );
                     m
                 }),
             ])),
@@ -1051,7 +1043,10 @@ mod tests {
         let bool_query = BoolQuery {
             must_not: Some(QueryList::Multiple(vec![EsQuery::Term({
                 let mut m = HashMap::new();
-                m.insert("status".to_string(), TermValue::Simple(Value::String("deleted".to_string())));
+                m.insert(
+                    "status".to_string(),
+                    TermValue::Simple(Value::String("deleted".to_string())),
+                );
                 m
             })])),
             ..Default::default()
@@ -1066,12 +1061,18 @@ mod tests {
             should: Some(QueryList::Multiple(vec![
                 EsQuery::Term({
                     let mut m = HashMap::new();
-                    m.insert("color".to_string(), TermValue::Simple(Value::String("red".to_string())));
+                    m.insert(
+                        "color".to_string(),
+                        TermValue::Simple(Value::String("red".to_string())),
+                    );
                     m
                 }),
                 EsQuery::Term({
                     let mut m = HashMap::new();
-                    m.insert("color".to_string(), TermValue::Simple(Value::String("blue".to_string())));
+                    m.insert(
+                        "color".to_string(),
+                        TermValue::Simple(Value::String("blue".to_string())),
+                    );
                     m
                 }),
             ])),
@@ -1088,16 +1089,20 @@ mod tests {
         let bool_query = BoolQuery {
             must: Some(QueryList::Single(Box::new(EsQuery::Term({
                 let mut m = HashMap::new();
-                m.insert("type".to_string(), TermValue::Simple(Value::String("doc".to_string())));
+                m.insert(
+                    "type".to_string(),
+                    TermValue::Simple(Value::String("doc".to_string())),
+                );
                 m
             })))),
-            should: Some(QueryList::Multiple(vec![
-                EsQuery::Term({
-                    let mut m = HashMap::new();
-                    m.insert("priority".to_string(), TermValue::Simple(Value::String("high".to_string())));
-                    m
-                }),
-            ])),
+            should: Some(QueryList::Multiple(vec![EsQuery::Term({
+                let mut m = HashMap::new();
+                m.insert(
+                    "priority".to_string(),
+                    TermValue::Simple(Value::String("high".to_string())),
+                );
+                m
+            })])),
             ..Default::default()
         };
         let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
@@ -1111,7 +1116,10 @@ mod tests {
         let bool_query = BoolQuery {
             filter: Some(QueryList::Single(Box::new(EsQuery::Term({
                 let mut m = HashMap::new();
-                m.insert("status".to_string(), TermValue::Simple(Value::String("active".to_string())));
+                m.insert(
+                    "status".to_string(),
+                    TermValue::Simple(Value::String("active".to_string())),
+                );
                 m
             })))),
             ..Default::default()
@@ -1123,10 +1131,15 @@ mod tests {
     #[test]
     fn test_bool_all_clauses() {
         let bool_query = BoolQuery {
-            must: Some(QueryList::Single(Box::new(EsQuery::MatchAll(MatchAllQuery { boost: None })))),
+            must: Some(QueryList::Single(Box::new(EsQuery::MatchAll(
+                MatchAllQuery { boost: None },
+            )))),
             filter: Some(QueryList::Single(Box::new(EsQuery::Term({
                 let mut m = HashMap::new();
-                m.insert("status".to_string(), TermValue::Simple(Value::String("ok".to_string())));
+                m.insert(
+                    "status".to_string(),
+                    TermValue::Simple(Value::String("ok".to_string())),
+                );
                 m
             })))),
             must_not: Some(QueryList::Single(Box::new(EsQuery::Term({
@@ -1413,12 +1426,18 @@ mod tests {
 
     #[test]
     fn test_value_to_string_string() {
-        assert_eq!(value_to_string(&Value::String("hello".to_string())), "hello");
+        assert_eq!(
+            value_to_string(&Value::String("hello".to_string())),
+            "hello"
+        );
     }
 
     #[test]
     fn test_value_to_string_number() {
-        assert_eq!(value_to_string(&Value::Number(serde_json::Number::from(42))), "42");
+        assert_eq!(
+            value_to_string(&Value::Number(serde_json::Number::from(42))),
+            "42"
+        );
     }
 
     #[test]
@@ -1771,7 +1790,10 @@ mod tests {
         let mut a = empty_agg();
         a.filter = Some(Box::new(EsQuery::Term({
             let mut m = HashMap::new();
-            m.insert("status".to_string(), TermValue::Simple(Value::String("error".to_string())));
+            m.insert(
+                "status".to_string(),
+                TermValue::Simple(Value::String("error".to_string())),
+            );
             m
         })));
         aggs.insert("error_docs".to_string(), a);
@@ -1795,7 +1817,10 @@ mod tests {
             "errors".to_string(),
             EsQuery::Term({
                 let mut m = HashMap::new();
-                m.insert("level".to_string(), TermValue::Simple(Value::String("error".to_string())));
+                m.insert(
+                    "level".to_string(),
+                    TermValue::Simple(Value::String("error".to_string())),
+                );
                 m
             }),
         );
@@ -1803,7 +1828,10 @@ mod tests {
             "warnings".to_string(),
             EsQuery::Term({
                 let mut m = HashMap::new();
-                m.insert("level".to_string(), TermValue::Simple(Value::String("warn".to_string())));
+                m.insert(
+                    "level".to_string(),
+                    TermValue::Simple(Value::String("warn".to_string())),
+                );
                 m
             }),
         );

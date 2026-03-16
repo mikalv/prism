@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::{
-    collector::TopDocs, query::QueryParser, schema::*, DateTime, DocSet,
-    Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term,
+    collector::TopDocs, query::QueryParser, schema::*, DateTime, DocSet, Index, IndexReader,
+    IndexWriter, ReloadPolicy, TantivyDocument, Term,
 };
 
 pub struct TextBackend {
@@ -56,12 +56,21 @@ impl CollectionIndex {
     fn writer(&self) -> parking_lot::MappedMutexGuard<'_, IndexWriter> {
         let mut guard = self.writer.lock();
         if guard.is_none() {
-            let heap_bytes = if self.field_map.len() > 8 { 50_000_000 } else { 15_000_000 };
-            let w = self.index.writer_with_num_threads(1, heap_bytes)
+            let heap_bytes = if self.field_map.len() > 8 {
+                50_000_000
+            } else {
+                15_000_000
+            };
+            let w = self
+                .index
+                .writer_with_num_threads(1, heap_bytes)
                 .expect("failed to create IndexWriter");
             w.set_merge_policy(Box::new(tantivy::merge_policy::NoMergePolicy));
             *guard = Some(w);
-            tracing::debug!("Lazy-initialized IndexWriter (heap={}MB)", heap_bytes / 1_000_000);
+            tracing::debug!(
+                "Lazy-initialized IndexWriter (heap={}MB)",
+                heap_bytes / 1_000_000
+            );
         }
         parking_lot::MutexGuard::map(guard, |opt| opt.as_mut().unwrap())
     }
@@ -1613,18 +1622,17 @@ fn resolve_filter_docs(
 ) -> Result<Vec<tantivy::DocAddress>> {
     let qp = QueryParser::for_index(&coll.index, searchable_fields.to_vec());
     let qs = query_str.to_string();
-    let parsed = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        qp.parse_query(&qs)
-    })) {
-        Ok(Ok(q)) => q,
-        Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
-        Err(_) => {
-            return Err(Error::InvalidQuery(format!(
-                "Query parser panicked on input: {:?}",
-                qs
-            )));
-        }
-    };
+    let parsed =
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| qp.parse_query(&qs))) {
+            Ok(Ok(q)) => q,
+            Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
+            Err(_) => {
+                return Err(Error::InvalidQuery(format!(
+                    "Query parser panicked on input: {:?}",
+                    qs
+                )));
+            }
+        };
 
     let results = searcher.search(&parsed, &TopDocs::with_limit(10000))?;
     let addrs: Vec<tantivy::DocAddress> = results.into_iter().map(|(_s, addr)| addr).collect();
@@ -2146,7 +2154,11 @@ impl TextBackend {
     /// Useful for forcing compaction after bulk imports, similar to
     /// Elasticsearch's `_forcemerge`. Tantivy's LogMergePolicy handles
     /// routine merging automatically.
-    pub fn optimize(&self, collection: &str, max_segments: Option<usize>) -> Result<OptimizeResult> {
+    pub fn optimize(
+        &self,
+        collection: &str,
+        max_segments: Option<usize>,
+    ) -> Result<OptimizeResult> {
         let collections = self.collections.read().unwrap();
         let coll = collections
             .get(collection)
@@ -2290,7 +2302,11 @@ impl TextBackend {
         let searcher = coll.reader.searcher();
         let space = searcher.space_usage()?;
 
-        let total_docs: u32 = searcher.segment_readers().iter().map(|s| s.num_docs()).sum();
+        let total_docs: u32 = searcher
+            .segment_readers()
+            .iter()
+            .map(|s| s.num_docs())
+            .sum();
         let total_deleted: u32 = searcher
             .segment_readers()
             .iter()

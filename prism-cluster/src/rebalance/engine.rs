@@ -805,9 +805,7 @@ mod tests {
         // Second trigger should fail because already in progress
         let result = engine.trigger(RebalanceTrigger::Manual);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("already in progress"));
+        assert!(result.unwrap_err().contains("already in progress"));
     }
 
     #[test]
@@ -817,8 +815,7 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let engine =
-            RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
+        let engine = RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
 
         state.register_node(make_node_info("node-1", "zone-a"));
         state.register_node(make_node_info("node-2", "zone-b"));
@@ -909,8 +906,7 @@ mod tests {
     fn test_plan_for_node_removal_no_remaining() {
         let state = Arc::new(ClusterState::with_heartbeat_timeout(3600));
         let config = RebalancingConfig::default();
-        let engine =
-            RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
+        let engine = RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
 
         // Only one node
         state.register_node(make_node_info("node-1", "zone-a"));
@@ -925,8 +921,7 @@ mod tests {
     fn test_plan_for_node_removal_success() {
         let state = Arc::new(ClusterState::with_heartbeat_timeout(3600));
         let config = RebalancingConfig::default();
-        let engine =
-            RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
+        let engine = RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
 
         state.register_node(make_node_info("node-1", "zone-a"));
         state.register_node(make_node_info("node-2", "zone-b"));
@@ -948,8 +943,7 @@ mod tests {
     fn test_plan_for_node_addition_balanced() {
         let state = Arc::new(ClusterState::with_heartbeat_timeout(3600));
         let config = RebalancingConfig::default();
-        let engine =
-            RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
+        let engine = RebalanceEngine::new(config, Arc::clone(&state), PlacementStrategy::default());
 
         state.register_node(make_node_info("node-1", "zone-a"));
         state.register_node(make_node_info("node-2", "zone-b"));
@@ -980,8 +974,7 @@ mod tests {
             spread_across: SpreadLevel::None,
             ..Default::default()
         };
-        let engine =
-            RebalanceEngine::new(config, Arc::clone(&state), strategy);
+        let engine = RebalanceEngine::new(config, Arc::clone(&state), strategy);
 
         state.register_node(make_node_info("node-1", "zone-a"));
         state.register_node(make_node_info("node-3", "zone-c"));
@@ -1032,9 +1025,7 @@ mod tests {
             state.assign_shard(shard);
         }
 
-        let plan = engine
-            .create_plan(RebalanceTrigger::Manual, None)
-            .unwrap();
+        let plan = engine.create_plan(RebalanceTrigger::Manual, None).unwrap();
         // If plan has operations, estimated_duration should be calculated
         if !plan.is_empty() {
             // max_bytes_per_sec is 104_857_600 (default), so duration will be ~0
