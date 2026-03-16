@@ -807,7 +807,7 @@ mod tests {
             AggregationResult {
                 name: "by_score".to_string(),
                 value: AggregationValue::Buckets(vec![Bucket {
-                    key: "3.14".to_string(),
+                    key: "2.78".to_string(),
                     doc_count: 5,
                     from: None,
                     to: None,
@@ -825,10 +825,10 @@ mod tests {
         let es_aggs = response.aggregations.unwrap();
         match &es_aggs["by_score"] {
             EsAggregationResult::Buckets { buckets } => {
-                // "3.14" can't parse as i64, should parse as f64
+                // "2.78" can't parse as i64, should parse as f64
                 match &buckets[0].key {
                     Value::Number(n) => {
-                        assert!((n.as_f64().unwrap() - 3.14_f64).abs() < 0.001);
+                        assert!((n.as_f64().unwrap() - 2.78).abs() < 0.01);
                     }
                     _ => panic!("Expected numeric key"),
                 }
@@ -1061,10 +1061,10 @@ mod tests {
     #[test]
     fn test_aggregation_result_serde_value() {
         let result = EsAggregationResult::Value {
-            value: Some(3.14_f64),
+            value: Some(2.78),
         };
         let json = serde_json::to_string(&result).unwrap();
-        assert!(json.contains("3.14"));
+        assert!(json.contains("2.78"));
     }
 
     #[test]
