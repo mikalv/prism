@@ -432,6 +432,12 @@ impl SearchBackend for TextBackend {
                                 tantivy_doc
                                     .add_date(*field, DateTime::from_timestamp_micros(micros));
                                 true
+                            } else if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+                                // Fallback: naive datetime without timezone — assume UTC
+                                let micros = naive.and_utc().timestamp_micros();
+                                tantivy_doc
+                                    .add_date(*field, DateTime::from_timestamp_micros(micros));
+                                true
                             } else {
                                 tracing::warn!(
                                     "Document '{}': could not parse date string '{}' for field '{}'",
