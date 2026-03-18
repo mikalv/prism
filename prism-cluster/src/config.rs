@@ -491,7 +491,7 @@ pub struct ReplicationConfig {
     #[serde(default = "default_replication_timeout")]
     pub replication_timeout_ms: u64,
 
-    /// Number of retry attempts for failed replication
+    /// Number of retries after the initial attempt fails (total attempts = 1 + retry_count)
     #[serde(default = "default_replication_retry_count")]
     pub retry_count: u32,
 
@@ -501,7 +501,7 @@ pub struct ReplicationConfig {
 }
 
 fn default_replication_enabled() -> bool {
-    true
+    false
 }
 
 fn default_max_concurrent_replications() -> usize {

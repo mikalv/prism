@@ -12,6 +12,7 @@ use crate::types::RpcDocument;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 
 /// Describes a write operation to replicate to replicas.
@@ -44,6 +45,8 @@ pub struct ReplicationManager {
     config: ReplicationConfig,
     node_id: String,
     metrics: Arc<ReplicationMetrics>,
+    /// Limits concurrent in-flight replication tasks.
+    semaphore: Arc<Semaphore>,
 }
 
 impl ReplicationManager {
@@ -59,12 +62,14 @@ impl ReplicationManager {
         config: ReplicationConfig,
         node_id: String,
     ) -> Self {
+        let semaphore = Arc::new(Semaphore::new(config.max_concurrent_replications));
         Self {
             client,
             cluster_state,
             config,
             node_id,
             metrics: Arc::new(ReplicationMetrics::default()),
+            semaphore,
         }
     }
 
@@ -126,20 +131,25 @@ impl ReplicationManager {
             let client = Arc::clone(&self.client);
             let op = op.clone();
             let metrics = Arc::clone(&self.metrics);
+            let semaphore = Arc::clone(&self.semaphore);
             let timeout = Duration::from_millis(self.config.replication_timeout_ms);
-            let retry_count = self.config.retry_count;
+            let max_retries = self.config.retry_count;
             let retry_delay = Duration::from_millis(self.config.retry_delay_ms);
             let shard_id = shard_id.to_string();
 
             tokio::spawn(async move {
+                // Acquire semaphore permit to limit concurrent replication tasks
+                let _permit = semaphore.acquire().await;
                 metrics.ops_sent.fetch_add(1, Ordering::Relaxed);
 
                 let mut last_err = None;
-                for attempt in 0..=retry_count {
+                // 1 initial attempt + max_retries retries
+                let total_attempts = 1 + max_retries;
+                for attempt in 0..total_attempts {
                     if attempt > 0 {
                         debug!(
                             "Retry {}/{} replicating to {} for shard {}",
-                            attempt, retry_count, replica_node_id, shard_id
+                            attempt, max_retries, replica_node_id, shard_id
                         );
                         tokio::time::sleep(retry_delay).await;
                     }
@@ -174,13 +184,13 @@ impl ReplicationManager {
                     }
                 }
 
-                // All retries exhausted
+                // All attempts exhausted
                 metrics.ops_failed.fetch_add(1, Ordering::Relaxed);
                 warn!(
                     "Replication to {} failed for shard {} after {} retries: {}",
                     replica_node_id,
                     shard_id,
-                    retry_count,
+                    max_retries,
                     last_err.unwrap_or_default()
                 );
             });
