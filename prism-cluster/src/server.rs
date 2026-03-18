@@ -10,6 +10,7 @@ use crate::metrics::{
 };
 use crate::placement::{ClusterState, PlacementStrategy, ShardAssignment, ShardState};
 use crate::rebalance::{RebalanceEngine, RebalanceTrigger};
+use crate::replication::{ReplicationManager, ReplicationOp};
 use crate::service::PrismCluster;
 use crate::transport::make_server_endpoint;
 use crate::types::*;
@@ -29,6 +30,7 @@ pub struct ClusterServer {
     start_time: Instant,
     cluster_state: Arc<ClusterState>,
     rebalance_engine: Arc<RebalanceEngine>,
+    replication: Option<Arc<ReplicationManager>>,
 }
 
 impl ClusterServer {
@@ -48,6 +50,7 @@ impl ClusterServer {
             start_time: Instant::now(),
             cluster_state,
             rebalance_engine,
+            replication: None,
         }
     }
 
@@ -70,7 +73,14 @@ impl ClusterServer {
             start_time: Instant::now(),
             cluster_state,
             rebalance_engine,
+            replication: None,
         }
+    }
+
+    /// Set the replication manager for primary→replica write fan-out
+    pub fn with_replication(mut self, replication: Arc<ReplicationManager>) -> Self {
+        self.replication = Some(replication);
+        self
     }
 
     /// Get a reference to the cluster state
@@ -180,6 +190,14 @@ impl PrismCluster for ClusterHandler {
         let server = self.server.read().await;
         let doc_count = docs.len();
         info!("RPC index: collection={}, docs={}", collection, doc_count);
+
+        // Keep a copy of RpcDocuments for replication before converting
+        let rpc_docs_for_replication = if server.replication.is_some() {
+            Some(docs.clone())
+        } else {
+            None
+        };
+
         let docs: Vec<prism::backends::Document> = docs.into_iter().map(Into::into).collect();
         match server.manager.index(&collection, docs).await {
             Ok(()) => {
@@ -188,6 +206,20 @@ impl PrismCluster for ClusterHandler {
                     collection, doc_count
                 );
                 timer.success();
+
+                // Replicate to secondaries (async, non-blocking)
+                if let Some(ref replication) = server.replication {
+                    if let Some(shard_id) = replication.primary_shard_for_collection(&collection) {
+                        replication.replicate_write(
+                            &shard_id,
+                            ReplicationOp::Index {
+                                collection: collection.clone(),
+                                docs: rpc_docs_for_replication.unwrap_or_default(),
+                            },
+                        );
+                    }
+                }
+
                 Ok(())
             }
             Err(e) => {
@@ -261,9 +293,28 @@ impl PrismCluster for ClusterHandler {
     ) -> Result<(), ClusterError> {
         let timer = RpcHandlerTimer::new("delete");
         let server = self.server.read().await;
+        let ids_for_replication = if server.replication.is_some() {
+            Some(ids.clone())
+        } else {
+            None
+        };
         match server.manager.delete(&collection, ids).await {
             Ok(()) => {
                 timer.success();
+
+                // Replicate to secondaries (async, non-blocking)
+                if let Some(ref replication) = server.replication {
+                    if let Some(shard_id) = replication.primary_shard_for_collection(&collection) {
+                        replication.replicate_write(
+                            &shard_id,
+                            ReplicationOp::Delete {
+                                collection: collection.clone(),
+                                ids: ids_for_replication.unwrap_or_default(),
+                            },
+                        );
+                    }
+                }
+
                 Ok(())
             }
             Err(e) => {
@@ -348,6 +399,23 @@ impl PrismCluster for ClusterHandler {
                 let err = ClusterError::from(e);
                 timer.error(err.error_type());
                 return Err(err);
+            }
+        }
+
+        // Replicate deletes to secondaries (async, non-blocking)
+        if !request.dry_run && !ids_to_delete.is_empty() {
+            if let Some(ref replication) = server.replication {
+                if let Some(shard_id) =
+                    replication.primary_shard_for_collection(&request.collection)
+                {
+                    replication.replicate_write(
+                        &shard_id,
+                        ReplicationOp::Delete {
+                            collection: request.collection.clone(),
+                            ids: ids_to_delete.clone(),
+                        },
+                    );
+                }
             }
         }
 

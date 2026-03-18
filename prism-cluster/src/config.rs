@@ -70,6 +70,10 @@ pub struct ClusterConfig {
     #[serde(default)]
     pub federation: FederationConfig,
 
+    /// Replication configuration
+    #[serde(default)]
+    pub replication: ReplicationConfig,
+
     /// Protocol version this node speaks (for rolling upgrades)
     #[serde(default = "default_protocol_version")]
     pub protocol_version: u32,
@@ -121,6 +125,7 @@ impl Default for ClusterConfig {
             discovery: DiscoveryConfig::default(),
             consistency: ConsistencyConfig::default(),
             federation: FederationConfig::default(),
+            replication: ReplicationConfig::default(),
             protocol_version: default_protocol_version(),
             min_supported_version: default_protocol_version(),
         }
@@ -467,6 +472,62 @@ impl Default for ConsistencyConfig {
             stale_read_max_age_secs: default_stale_read_max_age(),
             auto_healing: default_auto_healing(),
             conflict_resolution: ConflictResolution::default(),
+        }
+    }
+}
+
+/// Configuration for primary→replica write replication
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReplicationConfig {
+    /// Enable write replication to replica nodes
+    #[serde(default = "default_replication_enabled")]
+    pub enabled: bool,
+
+    /// Maximum concurrent replication tasks per write operation
+    #[serde(default = "default_max_concurrent_replications")]
+    pub max_concurrent_replications: usize,
+
+    /// Timeout for each replication request in milliseconds
+    #[serde(default = "default_replication_timeout")]
+    pub replication_timeout_ms: u64,
+
+    /// Number of retry attempts for failed replication
+    #[serde(default = "default_replication_retry_count")]
+    pub retry_count: u32,
+
+    /// Delay between retries in milliseconds
+    #[serde(default = "default_replication_retry_delay")]
+    pub retry_delay_ms: u64,
+}
+
+fn default_replication_enabled() -> bool {
+    true
+}
+
+fn default_max_concurrent_replications() -> usize {
+    4
+}
+
+fn default_replication_timeout() -> u64 {
+    10000
+}
+
+fn default_replication_retry_count() -> u32 {
+    2
+}
+
+fn default_replication_retry_delay() -> u64 {
+    1000
+}
+
+impl Default for ReplicationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_replication_enabled(),
+            max_concurrent_replications: default_max_concurrent_replications(),
+            replication_timeout_ms: default_replication_timeout(),
+            retry_count: default_replication_retry_count(),
+            retry_delay_ms: default_replication_retry_delay(),
         }
     }
 }

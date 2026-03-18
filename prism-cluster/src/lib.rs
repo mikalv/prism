@@ -31,6 +31,7 @@ pub mod metrics;
 pub mod partition;
 pub mod placement;
 pub mod rebalance;
+pub mod replication;
 pub mod schema;
 pub mod service;
 pub mod transport;
@@ -42,7 +43,8 @@ mod server;
 pub use client::ClusterClient;
 pub use config::{
     ClusterConfig, ClusterTlsConfig, ConflictResolution, ConsistencyConfig, FailureAction,
-    HealthConfig, NodeTopology, PartitionBehavior, RebalancingConfig, WriteQuorum,
+    HealthConfig, NodeTopology, PartitionBehavior, RebalancingConfig, ReplicationConfig,
+    WriteQuorum,
 };
 pub use discovery::{
     ClusterEvent, DiscoveredNode, DiscoveryConfig, DnsDiscovery, NodeDiscovery, StaticDiscovery,
@@ -61,6 +63,7 @@ pub use placement::{
     BalanceFactor, ClusterState, ClusterStateSnapshot, NodeInfo, NodeState, PlacementDecision,
     PlacementError, PlacementStrategy, ReplicaRole, ShardAssignment, ShardState, SpreadLevel,
 };
+pub use replication::{ReplicationManager, ReplicationMetrics, ReplicationOp};
 pub use rebalance::{
     OperationStatus, RebalanceEngine, RebalanceOperation, RebalanceOperationStatus, RebalancePhase,
     RebalancePlan, RebalanceStatus, RebalanceTrigger,
