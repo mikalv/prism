@@ -1,0 +1,15 @@
+target/
+.git/
+.github/
+node_modules/
+websearch-ui/node_modules/
+*.md
+!prism-ui/build.rs
+docs/
+tests/
+tarpaulin-report.*
+.claude/
+.env*
+*.tar.gz
+*.tar.zst
+*.enc

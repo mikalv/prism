@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.93-slim-bookworm AS builder
+FROM rust:1-slim-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -28,7 +28,9 @@ RUN mkdir -p websearch-ui/dist && \
     echo '<!DOCTYPE html><html><body>Prism UI placeholder</body></html>' > websearch-ui/dist/index.html
 
 # Create dummy src files for dependency caching
-RUN mkdir -p prism/src prism-server/src prism-cli/src prism-storage/src prism-cluster/src prism-importer/src prism-es-compat/src prism-ui/src prism-treesitter/src xtask/src && \
+RUN mkdir -p prism/src prism-server/src prism-cli/src prism-storage/src \
+    prism-cluster/src prism-importer/src prism-es-compat/src prism-ui/src \
+    prism-treesitter/src xtask/src && \
     echo "pub fn main() {}" > prism/src/lib.rs && \
     echo "fn main() {}" > prism-server/src/main.rs && \
     echo "fn main() {}" > prism-cli/src/main.rs && \
@@ -41,12 +43,11 @@ RUN mkdir -p prism/src prism-server/src prism-cli/src prism-storage/src prism-cl
     echo "" > prism-treesitter/src/lib.rs && \
     echo "fn main() {}" > xtask/src/main.rs
 
-# Build arg: enable extra features for prism-server
-ARG FEATURES=""
-
-# Build dependencies only
+# Build dependencies only (cached unless Cargo.toml/lock changes)
 RUN cargo build --release --workspace && \
-    rm -rf prism/src prism-server/src prism-cli/src prism-storage/src prism-cluster/src prism-importer/src prism-es-compat/src prism-ui/src prism-treesitter/src xtask/src
+    rm -rf prism/src prism-server/src prism-cli/src prism-storage/src \
+    prism-cluster/src prism-importer/src prism-es-compat/src prism-ui/src \
+    prism-treesitter/src xtask/src
 
 # Copy actual source
 COPY prism/src prism/src
@@ -59,33 +60,51 @@ COPY prism-es-compat/src prism-es-compat/src
 COPY prism-ui/src prism-ui/src
 COPY prism-treesitter/src prism-treesitter/src
 COPY xtask/src xtask/src
-COPY prism/tests prism/tests
 
 # Touch source files to invalidate cache and rebuild
-RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs prism-storage/src/lib.rs prism-cluster/src/lib.rs prism-importer/src/lib.rs prism-importer/src/main.rs prism-es-compat/src/lib.rs prism-ui/src/lib.rs prism-treesitter/src/lib.rs xtask/src/main.rs
+RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs \
+    prism-storage/src/lib.rs prism-cluster/src/lib.rs prism-importer/src/lib.rs \
+    prism-importer/src/main.rs prism-es-compat/src/lib.rs prism-ui/src/lib.rs \
+    prism-treesitter/src/lib.rs xtask/src/main.rs
+
+# Build arg: enable extra features for prism-server
+ARG FEATURES=""
 
 # Build release binaries (with optional features)
 RUN if [ -n "$FEATURES" ]; then \
-      cargo build --release -p prism-server --features "$FEATURES" && \
-      cargo build --release -p prism -p prism-cli -p prism-importer; \
+      cargo build --release -p prismsearch-server --features "$FEATURES" && \
+      cargo build --release -p prism-cli -p prism-importer; \
     else \
       cargo build --release --workspace; \
-    fi
+    fi && \
+    strip target/release/prism-server target/release/prism target/release/prism-import 2>/dev/null || true
 
-# Runtime stage - distroless for minimal attack surface
-FROM gcr.io/distroless/cc-debian12:nonroot
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/* && \
+    groupadd --system prismsearch && \
+    useradd --system --gid prismsearch --home-dir /data --shell /usr/sbin/nologin prismsearch && \
+    mkdir -p /data/schemas && \
+    chown -R prismsearch:prismsearch /data
 
 # Copy binaries
 COPY --from=builder /app/target/release/prism-server /usr/local/bin/prism-server
 COPY --from=builder /app/target/release/prism /usr/local/bin/prism
 COPY --from=builder /app/target/release/prism-import /usr/local/bin/prism-import
 
-# Create data directory
+USER prismsearch
 WORKDIR /data
 
-# Expose default port (HTTP) and cluster port (QUIC)
-EXPOSE 3000 9080
+VOLUME /data
 
-# Default command
+# HTTP API
+EXPOSE 3000
+# Cluster transport (QUIC)
+EXPOSE 9080
+
 ENTRYPOINT ["/usr/local/bin/prism-server"]
-CMD ["--host", "0.0.0.0", "--port", "3000"]
+CMD ["--host", "0.0.0.0", "--port", "3000", "--data-dir", "/data"]
