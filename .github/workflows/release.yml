@@ -21,30 +21,47 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             label: linux-x86_64
+            features: ""
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
             label: linux-aarch64
+            features: ""
+
+          # Linux (glibc) + ONNX
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            label: linux-x86_64-onnx
+            features: "provider-onnx"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            label: linux-aarch64-onnx
+            features: "provider-onnx"
 
           # Linux (musl/static)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             label: linux-x86_64-static
+            features: ""
           - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
             label: linux-aarch64-static
+            features: ""
 
           # macOS
           - target: x86_64-apple-darwin
             os: macos-latest
             label: darwin-x86_64
+            features: ""
           - target: aarch64-apple-darwin
             os: macos-latest
             label: darwin-aarch64
+            features: ""
 
           # Windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             label: windows-x86_64
+            features: ""
 
     runs-on: ${{ matrix.os }}
 
@@ -72,7 +89,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [ -n "${{ matrix.features }}" ]; then
+            cargo build --release --target ${{ matrix.target }} --features "${{ matrix.features }}"
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+        shell: bash
 
       - name: Strip binaries (Linux)
         if: startsWith(matrix.os, 'ubuntu')
@@ -265,6 +288,7 @@ jobs:
             --url "https://pkg42.dev/deb/stable/main/amd64/upload?file=prismsearch_${VERSION}_amd64.deb&meta%5BPackage%5D=prismsearch&meta%5BVersion%5D=${VERSION}"
 
       - name: Upload RPM to pkg42
+        continue-on-error: true
         run: |
           curl -f -X POST \
             -H "Authorization: Bearer ${{ secrets.PKG42_TOKEN }}" \
