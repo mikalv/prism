@@ -6,6 +6,7 @@ All notable changes to Prism are documented in this file.
 
 ### Fixes
 
+- **ES-compat `_search` on hybrid collections** — `HybridSearchCoordinator::search_with_aggs` no longer returns `NotImplemented`, so `POST /_elastic/{index}/_search` against a collection with both text and vector backends works instead of returning **HTTP 500**. Without aggregations it runs the normal hybrid search; with aggregations it delegates bucket computation to the text backend.
 - **ES-compat `bool` queries** — `must`/`filter`/`must_not`/`should` now translate to Tantivy occur syntax (`+`/`-`/bare) instead of `AND`/`NOT` string joins. This fixes the standard Kibana filter-with-exclusion (`must` + `must_not`) which previously returned **zero results**, and a `must_not`-only query which previously returned **HTTP 500**. `should` is now correctly optional when a `must`/`filter` is present.
 - **ES-compat `match` / `multi_match`** — multi-word values are analyzed into OR-combined terms (`field:(a b)`) instead of being quoted as a phrase, so `{"match": {"content": "connection timeout"}}` matches docs containing either term (ES semantics). `operator: "and"` requires all terms; `multi_match` combines fields with SHOULD (best_fields).
 - **ES-compat `ids` query** — looks up the document id in the `id` field instead of the nonexistent `_id` field (previously returned HTTP 500 / no matches).

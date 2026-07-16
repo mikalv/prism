@@ -403,12 +403,170 @@ impl SearchBackend for HybridSearchCoordinator {
 
     async fn search_with_aggs(
         &self,
-        _collection: &str,
-        _query: &Query,
-        _aggregations: Vec<crate::aggregations::AggregationRequest>,
+        collection: &str,
+        query: &Query,
+        aggregations: Vec<crate::aggregations::AggregationRequest>,
     ) -> Result<crate::backends::SearchResultsWithAggs> {
-        Err(crate::error::Error::NotImplemented(
-            "Aggregations not supported for hybrid backend".to_string(),
-        ))
+        use crate::backends::SearchResultsWithAggs;
+
+        if aggregations.is_empty() {
+            // No aggregations: run the normal hybrid search (RRF/weighted merge,
+            // or text-only when the query carries no vector) and wrap it. This is
+            // the common ES `_search` case — previously it 500'd on every hybrid
+            // collection.
+            let res = self.search(collection, query.clone()).await?;
+            return Ok(SearchResultsWithAggs {
+                total: res.total as u64,
+                results: res.results,
+                aggregations: std::collections::HashMap::new(),
+            });
+        }
+
+        // Aggregations require scanning matching documents by field value, which
+        // only the text backend can do. Delegate the whole request to it (both
+        // backends index the same documents, so field aggregations are correct).
+        self.text_backend
+            .search_with_aggs(collection, query, aggregations)
+            .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aggregations::types::{AggregationResult, AggregationValue};
+    use crate::aggregations::{AggregationRequest, AggregationType};
+    use crate::backends::r#trait::{BackendStats, SearchResultsWithAggs};
+    use std::collections::HashMap;
+
+    /// Minimal backend stub returning canned results, used to test the
+    /// coordinator's routing logic in isolation from real Tantivy/vector state.
+    struct StubBackend {
+        results: Vec<SearchResult>,
+        aggregations: HashMap<String, AggregationResult>,
+    }
+
+    #[async_trait]
+    impl SearchBackend for StubBackend {
+        async fn index(&self, _c: &str, _d: Vec<Document>) -> Result<()> {
+            Ok(())
+        }
+        async fn search(&self, _c: &str, _q: Query) -> Result<SearchResults> {
+            Ok(SearchResults {
+                total: self.results.len(),
+                results: self.results.clone(),
+                latency_ms: 0,
+            })
+        }
+        async fn get(&self, _c: &str, _id: &str) -> Result<Option<Document>> {
+            Ok(None)
+        }
+        async fn delete(&self, _c: &str, _ids: Vec<String>) -> Result<()> {
+            Ok(())
+        }
+        async fn stats(&self, _c: &str) -> Result<BackendStats> {
+            Ok(BackendStats {
+                document_count: self.results.len(),
+                size_bytes: 0,
+            })
+        }
+        async fn search_with_aggs(
+            &self,
+            _c: &str,
+            _q: &Query,
+            _a: Vec<AggregationRequest>,
+        ) -> Result<SearchResultsWithAggs> {
+            Ok(SearchResultsWithAggs {
+                total: self.results.len() as u64,
+                results: self.results.clone(),
+                aggregations: self.aggregations.clone(),
+            })
+        }
+    }
+
+    fn result(id: &str) -> SearchResult {
+        SearchResult {
+            id: id.to_string(),
+            score: 1.0,
+            fields: HashMap::new(),
+            highlight: None,
+        }
+    }
+
+    fn text_query() -> Query {
+        Query {
+            query_string: "hello".to_string(),
+            fields: vec![],
+            limit: 10,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
+        }
+    }
+
+    fn coordinator(text: StubBackend, vector: StubBackend) -> HybridSearchCoordinator {
+        HybridSearchCoordinator::new(Arc::new(text), Arc::new(vector), 0.5)
+    }
+
+    #[tokio::test]
+    async fn search_with_aggs_without_aggregations_returns_hits() {
+        // Regression: hybrid _search (no aggs) used to return NotImplemented (500).
+        let text = StubBackend {
+            results: vec![result("a"), result("b")],
+            aggregations: HashMap::new(),
+        };
+        let vector = StubBackend {
+            results: vec![],
+            aggregations: HashMap::new(),
+        };
+        let coord = coordinator(text, vector);
+
+        let out = coord
+            .search_with_aggs("c", &text_query(), vec![])
+            .await
+            .expect("hybrid search_with_aggs must not error without aggregations");
+
+        assert_eq!(out.total, 2);
+        assert_eq!(out.results.len(), 2);
+        assert!(out.aggregations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_with_aggs_with_aggregations_delegates_to_text() {
+        let mut aggs = HashMap::new();
+        aggs.insert(
+            "by_role".to_string(),
+            AggregationResult {
+                name: "by_role".to_string(),
+                value: AggregationValue::Single(3.0),
+            },
+        );
+        let text = StubBackend {
+            results: vec![result("a")],
+            aggregations: aggs,
+        };
+        let vector = StubBackend {
+            results: vec![],
+            aggregations: HashMap::new(),
+        };
+        let coord = coordinator(text, vector);
+
+        let req = AggregationRequest {
+            name: "by_role".to_string(),
+            agg_type: AggregationType::Count,
+            aggs: None,
+        };
+        let out = coord
+            .search_with_aggs("c", &text_query(), vec![req])
+            .await
+            .expect("hybrid search_with_aggs must delegate aggregations to text backend");
+
+        assert!(out.aggregations.contains_key("by_role"));
     }
 }

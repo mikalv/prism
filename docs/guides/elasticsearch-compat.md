@@ -197,9 +197,9 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 - Aggregations in ES format are partially supported
 - `exists` queries are not yet supported and return `400`
   (`parsing_exception`) rather than silently mismatching
-- Searching a collection that has **both** text and vector backends over the
-  ES `_search` endpoint is not yet supported (use the native
-  `/collections/{name}/search` endpoint for hybrid collections)
+- On hybrid (text + vector) collections, ES `_search` returns text-search hits;
+  aggregations are computed over the text backend. Pass a query vector via the
+  native `/collections/{name}/search` endpoint for RRF/weighted hybrid ranking.
 - `sort` and `_source` filtering are accepted but not yet applied
 
 ## See Also
