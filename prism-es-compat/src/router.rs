@@ -67,10 +67,20 @@ pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
         .route("/:index", head(head_index_handler))
         .route("/:index/_count", get(count_handler))
         .with_state(state)
+        // Fallback so that unmatched `/_elastic/*` paths (e.g. the trailing-slash
+        // root `/_elastic/` that some clients probe) still return a clean 404
+        // through the layer below, and thus still carry the product header.
+        .fallback(elastic_not_found)
         // Official ES clients verify this header on every response.
         .layer(axum::middleware::map_response(
             add_elastic_product_header,
         ))
+}
+
+/// 404 for unmatched `/_elastic/*` paths, kept inside the layered router so the
+/// `X-Elastic-Product` header is still applied.
+async fn elastic_not_found() -> axum::http::StatusCode {
+    axum::http::StatusCode::NOT_FOUND
 }
 
 /// Stamp `X-Elastic-Product: Elasticsearch` on every response so official
