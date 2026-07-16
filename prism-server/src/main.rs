@@ -505,10 +505,21 @@ async fn main() -> Result<()> {
     // Add ES-compat routes if enabled
     #[cfg(feature = "es-compat")]
     {
-        extension_router = extension_router.nest(
-            "/_elastic",
-            prism_es_compat::es_compat_router(server.manager()),
-        );
+        // axum's `nest` does not match the bare trailing-slash root
+        // `/_elastic/`, which official ES clients probe for the product check;
+        // redirect it to `/_elastic` (which serves cluster info + the product
+        // header).
+        extension_router = extension_router
+            .route(
+                "/_elastic/",
+                axum::routing::get(|| async {
+                    axum::response::Redirect::permanent("/_elastic")
+                }),
+            )
+            .nest(
+                "/_elastic",
+                prism_es_compat::es_compat_router(server.manager()),
+            );
         tracing::info!("Elasticsearch compatibility enabled at /_elastic/*");
     }
 
