@@ -69,6 +69,8 @@ impl EsCompatError {
             Self::ParseError(_) => "parse_exception",
             Self::PrismError(e) => match e {
                 prism::Error::CollectionNotFound(_) => "index_not_found_exception",
+                // Bad-query errors are client errors, not shard failures.
+                prism::Error::InvalidQuery(_) | prism::Error::Schema(_) => "query_shard_exception",
                 _ => "search_phase_execution_exception",
             },
             Self::Internal(_) => "internal_server_error",
@@ -86,9 +88,24 @@ impl EsCompatError {
             | Self::ParseError(_) => StatusCode::BAD_REQUEST,
             Self::PrismError(e) => match e {
                 prism::Error::CollectionNotFound(_) => StatusCode::NOT_FOUND,
+                // A bad query (e.g. exists on a non-fast field) is a 400, not 500.
+                prism::Error::InvalidQuery(_) | prism::Error::Schema(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// Whether the error message is safe to expose to clients. Internal failures
+    /// are masked; client mistakes (including bad-query PrismErrors) are exposed.
+    fn exposes_message(&self) -> bool {
+        match self {
+            Self::Internal(_) => false,
+            Self::PrismError(e) => matches!(
+                e,
+                prism::Error::InvalidQuery(_) | prism::Error::Schema(_)
+            ),
+            _ => true,
         }
     }
 }
@@ -98,13 +115,14 @@ impl IntoResponse for EsCompatError {
         let status = self.status_code();
         let error_type = self.error_type().to_string();
 
-        // Sanitize error details: log internal details, return generic message to client
-        let reason = match &self {
-            Self::PrismError(_) | Self::Internal(_) => {
-                tracing::error!(error = %self, "Internal error in ES compat layer");
-                "An internal error occurred".to_string()
-            }
-            _ => self.to_string(),
+        // Sanitize error details: log internal details, return a generic message
+        // to the client for genuine internal failures, but expose the message for
+        // client mistakes (bad queries) so the caller can fix them.
+        let reason = if self.exposes_message() {
+            self.to_string()
+        } else {
+            tracing::error!(error = %self, "Internal error in ES compat layer");
+            "An internal error occurred".to_string()
         };
 
         let body = EsErrorResponse {
@@ -202,6 +220,25 @@ mod tests {
             EsCompatError::Internal("x".into()).status_code(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
+    }
+
+    #[test]
+    fn test_prism_invalid_query_is_client_error() {
+        // A bad query from the backend (e.g. exists on a non-fast field) must be
+        // a 400 with an exposed message, not a masked 500.
+        let err = EsCompatError::PrismError(prism::Error::InvalidQuery(
+            "exists on field 'role' requires a fast field".into(),
+        ));
+        assert_eq!(err.status_code(), StatusCode::BAD_REQUEST);
+        assert!(err.exposes_message());
+        assert!(err.to_string().contains("requires a fast field"));
+    }
+
+    #[test]
+    fn test_prism_internal_error_is_masked() {
+        let err = EsCompatError::PrismError(prism::Error::Storage("disk full".into()));
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!err.exposes_message());
     }
 
     #[test]
