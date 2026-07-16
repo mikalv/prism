@@ -3,7 +3,7 @@
 use crate::error::EsCompatError;
 use crate::query::types::*;
 use prism::aggregations::{AggregationRequest, AggregationType, HistogramBounds, RangeEntry};
-use prism::backends::{HighlightConfig, Query};
+use prism::backends::{HighlightConfig, Query, SortField};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -50,9 +50,45 @@ impl QueryTranslator {
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            sort: Self::translate_sort(request.sort.as_deref()),
         };
 
         Ok((query, aggregations))
+    }
+
+    /// Normalize ES `sort` clauses into Prism [`SortField`]s. A bare field name
+    /// defaults to ascending, except `_score`, which defaults to descending
+    /// (matching Elasticsearch).
+    fn translate_sort(sort: Option<&[SortClause]>) -> Vec<SortField> {
+        let Some(clauses) = sort else {
+            return vec![];
+        };
+        clauses
+            .iter()
+            .map(|clause| match clause {
+                SortClause::Field(field) => SortField {
+                    ascending: field != "_score",
+                    field: field.clone(),
+                },
+                SortClause::Object(map) => map
+                    .iter()
+                    .next()
+                    .map(|(field, order)| {
+                        let order_str = match order {
+                            SortOrder::Simple(s) => s.as_str(),
+                            SortOrder::Object { order } => order.as_str(),
+                        };
+                        SortField {
+                            field: field.clone(),
+                            ascending: !order_str.eq_ignore_ascii_case("desc"),
+                        }
+                    })
+                    .unwrap_or(SortField {
+                        field: "_score".to_string(),
+                        ascending: false,
+                    }),
+            })
+            .collect()
     }
 
     /// Translate an ES query to Prism query string
@@ -2166,5 +2202,67 @@ mod tests {
         assert_eq!(query.limit, 5);
         assert_eq!(aggs.len(), 1);
         assert_eq!(aggs[0].name, "by_status");
+    }
+
+    // ===================================================================
+    // sort translation
+    // ===================================================================
+
+    #[test]
+    fn test_translate_sort_object_desc() {
+        let json = serde_json::json!({
+            "sort": [{"@timestamp": {"order": "desc"}}]
+        });
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(
+            query.sort,
+            vec![SortField {
+                field: "@timestamp".to_string(),
+                ascending: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_translate_sort_simple_string_order() {
+        let json = serde_json::json!({"sort": [{"age": "asc"}]});
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(
+            query.sort,
+            vec![SortField {
+                field: "age".to_string(),
+                ascending: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_translate_sort_bare_field_defaults_asc() {
+        // A bare field name defaults to ascending, except `_score` (descending).
+        let json = serde_json::json!({"sort": ["name", "_score"]});
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(
+            query.sort,
+            vec![
+                SortField {
+                    field: "name".to_string(),
+                    ascending: true,
+                },
+                SortField {
+                    field: "_score".to_string(),
+                    ascending: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_translate_no_sort_is_empty() {
+        let request: EsSearchRequest = serde_json::from_value(serde_json::json!({})).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert!(query.sort.is_empty());
     }
 }

@@ -4,6 +4,10 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Result sorting** — `Query` now carries a `sort` field (a list of `SortField { field, ascending }`), and the text backend honors it: results are sorted by the given keys (the special `_score` key sorts by relevance), with missing values last. Sorting scans up to `SORT_SCAN_CAP` (10,000) matching documents, matching Elasticsearch's `index.max_result_window`. The ES-compat `_search` endpoint maps the `sort` clause onto this (a bare field defaults to ascending, except `_score`), and the cluster RPC query propagates `sort` across nodes. Newly created collections now mark numeric/date/bool fields as fast fields to enable future collector-level sorting.
+
 ### Fixes
 
 - **ES-compat `X-Elastic-Product` header** — every `/_elastic/*` response now sends `X-Elastic-Product: Elasticsearch` (on success and error responses). Official Elasticsearch clients (elasticsearch-py/js/java ≥ 7.14) verify this header and previously refused to connect with `UnsupportedProductError`.

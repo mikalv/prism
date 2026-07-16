@@ -866,7 +866,7 @@ impl CollectionManager {
                 min_score: None,
                 score_function: None,
                 skip_ranking: false,
-            };
+                sort: Vec::new(),            };
             return self.text_backend.search(collection, query).await;
         }
 
@@ -886,7 +886,7 @@ impl CollectionManager {
                 min_score: None,
                 score_function: None,
                 skip_ranking: false,
-            };
+                sort: Vec::new(),            };
             return self.vector_backend.search(collection, query).await;
         }
 
@@ -906,7 +906,7 @@ impl CollectionManager {
             min_score: None,
             score_function: None,
             skip_ranking: true,
-        };
+            sort: Vec::new(),        };
 
         let vec_query_obj = Query {
             query_string: serde_json::to_string(&vec).unwrap_or_default(),
@@ -921,7 +921,7 @@ impl CollectionManager {
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
 
         // Run searches in parallel
         let (text_results, vec_results) = tokio::join!(
@@ -1409,7 +1409,7 @@ backends:
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        }
+            sort: Vec::new(),        }
     }
 
     #[tokio::test]
@@ -1468,7 +1468,7 @@ backends:
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
 
         let results = manager.search("articles", query, None).await?;
         assert!(results.total > 0);
@@ -2068,7 +2068,7 @@ backends:
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
 
         let results = manager
             .multi_search(

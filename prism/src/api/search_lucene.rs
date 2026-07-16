@@ -181,7 +181,7 @@ pub async fn search_lucene(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     let search_results = match manager.search(&req.collection, query, None).await {
         Ok(results) => results,

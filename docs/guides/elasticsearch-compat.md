@@ -204,7 +204,10 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 - On hybrid (text + vector) collections, ES `_search` returns text-search hits;
   aggregations are computed over the text backend. Pass a query vector via the
   native `/collections/{name}/search` endpoint for RRF/weighted hybrid ranking.
-- `sort` and `_source` filtering are accepted but not yet applied
+- `sort` sorts over the first `index.max_result_window` (10,000) matching
+  documents — exact when the match count is within that window, matching ES's
+  own deep-sort limit. Sorting on a field reads its stored value; missing values
+  sort last. `_source` filtering is accepted but not yet applied.
 
 ## See Also
 

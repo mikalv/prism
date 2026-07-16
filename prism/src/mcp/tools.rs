@@ -153,7 +153,7 @@ impl McpTool for SearchTool {
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
 
         let results = ctx.manager.search(collection, query, None).await?;
 

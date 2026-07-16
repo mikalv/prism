@@ -330,7 +330,7 @@ impl VectorBackend {
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
 
         self.search(collection, query).await
     }
@@ -802,7 +802,7 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
         let results = backend.search("test", query).await.unwrap();
         assert!(!results.results.is_empty());
 
@@ -888,7 +888,7 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
-        };
+            sort: Vec::new(),        };
         let results = backend.search("test", query).await.unwrap();
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].id, "doc1");

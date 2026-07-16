@@ -171,7 +171,7 @@ pub async fn search(
         min_score: None,      // applied post-search
         score_function: None, // applied post-search
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     let rerank_override = request.rerank.as_ref().map(|r| RerankOptions {
         enabled: r.enabled,
@@ -271,7 +271,7 @@ pub async fn simple_search(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     let results = manager
         .search(&target_collection, query, None)
@@ -573,7 +573,7 @@ pub async fn list_documents(
         min_score: None,
         score_function: None,
         skip_ranking: true,
-    };
+        sort: Vec::new(),    };
 
     let results = manager
         .search(&collection, search_query, None)
@@ -1136,7 +1136,7 @@ pub async fn aggregate(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     // Use search_with_aggs to run aggregations in the text backend
     let agg_results = manager
@@ -1529,7 +1529,7 @@ pub async fn multi_search(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     let result = manager
         .multi_search(&request.collections, query, request.rrf_k)
@@ -1601,7 +1601,7 @@ pub async fn multi_index_search(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     let result = manager.multi_search(&collection_list, query, None).await;
 

@@ -27,6 +27,8 @@ pub struct RpcQuery {
     pub score_function: Option<String>,
     #[serde(default)]
     pub skip_ranking: bool,
+    #[serde(default)]
+    pub sort: Vec<prism::backends::SortField>,
 }
 
 impl From<prism::backends::Query> for RpcQuery {
@@ -44,6 +46,7 @@ impl From<prism::backends::Query> for RpcQuery {
             min_score: q.min_score,
             score_function: q.score_function,
             skip_ranking: q.skip_ranking,
+            sort: q.sort,
         }
     }
 }
@@ -63,6 +66,7 @@ impl From<RpcQuery> for prism::backends::Query {
             min_score: q.min_score,
             score_function: q.score_function,
             skip_ranking: q.skip_ranking,
+            sort: q.sort,
         }
     }
 }

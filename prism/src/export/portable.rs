@@ -151,7 +151,7 @@ async fn iterate_all_documents(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-    };
+        sort: Vec::new(),    };
 
     let results = manager.search(collection, query, None).await?;
 

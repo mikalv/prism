@@ -8,7 +8,7 @@ pub use graph::{GraphEdge, GraphNode, GraphStats, ShardedGraphBackend};
 pub use hybrid::HybridSearchCoordinator;
 pub use r#trait::{
     BackendStats, Document, HighlightConfig, Query, SearchBackend, SearchResult, SearchResults,
-    SearchResultsWithAggs,
+    SearchResultsWithAggs, SortField,
 };
 pub use text::TextBackend;
 pub use vector::VectorBackend;

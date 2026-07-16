@@ -8,7 +8,7 @@ use crate::aggregations::{
 };
 use crate::backends::{
     BackendStats, Document, Query, SearchBackend, SearchResult, SearchResults,
-    SearchResultsWithAggs,
+    SearchResultsWithAggs, SortField,
 };
 use crate::ranking::{apply_ranking_adjustments, RankableResult, RankingConfig};
 use crate::schema::{CollectionSchema, FieldType, TokenizerType};
@@ -103,6 +103,68 @@ fn owned_value_to_json(value: &tantivy::schema::OwnedValue) -> Option<serde_json
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b),
         )),
         _ => None,
+    }
+}
+
+/// Maximum number of documents scanned to satisfy an explicit sort, matching
+/// Elasticsearch's default `index.max_result_window`. Sorting is exact when the
+/// number of matching documents does not exceed this cap.
+const SORT_SCAN_CAP: usize = 10_000;
+
+/// Sort search results in place by the given keys, applied in order. The special
+/// field name `_score` sorts by relevance; any other name reads the value from
+/// each result's stored fields. Missing values sort last in both directions
+/// (ES default `missing: _last`).
+fn sort_results(results: &mut [SearchResult], sort: &[SortField]) {
+    use std::cmp::Ordering;
+    results.sort_by(|a, b| {
+        for key in sort {
+            let ord = if key.field == "_score" {
+                let o = a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal);
+                if key.ascending {
+                    o
+                } else {
+                    o.reverse()
+                }
+            } else {
+                match (a.fields.get(&key.field), b.fields.get(&key.field)) {
+                    (Some(x), Some(y)) => {
+                        let o = cmp_json_values(x, y);
+                        if key.ascending {
+                            o
+                        } else {
+                            o.reverse()
+                        }
+                    }
+                    // Present values sort before missing ones, in both directions.
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
+            };
+            if ord != Ordering::Equal {
+                return ord;
+            }
+        }
+        Ordering::Equal
+    });
+}
+
+/// Compare two JSON values for sorting. Numbers compare numerically, strings
+/// lexicographically (RFC 3339 timestamps sort chronologically), otherwise by
+/// their string representation.
+fn cmp_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
+    use serde_json::Value;
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x
+            .as_f64()
+            .unwrap_or(f64::NAN)
+            .partial_cmp(&y.as_f64().unwrap_or(f64::NAN))
+            .unwrap_or(Ordering::Equal),
+        (Value::String(x), Value::String(y)) => x.cmp(y),
+        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
+        _ => a.to_string().cmp(&b.to_string()),
     }
 }
 
@@ -247,36 +309,40 @@ impl TextBackend {
                     }
                     schema_builder.add_text_field(&field_def.name, opts)
                 }
+                // Numeric/date/bool fields are marked fast so future work can
+                // sort at the collector level without an in-memory scan. Applies
+                // to newly created collections; existing indexes keep their
+                // on-disk schema and use the scan-based sort path.
                 FieldType::I64 => {
-                    let mut opts = NumericOptions::default().set_indexed();
+                    let mut opts = NumericOptions::default().set_indexed().set_fast();
                     if field_def.stored {
                         opts = opts.set_stored();
                     }
                     schema_builder.add_i64_field(&field_def.name, opts)
                 }
                 FieldType::U64 => {
-                    let mut opts = NumericOptions::default().set_indexed();
+                    let mut opts = NumericOptions::default().set_indexed().set_fast();
                     if field_def.stored {
                         opts = opts.set_stored();
                     }
                     schema_builder.add_u64_field(&field_def.name, opts)
                 }
                 FieldType::F64 => {
-                    let mut opts = NumericOptions::default().set_indexed();
+                    let mut opts = NumericOptions::default().set_indexed().set_fast();
                     if field_def.stored {
                         opts = opts.set_stored();
                     }
                     schema_builder.add_f64_field(&field_def.name, opts)
                 }
                 FieldType::Bool => {
-                    let mut opts = NumericOptions::default().set_indexed();
+                    let mut opts = NumericOptions::default().set_indexed().set_fast();
                     if field_def.stored {
                         opts = opts.set_stored();
                     }
                     schema_builder.add_bool_field(&field_def.name, opts)
                 }
                 FieldType::Date => {
-                    let mut opts = DateOptions::default().set_indexed();
+                    let mut opts = DateOptions::default().set_indexed().set_fast();
                     if field_def.stored {
                         opts = opts.set_stored();
                     }
@@ -595,11 +661,20 @@ impl SearchBackend for TextBackend {
             }
         };
 
-        // Tantivy's TopDocs::with_limit panics if the limit is 0, so clamp the
-        // fetch size to at least 1. A `Count` collector runs alongside TopDocs so
-        // `total` reflects the true number of matching documents rather than the
-        // truncated page size.
-        let fetch_limit = query.limit.saturating_add(query.offset).max(1);
+        // When a sort is requested we cannot use the score-ordered top-N slice:
+        // the correct page depends on the sort field, so we scan up to
+        // SORT_SCAN_CAP matching documents (aligned with ES `max_result_window`),
+        // sort them in memory, and paginate afterwards. Without a sort we keep the
+        // cheap score-ordered path that fetches only `limit + offset` docs.
+        let sort_active = !query.sort.is_empty();
+        let fetch_limit = if sort_active {
+            SORT_SCAN_CAP
+        } else {
+            query.limit.saturating_add(query.offset).max(1)
+        };
+        // Tantivy's TopDocs::with_limit panics if the limit is 0. A `Count`
+        // collector runs alongside TopDocs so `total` reflects the true number of
+        // matching documents rather than the truncated page size.
         let (top_docs, total_hits) = searcher.search(
             &parsed_query,
             &(TopDocs::with_limit(fetch_limit), tantivy::collector::Count),
@@ -609,12 +684,16 @@ impl SearchBackend for TextBackend {
         let mut results = Vec::new();
 
         for (rank, (score, doc_addr)) in top_docs.iter().enumerate() {
-            if rank < query.offset {
-                continue;
-            }
-            // Respect the requested page size (query.limit == 0 => count only).
-            if results.len() >= query.limit {
-                break;
+            // With an active sort, materialize every scanned doc; pagination is
+            // applied after sorting. Otherwise page by score here.
+            if !sort_active {
+                if rank < query.offset {
+                    continue;
+                }
+                // Respect the requested page size (query.limit == 0 => count only).
+                if results.len() >= query.limit {
+                    break;
+                }
             }
 
             let doc: TantivyDocument = searcher.doc(*doc_addr)?;
@@ -644,6 +723,17 @@ impl SearchBackend for TextBackend {
                 fields,
                 highlight: None,
             });
+        }
+
+        // Apply an explicit sort, then paginate. Sorting overrides score/ranking
+        // order, so the boosting block below is skipped when a sort is active.
+        if sort_active {
+            sort_results(&mut results, &query.sort);
+            results = std::mem::take(&mut results)
+                .into_iter()
+                .skip(query.offset)
+                .take(query.limit)
+                .collect();
         }
 
         // Generate highlights if requested
@@ -692,8 +782,9 @@ impl SearchBackend for TextBackend {
             }
         }
 
-        // Apply ranking adjustments if boosting is configured
-        let results = if let Some(boosting_config) = &coll.boosting_config {
+        // Apply ranking adjustments if boosting is configured (skipped when an
+        // explicit sort is active, since that already fixes the order).
+        let results = if let (false, Some(boosting_config)) = (sort_active, &coll.boosting_config) {
             let ranking_config = RankingConfig::from_boosting_config(boosting_config);
             let now = std::time::SystemTime::now();
 
@@ -2390,6 +2481,115 @@ impl TextBackend {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    fn result_with(id: &str, score: f32, fields: &[(&str, serde_json::Value)]) -> SearchResult {
+        SearchResult {
+            id: id.to_string(),
+            score,
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
+            highlight: None,
+        }
+    }
+
+    #[test]
+    fn test_sort_results_by_string_field_desc() {
+        let mut rows = vec![
+            result_with("a", 1.0, &[("ts", serde_json::json!("2026-01-01T00:00:00Z"))]),
+            result_with("b", 1.0, &[("ts", serde_json::json!("2026-03-01T00:00:00Z"))]),
+            result_with("c", 1.0, &[("ts", serde_json::json!("2026-02-01T00:00:00Z"))]),
+        ];
+        sort_results(
+            &mut rows,
+            &[SortField {
+                field: "ts".to_string(),
+                ascending: false,
+            }],
+        );
+        let order: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(order, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn test_sort_results_by_number_field_asc() {
+        let mut rows = vec![
+            result_with("a", 1.0, &[("n", serde_json::json!(30))]),
+            result_with("b", 1.0, &[("n", serde_json::json!(5))]),
+            result_with("c", 1.0, &[("n", serde_json::json!(12))]),
+        ];
+        sort_results(
+            &mut rows,
+            &[SortField {
+                field: "n".to_string(),
+                ascending: true,
+            }],
+        );
+        let order: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(order, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn test_sort_results_missing_field_sorts_last() {
+        // Missing values go last regardless of direction (ES default missing:_last).
+        let mut rows = vec![
+            result_with("a", 1.0, &[]),
+            result_with("b", 1.0, &[("n", serde_json::json!(5))]),
+        ];
+        sort_results(
+            &mut rows,
+            &[SortField {
+                field: "n".to_string(),
+                ascending: false,
+            }],
+        );
+        assert_eq!(rows[0].id, "b");
+        assert_eq!(rows[1].id, "a");
+    }
+
+    #[test]
+    fn test_sort_results_by_score() {
+        let mut rows = vec![
+            result_with("a", 0.2, &[]),
+            result_with("b", 0.9, &[]),
+            result_with("c", 0.5, &[]),
+        ];
+        sort_results(
+            &mut rows,
+            &[SortField {
+                field: "_score".to_string(),
+                ascending: false,
+            }],
+        );
+        let order: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(order, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn test_sort_results_multi_key() {
+        // Primary asc on "g", tie broken by "n" desc.
+        let mut rows = vec![
+            result_with("a", 1.0, &[("g", serde_json::json!(1)), ("n", serde_json::json!(1))]),
+            result_with("b", 1.0, &[("g", serde_json::json!(1)), ("n", serde_json::json!(9))]),
+            result_with("c", 1.0, &[("g", serde_json::json!(0)), ("n", serde_json::json!(5))]),
+        ];
+        sort_results(
+            &mut rows,
+            &[
+                SortField {
+                    field: "g".to_string(),
+                    ascending: true,
+                },
+                SortField {
+                    field: "n".to_string(),
+                    ascending: false,
+                },
+            ],
+        );
+        let order: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(order, vec!["c", "b", "a"]);
+    }
 
     #[tokio::test]
     async fn test_text_backend_with_segment_storage() {

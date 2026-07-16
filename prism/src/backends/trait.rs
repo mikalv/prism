@@ -11,7 +11,15 @@ pub struct Document {
     pub fields: HashMap<String, Value>,
 }
 
-#[derive(Debug, Clone)]
+/// A single sort key. `field` may name a stored field or the special `_score`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SortField {
+    pub field: String,
+    /// Ascending when true, descending when false.
+    pub ascending: bool,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Query {
     pub query_string: String,
     pub fields: Vec<String>,
@@ -32,6 +40,8 @@ pub struct Query {
     /// Skip ranking adjustments (used when hybrid coordinator calls text backend
     /// to avoid double-application of boosting)
     pub skip_ranking: bool,
+    /// Sort keys applied in order. Empty means score-descending (default).
+    pub sort: Vec<SortField>,
 }
 
 /// Configuration for search result highlighting
