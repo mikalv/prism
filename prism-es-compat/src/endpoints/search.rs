@@ -80,6 +80,7 @@ pub async fn search_handler(
         results,
         took_ms,
         request.source.as_ref(),
+        request.track_total_hits.as_ref(),
     );
 
     Ok(Json(response))

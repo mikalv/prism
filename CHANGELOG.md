@@ -6,6 +6,7 @@ All notable changes to Prism are documented in this file.
 
 ### Added
 
+- **ES-compat accurate `hits.total.relation`** — `_search`/`_msearch` now report `relation: "gte"` (with the value clamped to the 10,000 result window) when a collection has more matching documents than were counted, instead of always claiming `"eq"`. A 30k-document collection now returns `{"value": 10000, "relation": "gte"}` rather than a misleading `{"value": 10000, "relation": "eq"}`. The text backend fetches one past the window to distinguish "exactly 10,000" from "more than 10,000", and `track_total_hits: <n>` lowers the tracking limit.
 - **ES-compat `_source` filtering** — the `_source` parameter is now honored on `_search` and `_msearch`. `_source: false` omits the `_source` key entirely; a field list (`_source: ["a", "b"]`) or object form (`{"includes": [...], "excludes": [...]}`) selects which stored fields are returned. Field names are matched exactly (dot-path and wildcard selection are not yet supported).
 
 ## [0.6.9] - 2026-07-16

@@ -161,6 +161,7 @@ async fn execute_single_search(
         results,
         took_ms,
         request.source.as_ref(),
+        request.track_total_hits.as_ref(),
     );
     EsMSearchItem::Success(response)
 }

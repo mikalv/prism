@@ -65,6 +65,40 @@ pub struct Hit {
     pub highlight: Option<HashMap<String, Vec<String>>>,
 }
 
+/// Default number of hits counted exactly before `hits.total` becomes a lower
+/// bound, matching Elasticsearch's `index.max_result_window`. The text backend
+/// fetches up to this many + 1 documents, so a reported total greater than the
+/// window means "there are at least this many".
+pub const TRACK_TOTAL_HITS_WINDOW: u64 = 10_000;
+
+/// Compute `hits.total` from the backend's (possibly window-capped) count and
+/// the request's `track_total_hits`. Returns `relation: "eq"` when the count is
+/// exact, or `"gte"` (with the value clamped to the tracking limit) when there
+/// are more matching documents than were counted.
+fn total_hits(
+    backend_total: u64,
+    track: Option<&crate::query::TrackTotalHits>,
+) -> TotalHits {
+    use crate::query::TrackTotalHits;
+    let limit = match track {
+        Some(TrackTotalHits::Count(n)) => (*n as u64).min(TRACK_TOTAL_HITS_WINDOW),
+        // `true`/`false` fall back to the default window; exact tracking beyond
+        // the window is not yet supported.
+        _ => TRACK_TOTAL_HITS_WINDOW,
+    };
+    if backend_total > limit {
+        TotalHits {
+            value: limit,
+            relation: "gte".to_string(),
+        }
+    } else {
+        TotalHits {
+            value: backend_total,
+            relation: "eq".to_string(),
+        }
+    }
+}
+
 /// Apply an ES `_source` filter to a hit's fields. Returns `None` when the
 /// source should be omitted entirely (`_source: false`). With no filter, all
 /// fields are returned. Field names are matched exactly (dot-path and wildcard
@@ -143,18 +177,21 @@ impl ResponseMapper {
         results: SearchResultsWithAggs,
         took_ms: u64,
     ) -> EsSearchResponse {
-        Self::map_search_results_with_source(index, results, took_ms, None)
+        Self::map_search_results_with_source(index, results, took_ms, None, None)
     }
 
     /// Like [`map_search_results`], but applies an ES `_source` include/exclude
-    /// filter to each hit's `_source`.
+    /// filter to each hit's `_source` and computes `hits.total.relation` from the
+    /// request's `track_total_hits`.
     pub fn map_search_results_with_source(
         index: &str,
         results: SearchResultsWithAggs,
         took_ms: u64,
         source: Option<&crate::query::SourceFilter>,
+        track_total_hits: Option<&crate::query::TrackTotalHits>,
     ) -> EsSearchResponse {
         let max_score = results.results.first().map(|r| r.score);
+        let total = total_hits(results.total, track_total_hits);
 
         let hits: Vec<Hit> = results
             .results
@@ -173,10 +210,7 @@ impl ResponseMapper {
             timed_out: false,
             shards: ShardStats::default(),
             hits: HitsResponse {
-                total: TotalHits {
-                    value: results.total,
-                    relation: "eq".to_string(),
-                },
+                total,
                 max_score,
                 hits,
             },
@@ -500,6 +534,42 @@ mod tests {
         AggregationResult, AggregationValue, Bucket, PercentilesResult, StatsResult,
     };
     use prism::backends::{SearchResult, SearchResultsWithAggs};
+
+    use crate::query::TrackTotalHits;
+
+    #[test]
+    fn test_total_hits_exact_below_window() {
+        let t = total_hits(42, None);
+        assert_eq!(t.value, 42);
+        assert_eq!(t.relation, "eq");
+    }
+
+    #[test]
+    fn test_total_hits_capped_reports_gte() {
+        // Backend fetched window+1, signalling there are more than the window.
+        let t = total_hits(TRACK_TOTAL_HITS_WINDOW + 1, None);
+        assert_eq!(t.value, TRACK_TOTAL_HITS_WINDOW);
+        assert_eq!(t.relation, "gte");
+    }
+
+    #[test]
+    fn test_total_hits_exactly_window_is_exact() {
+        // Exactly at the window (not window+1) → known exact, relation "eq".
+        let t = total_hits(TRACK_TOTAL_HITS_WINDOW, None);
+        assert_eq!(t.value, TRACK_TOTAL_HITS_WINDOW);
+        assert_eq!(t.relation, "eq");
+    }
+
+    #[test]
+    fn test_total_hits_track_count_limits() {
+        // track_total_hits: 100 → count is considered accurate only up to 100.
+        let t = total_hits(500, Some(&TrackTotalHits::Count(100)));
+        assert_eq!(t.value, 100);
+        assert_eq!(t.relation, "gte");
+        let t2 = total_hits(50, Some(&TrackTotalHits::Count(100)));
+        assert_eq!(t2.value, 50);
+        assert_eq!(t2.relation, "eq");
+    }
 
     fn sample_fields() -> HashMap<String, Value> {
         let mut m = HashMap::new();

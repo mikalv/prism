@@ -967,9 +967,12 @@ impl SearchBackend for TextBackend {
             }
         };
 
-        // Collect all matching docs (bounded, aligned with SORT_SCAN_CAP) for
-        // aggregations and for sorting.
-        let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP))?;
+        // Collect matching docs for aggregations and sorting. Fetching one more
+        // than SORT_SCAN_CAP lets callers distinguish "exactly SORT_SCAN_CAP
+        // matches" from "more than SORT_SCAN_CAP" (so the ES layer can report
+        // hits.total.relation accurately).
+        let all_docs =
+            searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP + 1))?;
 
         // Build results. With an active sort, materialize every scanned doc and
         // paginate after sorting; otherwise page by score here.

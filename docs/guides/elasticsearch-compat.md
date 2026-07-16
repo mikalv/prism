@@ -208,6 +208,10 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
   documents — exact when the match count is within that window, matching ES's
   own deep-sort limit. Sorting on a field reads its stored value; missing values
   sort last.
+- `hits.total` is accurate up to the 10,000 result window: within it the count
+  is exact (`relation: "eq"`); beyond it `hits.total` reports
+  `{"value": 10000, "relation": "gte"}`. `track_total_hits: <n>` lowers the
+  tracking limit (exact tracking beyond 10,000 is not yet supported).
 - `_source` filtering is applied: `_source: false` omits the source, a field
   list (`_source: ["a","b"]`) or `{"includes": [...], "excludes": [...]}` selects
   fields. Names are matched exactly (dot-path/wildcard selection not yet
