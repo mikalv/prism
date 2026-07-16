@@ -67,6 +67,20 @@ pub fn es_compat_router(manager: Arc<CollectionManager>) -> Router {
         .route("/:index", head(head_index_handler))
         .route("/:index/_count", get(count_handler))
         .with_state(state)
+        // Official ES clients verify this header on every response.
+        .layer(axum::middleware::map_response(
+            add_elastic_product_header,
+        ))
+}
+
+/// Stamp `X-Elastic-Product: Elasticsearch` on every response so official
+/// Elasticsearch clients (≥7.14) accept the server as genuine.
+async fn add_elastic_product_header(mut response: axum::response::Response) -> axum::response::Response {
+    response.headers_mut().insert(
+        "X-Elastic-Product",
+        axum::http::HeaderValue::from_static("Elasticsearch"),
+    );
+    response
 }
 
 // Wrapper handlers for routes without index parameter
@@ -98,6 +112,35 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
+
+    /// Official Elasticsearch clients (elasticsearch-py/js/java ≥7.14) refuse to
+    /// operate unless every response carries `X-Elastic-Product: Elasticsearch`.
+    /// The header must be present on success AND error responses.
+    #[tokio::test]
+    async fn test_x_elastic_product_header_present() {
+        let ok = || async { StatusCode::OK };
+        let err = || async { StatusCode::BAD_REQUEST };
+        let router = Router::new()
+            .route("/ok", get(ok))
+            .route("/err", get(err))
+            .layer(axum::middleware::map_response(add_elastic_product_header));
+
+        for path in ["/ok", "/err"] {
+            let req = Request::builder()
+                .method("GET")
+                .uri(path)
+                .body(Body::empty())
+                .unwrap();
+            let resp = router.clone().oneshot(req).await.unwrap();
+            assert_eq!(
+                resp.headers()
+                    .get("X-Elastic-Product")
+                    .and_then(|v| v.to_str().ok()),
+                Some("Elasticsearch"),
+                "X-Elastic-Product header missing on {path}"
+            );
+        }
+    }
 
     /// Verify that parameterised routes (/:index/...) are matched by the router.
     /// We don't need a real CollectionManager — we just check the router

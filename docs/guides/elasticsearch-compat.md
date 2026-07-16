@@ -170,6 +170,10 @@ The ES compatibility layer translates a subset of the Elasticsearch query DSL:
 
 ## Client Libraries
 
+Every `/_elastic/*` response carries the `X-Elastic-Product: Elasticsearch`
+header, which the official clients (elasticsearch-py/js/java ≥ 7.14) require
+before they will talk to the server.
+
 ### Python (elasticsearch-py)
 
 ```python
