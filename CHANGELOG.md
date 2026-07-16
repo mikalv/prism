@@ -2,7 +2,11 @@
 
 All notable changes to Prism are documented in this file.
 
-## [Unreleased]
+## [0.6.9] - 2026-07-16
+
+Elasticsearch-compatibility hardening: this release makes the `/_elastic`
+layer usable from official ES clients and fixes several query shapes and
+core search correctness bugs, plus adds first-class result sorting.
 
 ### Added
 
@@ -16,7 +20,6 @@ All notable changes to Prism are documented in this file.
 - **ES-compat `match` / `multi_match`** — multi-word values are analyzed into OR-combined terms (`field:(a b)`) instead of being quoted as a phrase, so `{"match": {"content": "connection timeout"}}` matches docs containing either term (ES semantics). `operator: "and"` requires all terms; `multi_match` combines fields with SHOULD (best_fields).
 - **ES-compat `ids` query** — looks up the document id in the `id` field instead of the nonexistent `_id` field (previously returned HTTP 500 / no matches).
 - **ES-compat `exists` query** — returns a clean `400 parsing_exception` instead of a `500`, since `field:*` is not a valid engine query (true `exists` support is pending a structured backend query).
-
 - **Correct `total` hit count** — text search now runs a `Count` collector alongside `TopDocs`, so `total` reflects the true number of matching documents instead of the truncated page size. Previously `limit=1` reported `total=1` for a query with hundreds of matches, breaking pagination and "N results" UIs (affected `/collections/:c/search`, `/api/search`, and ES-compat `hits.total`)
 - **`limit=0` no longer panics** — the Tantivy `TopDocs::with_limit` fetch size is clamped to at least 1 (it panics on 0), and the result loop respects the requested page size, so `{"limit":0}` / ES `{"size":0}` returns a count-only response instead of aborting the request. Also guards against `limit + offset` overflow via `saturating_add`
 - **`/api/search` honors the `collection` field** — the simple-search endpoint now searches the requested collection (404 if unknown) instead of always querying `list_collections().first()`, which was nondeterministic (HashMap order) and ignored the caller's `collection`
