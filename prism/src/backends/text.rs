@@ -967,15 +967,18 @@ impl SearchBackend for TextBackend {
             }
         };
 
-        // Collect all matching docs for aggregations
-        let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(10000))?;
+        // Collect all matching docs (bounded, aligned with SORT_SCAN_CAP) for
+        // aggregations and for sorting.
+        let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP))?;
 
-        // Build results
+        // Build results. With an active sort, materialize every scanned doc and
+        // paginate after sorting; otherwise page by score here.
+        let sort_active = !query.sort.is_empty();
         let id_field = coll.field_map.get("id").unwrap();
         let mut results = Vec::new();
 
         for (rank, (score, doc_addr)) in all_docs.iter().enumerate() {
-            if rank < query.offset || rank >= query.offset + query.limit {
+            if !sort_active && (rank < query.offset || rank >= query.offset + query.limit) {
                 continue;
             }
 
@@ -1004,6 +1007,15 @@ impl SearchBackend for TextBackend {
                 fields,
                 highlight: None,
             });
+        }
+
+        if sort_active {
+            sort_results(&mut results, &query.sort);
+            results = std::mem::take(&mut results)
+                .into_iter()
+                .skip(query.offset)
+                .take(query.limit)
+                .collect();
         }
 
         // Collect all doc addresses for aggregation processing
