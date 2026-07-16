@@ -63,13 +63,20 @@ impl QueryTranslator {
             EsQuery::Match(fields) => {
                 let mut parts = vec![];
                 for (field, match_query) in fields {
-                    let value = match match_query {
-                        MatchQuery::Simple(s) => s.clone(),
-                        MatchQuery::Object { query, .. } => query.clone(),
+                    let (value, and_operator) = match match_query {
+                        MatchQuery::Simple(s) => (s.clone(), false),
+                        MatchQuery::Object {
+                            query, operator, ..
+                        } => (
+                            query.clone(),
+                            operator
+                                .as_deref()
+                                .is_some_and(|o| o.eq_ignore_ascii_case("and")),
+                        ),
                     };
-                    parts.push(format!("{}:{}", field, escape_value(&value)));
+                    parts.push(field_match(field, &value, and_operator));
                 }
-                Ok(parts.join(" AND "))
+                Ok(parts.join(" "))
             }
 
             EsQuery::MatchPhrase(fields) => {
@@ -85,17 +92,23 @@ impl QueryTranslator {
             }
 
             EsQuery::MultiMatch(mm) => {
+                let and_operator = mm
+                    .operator
+                    .as_deref()
+                    .is_some_and(|o| o.eq_ignore_ascii_case("and"));
                 let fields = mm.fields.as_deref().unwrap_or(&[]);
                 if fields.is_empty() {
-                    // Search all fields
-                    Ok(escape_value(&mm.query))
+                    // No fields: search all default fields (unqualified terms).
+                    Ok(bare_match(&mm.query, and_operator))
                 } else {
+                    // best_fields: a doc matching in ANY field matches, so fields
+                    // are combined with SHOULD (space). The operator applies to
+                    // term combination WITHIN each field.
                     let parts: Vec<String> = fields
                         .iter()
-                        .map(|f| format!("{}:{}", f, escape_value(&mm.query)))
+                        .map(|f| field_match(f, &mm.query, and_operator))
                         .collect();
-                    let op = mm.operator.as_deref().unwrap_or("OR");
-                    Ok(parts.join(&format!(" {} ", op)))
+                    Ok(parts.join(" "))
                 }
             }
 
@@ -134,7 +147,10 @@ impl QueryTranslator {
 
             EsQuery::Bool(bool_query) => Self::translate_bool(bool_query),
 
-            EsQuery::Exists(exists) => Ok(format!("{field}:*", field = exists.field)),
+            EsQuery::Exists(exists) => Err(EsCompatError::UnsupportedQueryType(format!(
+                "exists query on field '{}' is not yet supported",
+                exists.field
+            ))),
 
             EsQuery::QueryString(qs) => {
                 // Validate length to prevent DoS from crafted queries
@@ -182,12 +198,10 @@ impl QueryTranslator {
             }
 
             EsQuery::Ids(ids) => {
-                let id_parts: Vec<String> = ids
-                    .values
-                    .iter()
-                    .map(|id| format!("_id:{}", escape_value(id)))
-                    .collect();
-                Ok(format!("({})", id_parts.join(" OR ")))
+                // The document id lives in the `id` field, not `_id`.
+                let id_parts: Vec<String> =
+                    ids.values.iter().map(|id| escape_value(id)).collect();
+                Ok(format!("id:({})", id_parts.join(" ")))
             }
         }
     }
@@ -229,45 +243,50 @@ impl QueryTranslator {
     }
 
     fn translate_bool(bool_query: &BoolQuery) -> Result<String, EsCompatError> {
+        // Translate to Tantivy occur syntax: `+` = MUST, `-` = MUST_NOT,
+        // bare = SHOULD. This preserves the boolean occur semantics that a
+        // string join with " AND "/"NOT " destroys (a MUST containing only a
+        // negation, e.g. `+(-x)`, matches nothing in Tantivy).
         let mut parts = vec![];
+        let mut has_positive = false;
 
-        // must → AND
-        if let Some(must) = &bool_query.must {
-            for q in must.iter() {
-                parts.push(format!("({})", Self::translate_query(q)?));
+        // must + filter → required (MUST). filter does not affect scoring in ES,
+        // but Tantivy query strings cannot express a non-scoring clause; both
+        // map to MUST, which yields correct matching.
+        for clause in [&bool_query.must, &bool_query.filter].into_iter().flatten() {
+            for q in clause.iter() {
+                parts.push(format!("+({})", Self::translate_query(q)?));
+                has_positive = true;
             }
         }
 
-        // filter → AND (same as must for scoring purposes in Prism)
-        if let Some(filter) = &bool_query.filter {
-            for q in filter.iter() {
-                parts.push(format!("({})", Self::translate_query(q)?));
-            }
-        }
-
-        // must_not → NOT
-        if let Some(must_not) = &bool_query.must_not {
-            for q in must_not.iter() {
-                parts.push(format!("NOT ({})", Self::translate_query(q)?));
-            }
-        }
-
-        // should → OR
+        // should → optional (SHOULD, bare). When no must/filter is present these
+        // are the positive requirement (Tantivy requires ≥1 SHOULD to match,
+        // matching ES's default minimum_should_match of 1).
         if let Some(should) = &bool_query.should {
-            let should_parts: Vec<String> = should
-                .iter()
-                .map(Self::translate_query)
-                .collect::<Result<Vec<_>, _>>()?;
-            if !should_parts.is_empty() {
-                // If there are no must/filter, should becomes the main query
-                parts.push(format!("({})", should_parts.join(" OR ")));
+            for q in should.iter() {
+                parts.push(format!("({})", Self::translate_query(q)?));
+                has_positive = true;
             }
         }
 
-        if parts.is_empty() {
+        // must_not → excluded (MUST_NOT).
+        if let Some(must_not) = &bool_query.must_not {
+            // A Tantivy query of only negations is a parse error, so ensure a
+            // positive clause exists to exclude from.
+            if !has_positive && must_not.iter().next().is_some() {
+                parts.insert(0, "*".to_string());
+                has_positive = true;
+            }
+            for q in must_not.iter() {
+                parts.push(format!("-({})", Self::translate_query(q)?));
+            }
+        }
+
+        if !has_positive {
             Ok("*".to_string())
         } else {
-            Ok(parts.join(" AND "))
+            Ok(parts.join(" "))
         }
     }
 
@@ -496,6 +515,54 @@ impl QueryTranslator {
     }
 }
 
+/// Build a field-scoped match query, approximating ES analysis by splitting on
+/// whitespace. Single term → `field:term`; multiple terms → `field:(t1 t2)`
+/// (SHOULD/OR) or `field:(+t1 +t2)` when `and_operator` requires every term.
+fn field_match(field: &str, value: &str, and_operator: bool) -> String {
+    let terms: Vec<&str> = value.split_whitespace().collect();
+    match terms.as_slice() {
+        [] => format!("{}:{}", field, escape_value(value)),
+        [single] => format!("{}:{}", field, escape_value(single)),
+        many => {
+            let joined = many
+                .iter()
+                .map(|t| {
+                    if and_operator {
+                        format!("+{}", escape_value(t))
+                    } else {
+                        escape_value(t)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("{}:({})", field, joined)
+        }
+    }
+}
+
+/// Like [`field_match`] but without a field qualifier (searches default fields).
+fn bare_match(value: &str, and_operator: bool) -> String {
+    let terms: Vec<&str> = value.split_whitespace().collect();
+    match terms.as_slice() {
+        [] => escape_value(value),
+        [single] => escape_value(single),
+        many => {
+            let joined = many
+                .iter()
+                .map(|t| {
+                    if and_operator {
+                        format!("+{}", escape_value(t))
+                    } else {
+                        escape_value(t)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("({})", joined)
+        }
+    }
+}
+
 fn escape_value(s: &str) -> String {
     // Escape special Lucene characters and wrap in quotes if needed
     if s.contains(|c: char| c.is_whitespace() || "+-&|!(){}[]^\"~*?:\\/".contains(c)) {
@@ -653,7 +720,8 @@ mod tests {
         );
         let query = EsQuery::Match(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "message:\"test query\"");
+        // match is analyzed into terms (OR by default), NOT a phrase.
+        assert_eq!(result, "message:(test query)");
     }
 
     #[test]
@@ -679,7 +747,8 @@ mod tests {
         );
         let query = EsQuery::Match(fields);
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "title:\"search terms\"");
+        // operator "AND" requires every term (each prefixed with +).
+        assert_eq!(result, "title:(+search +terms)");
     }
 
     // ===================================================================
@@ -739,7 +808,9 @@ mod tests {
             operator: None,
         });
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "\"search text\"");
+        // No fields: search all default fields; multiword becomes a grouped
+        // OR of terms, not a phrase.
+        assert_eq!(result, "(search text)");
     }
 
     #[test]
@@ -763,19 +834,23 @@ mod tests {
             operator: None,
         });
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "title:hello OR body:hello");
+        // A doc matching in ANY field should match (best_fields): fields are
+        // combined with SHOULD (space), not required across all fields.
+        assert_eq!(result, "title:hello body:hello");
     }
 
     #[test]
     fn test_multi_match_with_and_operator() {
         let query = EsQuery::MultiMatch(MultiMatchQuery {
-            query: "hello".to_string(),
+            query: "hello world".to_string(),
             fields: Some(vec!["title".to_string(), "body".to_string()]),
             match_type: None,
             operator: Some("AND".to_string()),
         });
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "title:hello AND body:hello");
+        // operator applies WITHIN each field (all terms required), fields still
+        // OR'd across (SHOULD).
+        assert_eq!(result, "title:(+hello +world) body:(+hello +world)");
     }
 
     // ===================================================================
@@ -997,8 +1072,10 @@ mod tests {
 
         let query = EsQuery::Bool(bool_query);
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert!(result.contains("level:error"));
-        assert!(result.contains("@timestamp"));
+        // must/filter clauses become MUST (+) so they are required, not
+        // wrapped in a MUST containing a lone negation.
+        assert!(result.contains("+(level:error)"));
+        assert!(result.contains("+(@timestamp"));
     }
 
     #[test]
@@ -1033,9 +1110,8 @@ mod tests {
             ..Default::default()
         };
         let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
-        assert!(result.contains("(a:1)"));
-        assert!(result.contains("(b:2)"));
-        assert!(result.contains(" AND "));
+        assert!(result.contains("+(a:1)"));
+        assert!(result.contains("+(b:2)"));
     }
 
     #[test]
@@ -1052,7 +1128,11 @@ mod tests {
             ..Default::default()
         };
         let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
-        assert!(result.contains("NOT (status:deleted)"));
+        // must_not becomes a MUST_NOT (-) clause. With no positive clause, a
+        // match-all (*) is prepended so Tantivy has something to exclude from
+        // (a lone negation is a parser error in Tantivy).
+        assert!(result.contains("-(status:deleted)"));
+        assert!(result.starts_with("* "));
     }
 
     #[test]
@@ -1079,9 +1159,11 @@ mod tests {
             ..Default::default()
         };
         let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
-        assert!(result.contains("color:red"));
-        assert!(result.contains("color:blue"));
-        assert!(result.contains(" OR "));
+        // should-only: clauses are optional (SHOULD); Tantivy requires at least
+        // one to match. They are emitted bare (no + prefix), not joined by " OR ".
+        assert!(result.contains("(color:red)"));
+        assert!(result.contains("(color:blue)"));
+        assert!(!result.contains(" OR "));
     }
 
     #[test]
@@ -1106,9 +1188,10 @@ mod tests {
             ..Default::default()
         };
         let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
-        assert!(result.contains("type:doc"));
-        assert!(result.contains("priority:high"));
-        assert!(result.contains(" AND "));
+        // must is required (+); should is optional (bare) when a must is present.
+        assert!(result.contains("+(type:doc)"));
+        assert!(result.contains("(priority:high)"));
+        assert!(!result.contains("+(priority:high)"));
     }
 
     #[test]
@@ -1156,10 +1239,14 @@ mod tests {
             boost: None,
         };
         let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
-        assert!(result.contains("(*)"), "must match_all");
-        assert!(result.contains("status:ok"), "filter");
-        assert!(result.contains("NOT (deleted:true)"), "must_not");
-        assert!(result.contains("featured:true"), "should");
+        assert!(result.contains("+(*)"), "must match_all is required");
+        assert!(result.contains("+(status:ok)"), "filter is required");
+        assert!(result.contains("-(deleted:true)"), "must_not is excluded");
+        assert!(result.contains("(featured:true)"), "should is optional");
+        assert!(
+            !result.contains("+(featured:true)"),
+            "should must not be required"
+        );
     }
 
     // ===================================================================
@@ -1167,12 +1254,42 @@ mod tests {
     // ===================================================================
 
     #[test]
-    fn test_exists_query() {
+    fn test_exists_query_unsupported() {
+        // `field:*` is not a valid Tantivy query and panics/500s the backend.
+        // Until a structured ExistsQuery is wired through, exists returns a
+        // clean 400 (UnsupportedQueryType) instead of a 500.
         let query = EsQuery::Exists(ExistsQuery {
             field: "user".to_string(),
         });
-        let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "user:*");
+        let err = QueryTranslator::translate_query(&query).unwrap_err();
+        assert!(matches!(err, EsCompatError::UnsupportedQueryType(_)));
+    }
+
+    #[test]
+    fn test_bool_must_and_must_not() {
+        // The classic Kibana filter+exclusion: must A, must_not B.
+        // Regression guard for the "+A +(-B) matches nothing" bug.
+        let bool_query = BoolQuery {
+            must: Some(QueryList::Single(Box::new(EsQuery::Term({
+                let mut m = HashMap::new();
+                m.insert(
+                    "level".to_string(),
+                    TermValue::Simple(Value::String("info".to_string())),
+                );
+                m
+            })))),
+            must_not: Some(QueryList::Single(Box::new(EsQuery::Term({
+                let mut m = HashMap::new();
+                m.insert(
+                    "status".to_string(),
+                    TermValue::Simple(Value::String("error".to_string())),
+                );
+                m
+            })))),
+            ..Default::default()
+        };
+        let result = QueryTranslator::translate_query(&EsQuery::Bool(bool_query)).unwrap();
+        assert_eq!(result, "+(level:info) -(status:error)");
     }
 
     // ===================================================================
@@ -1276,7 +1393,8 @@ mod tests {
             values: vec!["abc123".to_string()],
         });
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "(_id:abc123)");
+        // The document id is stored in the `id` field, not `_id`.
+        assert_eq!(result, "id:(abc123)");
     }
 
     #[test]
@@ -1285,11 +1403,7 @@ mod tests {
             values: vec!["id1".to_string(), "id2".to_string(), "id3".to_string()],
         });
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert!(result.contains("_id:id1"));
-        assert!(result.contains("_id:id2"));
-        assert!(result.contains("_id:id3"));
-        assert!(result.contains(" OR "));
-        assert!(result.starts_with('('));
+        assert_eq!(result, "id:(id1 id2 id3)");
     }
 
     // ===================================================================
@@ -1317,7 +1431,7 @@ mod tests {
         let json = serde_json::json!({"match": {"message": "quick fox"}});
         let query: EsQuery = serde_json::from_value(json).unwrap();
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "message:\"quick fox\"");
+        assert_eq!(result, "message:(quick fox)");
     }
 
     #[test]
@@ -1338,10 +1452,11 @@ mod tests {
         });
         let query: EsQuery = serde_json::from_value(json).unwrap();
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert!(result.contains("type:log"));
-        assert!(result.contains("message:error"));
-        assert!(result.contains("NOT (level:debug)"));
-        assert!(result.contains("priority:high"));
+        assert!(result.contains("+(type:log)"));
+        assert!(result.contains("+(message:error)"));
+        assert!(result.contains("-(level:debug)"));
+        assert!(result.contains("(priority:high)"));
+        assert!(!result.contains("+(priority:high)"));
     }
 
     #[test]
@@ -1356,8 +1471,8 @@ mod tests {
     fn test_query_from_json_exists() {
         let json = serde_json::json!({"exists": {"field": "email"}});
         let query: EsQuery = serde_json::from_value(json).unwrap();
-        let result = QueryTranslator::translate_query(&query).unwrap();
-        assert_eq!(result, "email:*");
+        let err = QueryTranslator::translate_query(&query).unwrap_err();
+        assert!(matches!(err, EsCompatError::UnsupportedQueryType(_)));
     }
 
     #[test]
@@ -1381,8 +1496,7 @@ mod tests {
         let json = serde_json::json!({"ids": {"values": ["a", "b"]}});
         let query: EsQuery = serde_json::from_value(json).unwrap();
         let result = QueryTranslator::translate_query(&query).unwrap();
-        assert!(result.contains("_id:a"));
-        assert!(result.contains("_id:b"));
+        assert_eq!(result, "id:(a b)");
     }
 
     // ===================================================================

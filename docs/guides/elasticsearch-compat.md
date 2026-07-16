@@ -147,13 +147,26 @@ curl -X POST http://localhost:3080/_elastic/articles/_bulk \
 
 The ES compatibility layer translates a subset of the Elasticsearch query DSL:
 
-- `match` — Full-text search on a field
+- `match` — Full-text search on a field. Multi-word values are analyzed into
+  terms combined with OR by default; `{"match": {"f": {"query": "a b",
+  "operator": "and"}}}` requires every term.
+- `match_phrase` — Exact adjacent-phrase match
 - `match_all` — Match all documents
 - `term` / `terms` — Exact value matching
-- `bool` — Compound queries (`must`, `should`, `must_not`, `filter`)
-- `query_string` — Lucene-style query strings
+- `multi_match` — Search one query across several fields (best_fields: a match
+  in any field matches)
+- `bool` — Compound queries. `must`/`filter` are required, `must_not` excludes,
+  and `should` is optional when a `must`/`filter` is present (otherwise at least
+  one `should` must match, per ES's default `minimum_should_match`). A bool with
+  only `must_not` correctly returns all documents except the excluded ones.
+- `query_string` / `simple_query_string` — Lucene-style query strings
 - `range` — Numeric and date range queries
-- `exists` — Field existence check
+- `wildcard` / `prefix` — Pattern matching
+- `ids` — Look up documents by `_id`
+
+> **Note:** `bool` occur semantics (`+`/`-`) are translated directly to the
+> underlying engine, so `must` + `must_not` combinations (the standard Kibana
+> filter-with-exclusion) behave as in Elasticsearch.
 
 ## Client Libraries
 
@@ -182,6 +195,12 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 - Only a subset of ES query DSL is translated
 - Index creation must be done via Prism's native API or schema files
 - Aggregations in ES format are partially supported
+- `exists` queries are not yet supported and return `400`
+  (`parsing_exception`) rather than silently mismatching
+- Searching a collection that has **both** text and vector backends over the
+  ES `_search` endpoint is not yet supported (use the native
+  `/collections/{name}/search` endpoint for hybrid collections)
+- `sort` and `_source` filtering are accepted but not yet applied
 
 ## See Also
 
