@@ -22,11 +22,11 @@ impl QueryTranslator {
         request: &EsSearchRequest,
         default_fields: &[String],
     ) -> Result<(Query, Vec<AggregationRequest>), EsCompatError> {
-        // Translate query to query string
-        let query_string = match &request.query {
-            Some(q) => Self::translate_query(q)?,
-            None => "*".to_string(), // Match all
-        };
+        // Translate the query, pulling any `exists` clauses out into structured
+        // exists/not-exists field lists (the backend applies them via a fast-field
+        // ExistsQuery). The remainder becomes the query string.
+        let (query_string, exists_fields, not_exists_fields) =
+            Self::translate_top_level(request.query.as_ref())?;
 
         // Translate aggregations
         let aggregations = match &request.aggs {
@@ -51,9 +51,64 @@ impl QueryTranslator {
             score_function: None,
             skip_ranking: false,
             sort: Self::translate_sort(request.sort.as_deref()),
+            exists_fields,
+            not_exists_fields,
         };
 
         Ok((query, aggregations))
+    }
+
+    /// Translate the top-level query, separating `exists` clauses (standalone or
+    /// inside a `bool`'s must/filter/must_not) from the string-translated query.
+    /// Returns `(query_string, exists_fields, not_exists_fields)`.
+    fn translate_top_level(
+        query: Option<&EsQuery>,
+    ) -> Result<(String, Vec<String>, Vec<String>), EsCompatError> {
+        match query {
+            None => Ok(("*".to_string(), vec![], vec![])),
+            Some(EsQuery::Exists(e)) => Ok(("*".to_string(), vec![e.field.clone()], vec![])),
+            Some(EsQuery::Bool(b)) => Self::split_bool_exists(b),
+            Some(other) => Ok((Self::translate_query(other)?, vec![], vec![])),
+        }
+    }
+
+    /// Split a bool query into a string-translatable bool (exists clauses removed)
+    /// plus the extracted exists/not-exists field lists. `exists` inside
+    /// must/filter becomes a required field; inside must_not it becomes a
+    /// forbidden field. `exists` inside `should` is not supported and falls
+    /// through to `translate_query` (which errors).
+    fn split_bool_exists(
+        b: &BoolQuery,
+    ) -> Result<(String, Vec<String>, Vec<String>), EsCompatError> {
+        let mut exists = vec![];
+        let mut not_exists = vec![];
+
+        // Partition a clause list into extracted exists fields and the rest.
+        let partition = |list: &Option<QueryList>, out: &mut Vec<String>| -> Option<QueryList> {
+            let mut rest = vec![];
+            if let Some(ql) = list {
+                for q in ql.iter() {
+                    if let EsQuery::Exists(e) = q {
+                        out.push(e.field.clone());
+                    } else {
+                        rest.push(q.clone());
+                    }
+                }
+            }
+            (!rest.is_empty()).then_some(QueryList::Multiple(rest))
+        };
+
+        let stripped = BoolQuery {
+            must: partition(&b.must, &mut exists),
+            filter: partition(&b.filter, &mut exists),
+            must_not: partition(&b.must_not, &mut not_exists),
+            should: b.should.clone(),
+            minimum_should_match: b.minimum_should_match.clone(),
+            boost: b.boost,
+        };
+
+        let query_string = Self::translate_bool(&stripped)?;
+        Ok((query_string, exists, not_exists))
     }
 
     /// Normalize ES `sort` clauses into Prism [`SortField`]s. A bare field name
@@ -235,8 +290,7 @@ impl QueryTranslator {
 
             EsQuery::Ids(ids) => {
                 // The document id lives in the `id` field, not `_id`.
-                let id_parts: Vec<String> =
-                    ids.values.iter().map(|id| escape_value(id)).collect();
+                let id_parts: Vec<String> = ids.values.iter().map(|id| escape_value(id)).collect();
                 Ok(format!("id:({})", id_parts.join(" ")))
             }
         }
@@ -2264,5 +2318,64 @@ mod tests {
         let request: EsSearchRequest = serde_json::from_value(serde_json::json!({})).unwrap();
         let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
         assert!(query.sort.is_empty());
+    }
+
+    // ===================================================================
+    // exists extraction
+    // ===================================================================
+
+    #[test]
+    fn test_translate_standalone_exists() {
+        let json = serde_json::json!({"query": {"exists": {"field": "status"}}});
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(query.exists_fields, vec!["status".to_string()]);
+        assert!(query.not_exists_fields.is_empty());
+        assert_eq!(query.query_string, "*");
+    }
+
+    #[test]
+    fn test_translate_bool_must_exists() {
+        let json = serde_json::json!({
+            "query": {"bool": {
+                "must": [{"match": {"content": "hi"}}, {"exists": {"field": "author"}}]
+            }}
+        });
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(query.exists_fields, vec!["author".to_string()]);
+        assert!(query.query_string.contains("content:hi"));
+    }
+
+    #[test]
+    fn test_translate_bool_must_not_exists() {
+        let json = serde_json::json!({
+            "query": {"bool": {"must_not": [{"exists": {"field": "deleted_at"}}]}}
+        });
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(query.not_exists_fields, vec!["deleted_at".to_string()]);
+        assert!(query.exists_fields.is_empty());
+        // A positive base is needed for the backend to exclude from.
+        assert_eq!(query.query_string, "*");
+    }
+
+    #[test]
+    fn test_translate_bool_filter_exists() {
+        let json = serde_json::json!({
+            "query": {"bool": {"filter": [{"exists": {"field": "tag"}}]}}
+        });
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert_eq!(query.exists_fields, vec!["tag".to_string()]);
+    }
+
+    #[test]
+    fn test_translate_no_exists_is_empty() {
+        let json = serde_json::json!({"query": {"match_all": {}}});
+        let request: EsSearchRequest = serde_json::from_value(json).unwrap();
+        let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
+        assert!(query.exists_fields.is_empty());
+        assert!(query.not_exists_fields.is_empty());
     }
 }

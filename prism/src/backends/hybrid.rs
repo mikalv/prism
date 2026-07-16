@@ -307,6 +307,8 @@ impl SearchBackend for HybridSearchCoordinator {
                 score_function: None,
                 skip_ranking: true, // Skip ranking in sub-queries; apply after merge
                 sort: Vec::new(),
+                exists_fields: Vec::new(),
+                not_exists_fields: Vec::new(),
             };
             let text_q = Query {
                 query_string: "".to_string(),
@@ -321,7 +323,10 @@ impl SearchBackend for HybridSearchCoordinator {
                 min_score: None,
                 score_function: None,
                 skip_ranking: true,
-                sort: Vec::new(),            };
+                sort: Vec::new(),
+                exists_fields: query.exists_fields.clone(),
+                not_exists_fields: query.not_exists_fields.clone(),
+            };
             let t = self.text_backend.search(collection, text_q);
             let v = self.vector_backend.search(collection, vec_q);
             tokio::join!(t, v)
@@ -340,7 +345,10 @@ impl SearchBackend for HybridSearchCoordinator {
                 min_score: query.min_score,
                 score_function: query.score_function.clone(),
                 skip_ranking: query.skip_ranking,
-                sort: Vec::new(),            };
+                sort: query.sort.clone(),
+                exists_fields: query.exists_fields.clone(),
+                not_exists_fields: query.not_exists_fields.clone(),
+            };
             let t = self.text_backend.search(collection, text_q).await?;
             return Ok(t);
         };
@@ -508,7 +516,10 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
-            sort: Vec::new(),        }
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
+        }
     }
 
     fn coordinator(text: StubBackend, vector: StubBackend) -> HybridSearchCoordinator {

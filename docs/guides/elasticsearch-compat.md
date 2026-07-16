@@ -164,6 +164,13 @@ The ES compatibility layer translates a subset of the Elasticsearch query DSL:
 - `wildcard` / `prefix` — Pattern matching
 - `ids` — Look up documents by `_id`
 
+- `exists` — field-existence filter (standalone, or inside a `bool`'s
+  `must`/`filter` = required and `must_not` = forbidden). Requires the field to
+  be a fast field: collections created in this version mark numeric, date, bool,
+  and string/keyword fields fast. Existing collections must be recreated to
+  enable `exists` on their fields (otherwise a clear error is returned). `exists`
+  inside a `bool`'s `should` is not yet supported.
+
 > **Note:** `bool` occur semantics (`+`/`-`) are translated directly to the
 > underlying engine, so `must` + `must_not` combinations (the standard Kibana
 > filter-with-exclusion) behave as in Elasticsearch.
@@ -199,8 +206,9 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 - Only a subset of ES query DSL is translated
 - Index creation must be done via Prism's native API or schema files
 - Aggregations in ES format are partially supported
-- `exists` queries are not yet supported and return `400`
-  (`parsing_exception`) rather than silently mismatching
+- `exists` requires the target field to be a fast field (see the query DSL
+  section); on collections predating this version it returns a clear error until
+  the collection is recreated
 - On hybrid (text + vector) collections, ES `_search` returns text-search hits;
   aggregations are computed over the text backend. Pass a query vector via the
   native `/collections/{name}/search` endpoint for RRF/weighted hybrid ranking.

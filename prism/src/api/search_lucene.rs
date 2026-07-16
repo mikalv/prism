@@ -181,7 +181,10 @@ pub async fn search_lucene(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-        sort: Vec::new(),    };
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
+    };
 
     let search_results = match manager.search(&req.collection, query, None).await {
         Ok(results) => results,

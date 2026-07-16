@@ -139,7 +139,10 @@ pub async fn context(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-        sort: Vec::new(),    };
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
+    };
 
     let mut context_items = Vec::new();
 
@@ -178,7 +181,10 @@ pub async fn context(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-        sort: Vec::new(),    };
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
+    };
 
     if let Ok(results) = manager.search("memories", query2, None).await {
         for r in results.results {
@@ -240,7 +246,10 @@ pub async fn search(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-        sort: Vec::new(),    };
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
+    };
 
     let mut all_results = Vec::new();
 

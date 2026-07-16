@@ -228,7 +228,10 @@ pub async fn count_handler(
         min_score: None,
         score_function: None,
         skip_ranking: false,
-        sort: Vec::new(),    };
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
+    };
 
     let results = state
         .manager

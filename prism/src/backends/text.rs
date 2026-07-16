@@ -106,6 +106,57 @@ fn owned_value_to_json(value: &tantivy::schema::OwnedValue) -> Option<serde_json
     }
 }
 
+/// Combine a parsed query with structured `exists` / `not_exists` field filters
+/// using Tantivy's fast-field [`ExistsQuery`]. Returns the parsed query unchanged
+/// when there are no exists clauses. Errors clearly if an exists field is unknown
+/// or not a fast field (Tantivy's ExistsQuery only works on fast fields).
+fn combine_with_exists(
+    parsed: Box<dyn tantivy::query::Query>,
+    exists_fields: &[String],
+    not_exists_fields: &[String],
+    field_map: &HashMap<String, Field>,
+    schema: &Schema,
+) -> Result<Box<dyn tantivy::query::Query>> {
+    if exists_fields.is_empty() && not_exists_fields.is_empty() {
+        return Ok(parsed);
+    }
+    use tantivy::query::{BooleanQuery, ExistsQuery, Occur, Query as TQuery};
+
+    for f in exists_fields.iter().chain(not_exists_fields.iter()) {
+        match field_map.get(f) {
+            None => {
+                return Err(Error::InvalidQuery(format!(
+                    "exists query references unknown field '{}'",
+                    f
+                )))
+            }
+            Some(&field) => {
+                if !schema.get_field_entry(field).field_type().is_fast() {
+                    return Err(Error::InvalidQuery(format!(
+                        "exists on field '{}' requires a fast field; recreate the collection to enable it",
+                        f
+                    )));
+                }
+            }
+        }
+    }
+
+    let mut clauses: Vec<(Occur, Box<dyn TQuery>)> = vec![(Occur::Must, parsed)];
+    for f in exists_fields {
+        clauses.push((
+            Occur::Must,
+            Box::new(ExistsQuery::new_exists_query(f.clone())),
+        ));
+    }
+    for f in not_exists_fields {
+        clauses.push((
+            Occur::MustNot,
+            Box::new(ExistsQuery::new_exists_query(f.clone())),
+        ));
+    }
+    Ok(Box::new(BooleanQuery::new(clauses)))
+}
+
 /// Maximum number of documents scanned to satisfy an explicit sort, matching
 /// Elasticsearch's default `index.max_result_window`. Sorting is exact when the
 /// number of matching documents does not exceed this cap.
@@ -303,7 +354,9 @@ impl TextBackend {
                     schema_builder.add_text_field(&field_def.name, options)
                 }
                 FieldType::String => {
-                    let mut opts = STRING;
+                    // FAST enables exists queries (and future keyword sorting) on
+                    // string/keyword fields for newly created collections.
+                    let mut opts = STRING | FAST;
                     if field_def.stored {
                         opts = opts | STORED;
                     }
@@ -498,7 +551,9 @@ impl SearchBackend for TextBackend {
                                 tantivy_doc
                                     .add_date(*field, DateTime::from_timestamp_micros(micros));
                                 true
-                            } else if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+                            } else if let Ok(naive) =
+                                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                            {
                                 // Fallback: naive datetime without timezone — assume UTC
                                 let micros = naive.and_utc().timestamp_micros();
                                 tantivy_doc
@@ -660,6 +715,15 @@ impl SearchBackend for TextBackend {
                 )));
             }
         };
+
+        // Fold any structured `exists` filters into the query.
+        let parsed_query = combine_with_exists(
+            parsed_query,
+            &query.exists_fields,
+            &query.not_exists_fields,
+            &coll.field_map,
+            &coll.schema,
+        )?;
 
         // When a sort is requested we cannot use the score-ordered top-N slice:
         // the correct page depends on the sort field, so we scan up to
@@ -967,12 +1031,20 @@ impl SearchBackend for TextBackend {
             }
         };
 
+        // Fold any structured `exists` filters into the query.
+        let parsed_query = combine_with_exists(
+            parsed_query,
+            &query.exists_fields,
+            &query.not_exists_fields,
+            &coll.field_map,
+            &coll.schema,
+        )?;
+
         // Collect matching docs for aggregations and sorting. Fetching one more
         // than SORT_SCAN_CAP lets callers distinguish "exactly SORT_SCAN_CAP
         // matches" from "more than SORT_SCAN_CAP" (so the ES layer can report
         // hits.total.relation accurately).
-        let all_docs =
-            searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP + 1))?;
+        let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP + 1))?;
 
         // Build results. With an active sort, materialize every scanned doc and
         // paginate after sorting; otherwise page by score here.
@@ -2512,9 +2584,21 @@ mod tests {
     #[test]
     fn test_sort_results_by_string_field_desc() {
         let mut rows = vec![
-            result_with("a", 1.0, &[("ts", serde_json::json!("2026-01-01T00:00:00Z"))]),
-            result_with("b", 1.0, &[("ts", serde_json::json!("2026-03-01T00:00:00Z"))]),
-            result_with("c", 1.0, &[("ts", serde_json::json!("2026-02-01T00:00:00Z"))]),
+            result_with(
+                "a",
+                1.0,
+                &[("ts", serde_json::json!("2026-01-01T00:00:00Z"))],
+            ),
+            result_with(
+                "b",
+                1.0,
+                &[("ts", serde_json::json!("2026-03-01T00:00:00Z"))],
+            ),
+            result_with(
+                "c",
+                1.0,
+                &[("ts", serde_json::json!("2026-02-01T00:00:00Z"))],
+            ),
         ];
         sort_results(
             &mut rows,
@@ -2585,9 +2669,21 @@ mod tests {
     fn test_sort_results_multi_key() {
         // Primary asc on "g", tie broken by "n" desc.
         let mut rows = vec![
-            result_with("a", 1.0, &[("g", serde_json::json!(1)), ("n", serde_json::json!(1))]),
-            result_with("b", 1.0, &[("g", serde_json::json!(1)), ("n", serde_json::json!(9))]),
-            result_with("c", 1.0, &[("g", serde_json::json!(0)), ("n", serde_json::json!(5))]),
+            result_with(
+                "a",
+                1.0,
+                &[("g", serde_json::json!(1)), ("n", serde_json::json!(1))],
+            ),
+            result_with(
+                "b",
+                1.0,
+                &[("g", serde_json::json!(1)), ("n", serde_json::json!(9))],
+            ),
+            result_with(
+                "c",
+                1.0,
+                &[("g", serde_json::json!(0)), ("n", serde_json::json!(5))],
+            ),
         ];
         sort_results(
             &mut rows,

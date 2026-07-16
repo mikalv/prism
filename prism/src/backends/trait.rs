@@ -42,6 +42,11 @@ pub struct Query {
     pub skip_ranking: bool,
     /// Sort keys applied in order. Empty means score-descending (default).
     pub sort: Vec<SortField>,
+    /// Fields that must have a value (structured `exists` filter). Requires the
+    /// field to be a fast field.
+    pub exists_fields: Vec<String>,
+    /// Fields that must NOT have a value (negated `exists`).
+    pub not_exists_fields: Vec<String>,
 }
 
 /// Configuration for search result highlighting

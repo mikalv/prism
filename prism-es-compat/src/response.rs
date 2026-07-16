@@ -75,10 +75,7 @@ pub const TRACK_TOTAL_HITS_WINDOW: u64 = 10_000;
 /// the request's `track_total_hits`. Returns `relation: "eq"` when the count is
 /// exact, or `"gte"` (with the value clamped to the tracking limit) when there
 /// are more matching documents than were counted.
-fn total_hits(
-    backend_total: u64,
-    track: Option<&crate::query::TrackTotalHits>,
-) -> TotalHits {
+fn total_hits(backend_total: u64, track: Option<&crate::query::TrackTotalHits>) -> TotalHits {
     use crate::query::TrackTotalHits;
     let limit = match track {
         Some(TrackTotalHits::Count(n)) => (*n as u64).min(TRACK_TOTAL_HITS_WINDOW),
@@ -119,9 +116,10 @@ fn apply_source_filter(
         ),
         Some(SourceFilter::Object { includes, excludes }) => {
             let mut out: HashMap<String, Value> = match includes {
-                Some(inc) if !inc.is_empty() => {
-                    fields.into_iter().filter(|(k, _)| inc.contains(k)).collect()
-                }
+                Some(inc) if !inc.is_empty() => fields
+                    .into_iter()
+                    .filter(|(k, _)| inc.contains(k))
+                    .collect(),
                 _ => fields,
             };
             if let Some(exc) = excludes {
@@ -218,7 +216,11 @@ impl ResponseMapper {
         }
     }
 
-    fn map_hit(index: &str, result: SearchResult, source: Option<&crate::query::SourceFilter>) -> Hit {
+    fn map_hit(
+        index: &str,
+        result: SearchResult,
+        source: Option<&crate::query::SourceFilter>,
+    ) -> Hit {
         Hit {
             index: index.to_string(),
             id: result.id,

@@ -29,6 +29,10 @@ pub struct RpcQuery {
     pub skip_ranking: bool,
     #[serde(default)]
     pub sort: Vec<prism::backends::SortField>,
+    #[serde(default)]
+    pub exists_fields: Vec<String>,
+    #[serde(default)]
+    pub not_exists_fields: Vec<String>,
 }
 
 impl From<prism::backends::Query> for RpcQuery {
@@ -47,6 +51,8 @@ impl From<prism::backends::Query> for RpcQuery {
             score_function: q.score_function,
             skip_ranking: q.skip_ranking,
             sort: q.sort,
+            exists_fields: q.exists_fields,
+            not_exists_fields: q.not_exists_fields,
         }
     }
 }
@@ -67,6 +73,8 @@ impl From<RpcQuery> for prism::backends::Query {
             score_function: q.score_function,
             skip_ranking: q.skip_ranking,
             sort: q.sort,
+            exists_fields: q.exists_fields,
+            not_exists_fields: q.not_exists_fields,
         }
     }
 }
