@@ -595,9 +595,14 @@ impl SearchBackend for TextBackend {
             }
         };
 
-        let top_docs = searcher.search(
+        // Tantivy's TopDocs::with_limit panics if the limit is 0, so clamp the
+        // fetch size to at least 1. A `Count` collector runs alongside TopDocs so
+        // `total` reflects the true number of matching documents rather than the
+        // truncated page size.
+        let fetch_limit = query.limit.saturating_add(query.offset).max(1);
+        let (top_docs, total_hits) = searcher.search(
             &parsed_query,
-            &TopDocs::with_limit(query.limit + query.offset),
+            &(TopDocs::with_limit(fetch_limit), tantivy::collector::Count),
         )?;
 
         let id_field = coll.field_map.get("id").unwrap();
@@ -606,6 +611,10 @@ impl SearchBackend for TextBackend {
         for (rank, (score, doc_addr)) in top_docs.iter().enumerate() {
             if rank < query.offset {
                 continue;
+            }
+            // Respect the requested page size (query.limit == 0 => count only).
+            if results.len() >= query.limit {
+                break;
             }
 
             let doc: TantivyDocument = searcher.doc(*doc_addr)?;
@@ -720,7 +729,7 @@ impl SearchBackend for TextBackend {
             results
         };
 
-        let total = results.len();
+        let total = total_hits;
         let latency_ms = start.elapsed().as_millis() as u64;
 
         Ok(SearchResults {

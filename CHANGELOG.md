@@ -2,6 +2,14 @@
 
 All notable changes to Prism are documented in this file.
 
+## [Unreleased]
+
+### Fixes
+
+- **Correct `total` hit count** — text search now runs a `Count` collector alongside `TopDocs`, so `total` reflects the true number of matching documents instead of the truncated page size. Previously `limit=1` reported `total=1` for a query with hundreds of matches, breaking pagination and "N results" UIs (affected `/collections/:c/search`, `/api/search`, and ES-compat `hits.total`)
+- **`limit=0` no longer panics** — the Tantivy `TopDocs::with_limit` fetch size is clamped to at least 1 (it panics on 0), and the result loop respects the requested page size, so `{"limit":0}` / ES `{"size":0}` returns a count-only response instead of aborting the request. Also guards against `limit + offset` overflow via `saturating_add`
+- **`/api/search` honors the `collection` field** — the simple-search endpoint now searches the requested collection (404 if unknown) instead of always querying `list_collections().first()`, which was nondeterministic (HashMap order) and ignored the caller's `collection`
+
 ## [0.6.8] - 2026-03-15
 
 ### Performance

@@ -85,6 +85,11 @@ pub struct SimpleSearchRequest {
     pub query: String,
     #[serde(default = "default_simple_limit")]
     pub limit: usize,
+    /// Optional target collection. When omitted, the first registered
+    /// collection is used (legacy behavior). When present but unknown, the
+    /// handler returns 404 instead of silently searching a different one.
+    #[serde(default)]
+    pub collection: Option<String>,
 }
 
 fn default_simple_limit() -> usize {
@@ -241,7 +246,17 @@ pub async fn simple_search(
         }));
     }
 
-    let default_collection = collections.first().unwrap();
+    // Honor an explicit collection when provided; otherwise fall back to the
+    // first registered collection for backward compatibility.
+    let target_collection = match request.collection {
+        Some(ref name) => {
+            if !manager.collection_exists(name) {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            name.clone()
+        }
+        None => collections.first().unwrap().clone(),
+    };
 
     let query = Query {
         query_string: request.query,
@@ -259,7 +274,7 @@ pub async fn simple_search(
     };
 
     let results = manager
-        .search(default_collection, query, None)
+        .search(&target_collection, query, None)
         .await
         .map_err(|e| {
             tracing::error!("Simple search error: {:?}", e);
