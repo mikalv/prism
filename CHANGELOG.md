@@ -2,6 +2,12 @@
 
 All notable changes to Prism are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **ES-compat `_source` filtering** — the `_source` parameter is now honored on `_search` and `_msearch`. `_source: false` omits the `_source` key entirely; a field list (`_source: ["a", "b"]`) or object form (`{"includes": [...], "excludes": [...]}`) selects which stored fields are returned. Field names are matched exactly (dot-path and wildcard selection are not yet supported).
+
 ## [0.6.9] - 2026-07-16
 
 Elasticsearch-compatibility hardening: this release makes the `/_elastic`

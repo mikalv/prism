@@ -58,10 +58,44 @@ pub struct Hit {
     pub id: String,
     #[serde(rename = "_score")]
     pub score: Option<f32>,
-    #[serde(rename = "_source")]
-    pub source: HashMap<String, Value>,
+    // None when the request set `_source: false`, so the key is omitted entirely.
+    #[serde(rename = "_source", skip_serializing_if = "Option::is_none")]
+    pub source: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub highlight: Option<HashMap<String, Vec<String>>>,
+}
+
+/// Apply an ES `_source` filter to a hit's fields. Returns `None` when the
+/// source should be omitted entirely (`_source: false`). With no filter, all
+/// fields are returned. Field names are matched exactly (dot-path and wildcard
+/// selection are not yet supported).
+fn apply_source_filter(
+    fields: HashMap<String, Value>,
+    source: Option<&crate::query::SourceFilter>,
+) -> Option<HashMap<String, Value>> {
+    use crate::query::SourceFilter;
+    match source {
+        None | Some(SourceFilter::Bool(true)) => Some(fields),
+        Some(SourceFilter::Bool(false)) => None,
+        Some(SourceFilter::Fields(includes)) => Some(
+            fields
+                .into_iter()
+                .filter(|(k, _)| includes.contains(k))
+                .collect(),
+        ),
+        Some(SourceFilter::Object { includes, excludes }) => {
+            let mut out: HashMap<String, Value> = match includes {
+                Some(inc) if !inc.is_empty() => {
+                    fields.into_iter().filter(|(k, _)| inc.contains(k)).collect()
+                }
+                _ => fields,
+            };
+            if let Some(exc) = excludes {
+                out.retain(|k, _| !exc.contains(k));
+            }
+            Some(out)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,12 +143,23 @@ impl ResponseMapper {
         results: SearchResultsWithAggs,
         took_ms: u64,
     ) -> EsSearchResponse {
+        Self::map_search_results_with_source(index, results, took_ms, None)
+    }
+
+    /// Like [`map_search_results`], but applies an ES `_source` include/exclude
+    /// filter to each hit's `_source`.
+    pub fn map_search_results_with_source(
+        index: &str,
+        results: SearchResultsWithAggs,
+        took_ms: u64,
+        source: Option<&crate::query::SourceFilter>,
+    ) -> EsSearchResponse {
         let max_score = results.results.first().map(|r| r.score);
 
         let hits: Vec<Hit> = results
             .results
             .into_iter()
-            .map(|r| Self::map_hit(index, r))
+            .map(|r| Self::map_hit(index, r, source))
             .collect();
 
         let aggregations = if results.aggregations.is_empty() {
@@ -139,12 +184,12 @@ impl ResponseMapper {
         }
     }
 
-    fn map_hit(index: &str, result: SearchResult) -> Hit {
+    fn map_hit(index: &str, result: SearchResult, source: Option<&crate::query::SourceFilter>) -> Hit {
         Hit {
             index: index.to_string(),
             id: result.id,
             score: Some(result.score),
-            source: result.fields,
+            source: apply_source_filter(result.fields, source),
             highlight: result.highlight,
         }
     }
@@ -450,10 +495,71 @@ pub struct EsCountResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query::SourceFilter;
     use prism::aggregations::{
         AggregationResult, AggregationValue, Bucket, PercentilesResult, StatsResult,
     };
     use prism::backends::{SearchResult, SearchResultsWithAggs};
+
+    fn sample_fields() -> HashMap<String, Value> {
+        let mut m = HashMap::new();
+        m.insert("title".to_string(), Value::String("hi".to_string()));
+        m.insert("body".to_string(), Value::String("text".to_string()));
+        m.insert("ts".to_string(), Value::String("2026".to_string()));
+        m
+    }
+
+    #[test]
+    fn test_source_filter_none_returns_all() {
+        let out = apply_source_filter(sample_fields(), None).unwrap();
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn test_source_filter_false_omits_source() {
+        let out = apply_source_filter(sample_fields(), Some(&SourceFilter::Bool(false)));
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn test_source_filter_true_returns_all() {
+        let out = apply_source_filter(sample_fields(), Some(&SourceFilter::Bool(true))).unwrap();
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn test_source_filter_includes_list() {
+        let filter = SourceFilter::Fields(vec!["title".to_string(), "ts".to_string()]);
+        let out = apply_source_filter(sample_fields(), Some(&filter)).unwrap();
+        let mut keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["title", "ts"]);
+    }
+
+    #[test]
+    fn test_source_filter_object_includes_and_excludes() {
+        // includes wins the base set, then excludes are removed.
+        let filter = SourceFilter::Object {
+            includes: Some(vec!["title".to_string(), "body".to_string()]),
+            excludes: Some(vec!["body".to_string()]),
+        };
+        let out = apply_source_filter(sample_fields(), Some(&filter)).unwrap();
+        let keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
+        assert_eq!(keys, vec!["title"]);
+    }
+
+    #[test]
+    fn test_source_filter_object_excludes_only() {
+        // No includes => start from all fields, remove excludes.
+        let filter = SourceFilter::Object {
+            includes: None,
+            excludes: Some(vec!["ts".to_string()]),
+        };
+        let out = apply_source_filter(sample_fields(), Some(&filter)).unwrap();
+        let mut keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["body", "title"]);
+    }
 
     // ===================================================================
     // ShardStats default
@@ -563,7 +669,7 @@ mod tests {
         assert_eq!(hit0.id, "id1");
         assert_eq!(hit0.score, Some(1.5));
         assert_eq!(
-            hit0.source.get("title"),
+            hit0.source.as_ref().unwrap().get("title"),
             Some(&Value::String("doc1".to_string()))
         );
         assert!(hit0.highlight.is_none());
@@ -934,11 +1040,11 @@ mod tests {
                     index: "test".to_string(),
                     id: "1".to_string(),
                     score: Some(1.0),
-                    source: {
+                    source: Some({
                         let mut m = HashMap::new();
                         m.insert("title".to_string(), Value::String("doc".to_string()));
                         m
-                    },
+                    }),
                     highlight: None,
                 }],
             },

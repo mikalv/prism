@@ -207,7 +207,11 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 - `sort` sorts over the first `index.max_result_window` (10,000) matching
   documents — exact when the match count is within that window, matching ES's
   own deep-sort limit. Sorting on a field reads its stored value; missing values
-  sort last. `_source` filtering is accepted but not yet applied.
+  sort last.
+- `_source` filtering is applied: `_source: false` omits the source, a field
+  list (`_source: ["a","b"]`) or `{"includes": [...], "excludes": [...]}` selects
+  fields. Names are matched exactly (dot-path/wildcard selection not yet
+  supported).
 
 ## See Also
 

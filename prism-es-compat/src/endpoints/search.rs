@@ -74,8 +74,13 @@ pub async fn search_handler(
 
     let took_ms = start.elapsed().as_millis() as u64;
 
-    // Map to ES response format
-    let response = ResponseMapper::map_search_results(&index_name, results, took_ms);
+    // Map to ES response format, applying any `_source` include/exclude filter.
+    let response = ResponseMapper::map_search_results_with_source(
+        &index_name,
+        results,
+        took_ms,
+        request.source.as_ref(),
+    );
 
     Ok(Json(response))
 }

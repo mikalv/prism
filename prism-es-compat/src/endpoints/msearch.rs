@@ -156,7 +156,12 @@ async fn execute_single_search(
     };
 
     let took_ms = start.elapsed().as_millis() as u64;
-    let response = ResponseMapper::map_search_results(&index_name, results, took_ms);
+    let response = ResponseMapper::map_search_results_with_source(
+        &index_name,
+        results,
+        took_ms,
+        request.source.as_ref(),
+    );
     EsMSearchItem::Success(response)
 }
 
