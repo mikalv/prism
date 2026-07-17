@@ -14,9 +14,37 @@ fn extract_collection(path: &str) -> Option<&str> {
     path.split('/').next()
 }
 
+/// Whether a path is an administrative endpoint requiring the Admin permission.
+/// Covers both `/admin/*` and `/_admin/*` — the latter hosts the most
+/// destructive operations (encrypted export/import, detach/attach, key
+/// generation) and was previously left ungated (any authenticated key).
+fn is_admin_path(path: &str) -> bool {
+    path.starts_with("/admin/") || path.starts_with("/_admin/")
+}
+
+/// Decide whether an authenticated user may perform this request.
+///
+/// - `/collections/:c/...` → collection-scoped permission for the method.
+/// - `/admin/*` and `/_admin/*` → global (`*`) Admin permission.
+/// - anything else → authentication alone suffices.
+fn is_authorized(
+    checker: &PermissionChecker,
+    user: &super::types::AuthUser,
+    method: &axum::http::Method,
+    path: &str,
+) -> bool {
+    if let Some(collection) = extract_collection(path) {
+        checker.check_permission(user, collection, required_permission(method, path))
+    } else if is_admin_path(path) {
+        checker.check_permission(user, "*", Permission::Admin)
+    } else {
+        true
+    }
+}
+
 /// Determine required permission from HTTP method and path
 fn required_permission(method: &axum::http::Method, path: &str) -> Permission {
-    if path.starts_with("/admin/") {
+    if is_admin_path(path) {
         return Permission::Admin;
     }
 
@@ -70,15 +98,8 @@ pub async fn auth_middleware(
         None => return Err(StatusCode::UNAUTHORIZED),
     };
 
-    // Check collection-level permission
-    if let Some(collection) = extract_collection(&path) {
-        let perm = required_permission(&method, &path);
-        if !checker.check_permission(&user, collection, perm) {
-            return Err(StatusCode::FORBIDDEN);
-        }
-    } else if path.starts_with("/admin/")
-        && !checker.check_permission(&user, "*", Permission::Admin)
-    {
+    // Check authorization (collection-scoped or admin, per the path).
+    if !is_authorized(&checker, &user, &method, &path) {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -122,15 +143,8 @@ pub async fn auth_middleware_dynamic(
         None => return Err(StatusCode::UNAUTHORIZED),
     };
 
-    // Check collection-level permission
-    if let Some(collection) = extract_collection(&path) {
-        let perm = required_permission(&method, &path);
-        if !checker.check_permission(&user, collection, perm) {
-            return Err(StatusCode::FORBIDDEN);
-        }
-    } else if path.starts_with("/admin/")
-        && !checker.check_permission(&user, "*", Permission::Admin)
-    {
+    // Check authorization (collection-scoped or admin, per the path).
+    if !is_authorized(&checker, &user, &method, &path) {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -139,4 +153,94 @@ pub async fn auth_middleware_dynamic(
     request.extensions_mut().insert(user);
 
     Ok(next.run(request).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ApiKeyConfig, RoleConfig, SecurityConfig};
+    use crate::security::types::AuthUser;
+    use std::collections::HashMap;
+
+    fn checker_with_role(role: &str, patterns: &[(&str, &[&str])]) -> PermissionChecker {
+        let mut collections = HashMap::new();
+        for (pat, perms) in patterns {
+            collections.insert(
+                pat.to_string(),
+                perms.iter().map(|p| p.to_string()).collect(),
+            );
+        }
+        let mut roles = HashMap::new();
+        roles.insert(role.to_string(), RoleConfig { collections });
+        let config = SecurityConfig {
+            enabled: true,
+            api_keys: vec![ApiKeyConfig {
+                key: "k".to_string(),
+                name: "u".to_string(),
+                roles: vec![role.to_string()],
+            }],
+            roles,
+            audit: Default::default(),
+        };
+        PermissionChecker::new(&config)
+    }
+
+    fn user(role: &str) -> AuthUser {
+        AuthUser {
+            name: "u".to_string(),
+            roles: vec![role.to_string()],
+            key_prefix: "k".to_string(),
+        }
+    }
+
+    #[test]
+    fn admin_paths_require_admin_permission() {
+        assert!(is_admin_path("/admin/collections"));
+        assert!(is_admin_path("/_admin/export/encrypted"));
+        assert!(is_admin_path("/_admin/collections/foo/detach"));
+        assert!(!is_admin_path("/collections/foo/search"));
+        assert_eq!(
+            required_permission(&axum::http::Method::POST, "/_admin/export/encrypted"),
+            Permission::Admin
+        );
+    }
+
+    #[test]
+    fn non_admin_key_is_denied_on_underscore_admin_routes() {
+        // Regression: /_admin/* was only authentication-gated. A read-only key
+        // on all collections must NOT reach these destructive endpoints.
+        let checker = checker_with_role("reader", &[("*", &["read", "search"])]);
+        let u = user("reader");
+        for path in [
+            "/_admin/export/encrypted",
+            "/_admin/import/encrypted",
+            "/_admin/encryption/generate-key",
+            "/_admin/collections/secret/detach",
+            "/admin/collections",
+        ] {
+            assert!(
+                !is_authorized(&checker, &u, &axum::http::Method::POST, path),
+                "reader must be denied on admin route {path}"
+            );
+        }
+        // Its allowed collection access still works.
+        assert!(is_authorized(
+            &checker,
+            &u,
+            &axum::http::Method::POST,
+            "/collections/logs/search"
+        ));
+    }
+
+    #[test]
+    fn admin_key_is_allowed_on_underscore_admin_routes() {
+        let checker = checker_with_role("root", &[("*", &["admin"])]);
+        let u = user("root");
+        assert!(is_authorized(
+            &checker,
+            &u,
+            &axum::http::Method::POST,
+            "/_admin/export/encrypted"
+        ));
+    }
 }

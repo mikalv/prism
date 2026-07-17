@@ -4,6 +4,10 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **`/_admin/*` endpoints now require the Admin permission** — the auth middleware only gated `/admin/*` (no underscore), so the `/_admin/*` administrative endpoints (encrypted export/import, collection detach/attach, encryption-key generation) were reachable by any authenticated API key regardless of role. When security is enabled, these now require the global Admin permission like `/admin/*`. The permission-check logic was also deduplicated into a single tested helper shared by both middleware variants.
+
 ### Fixes
 
 - **`DELETE /collections/:name` now deletes on-disk data** — previously the endpoint only unloaded the collection from memory and removed its schema file, leaving the index data on disk. Recreating a collection with the same name resurrected the supposedly-deleted documents. The endpoint now purges the collection's data directory by default (matching Elasticsearch's `DELETE /index`); pass `?delete_data=false` to unload while keeping the data. The vector backend also no longer re-saves its index when a collection is removed (which had reinforced the resurrection), and the `detach` API's data-deletion path — which pointed at a non-existent `collections/` subdirectory and silently deleted nothing — now removes the correct directory.
