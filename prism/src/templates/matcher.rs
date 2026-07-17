@@ -58,7 +58,7 @@ impl TemplateMatcher {
             .collect();
 
         // Sort by priority (highest first)
-        matches.sort_by(|a, b| b.template.priority.cmp(&a.template.priority));
+        matches.sort_by_key(|m| std::cmp::Reverse(m.template.priority));
 
         matches
     }

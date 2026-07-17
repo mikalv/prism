@@ -1532,7 +1532,7 @@ fn execute_single_agg(
                     *counts.entry(n.to_string()).or_insert(0) += 1;
                 }
                 let mut bucket_vec: Vec<_> = counts.into_iter().collect();
-                bucket_vec.sort_by(|a, b| b.1.cmp(&a.1));
+                bucket_vec.sort_by_key(|b| std::cmp::Reverse(b.1));
                 let buckets: Vec<Bucket> = bucket_vec
                     .into_iter()
                     .take(size)
@@ -1552,7 +1552,7 @@ fn execute_single_agg(
                     .iter()
                     .map(|(k, addrs)| (k.clone(), addrs.len() as u64, addrs.clone()))
                     .collect();
-                bucket_vec.sort_by(|a, b| b.1.cmp(&a.1));
+                bucket_vec.sort_by_key(|b| std::cmp::Reverse(b.1));
                 bucket_vec.truncate(size);
 
                 let mut buckets = Vec::new();
@@ -2182,7 +2182,7 @@ impl TextBackend {
 
         // Sort by frequency and take top-k
         let mut terms: Vec<_> = term_counts.into_iter().collect();
-        terms.sort_by(|a, b| b.1.cmp(&a.1));
+        terms.sort_by_key(|t| std::cmp::Reverse(t.1));
 
         Ok(terms
             .into_iter()
@@ -2775,7 +2775,7 @@ impl TextBackend {
                 total_bytes: td + post + pos + ff,
             })
             .collect();
-        fields.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+        fields.sort_by_key(|f| std::cmp::Reverse(f.total_bytes));
 
         Ok(CollectionSpaceUsage {
             collection: collection.to_string(),

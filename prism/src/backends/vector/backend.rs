@@ -420,7 +420,7 @@ impl SearchBackend for VectorBackend {
                     match provider.embed_batch(&texts).await {
                         Ok(embeddings) => {
                             for ((doc_idx, _), embedding) in
-                                texts_to_embed.iter().zip(embeddings.into_iter())
+                                texts_to_embed.iter().zip(embeddings)
                             {
                                 docs[*doc_idx].fields.insert(
                                     target_field.clone(),

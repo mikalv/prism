@@ -16,7 +16,7 @@ pub fn aggregate_terms(field_values: Vec<String>, size: usize) -> AggregationRes
         .map(|(key, count)| Bucket { key, count })
         .collect();
 
-    buckets.sort_by(|a, b| b.count.cmp(&a.count));
+    buckets.sort_by_key(|b| std::cmp::Reverse(b.count));
     buckets.truncate(size);
 
     AggregationResult {

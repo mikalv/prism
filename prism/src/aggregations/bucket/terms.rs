@@ -112,7 +112,7 @@ impl TermsAgg {
             }
         }
 
-        buckets.sort_by(|a, b| b.doc_count.cmp(&a.doc_count));
+        buckets.sort_by_key(|b| std::cmp::Reverse(b.doc_count));
 
         AggregationResult {
             name,
