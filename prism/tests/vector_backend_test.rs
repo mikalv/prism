@@ -185,21 +185,17 @@ async fn test_search_offset_paginates() {
 
     // Three docs at increasing angle from the query vector [1,0]:
     // d1 exactly matches, d2 closer than d3.
-    let docs: Vec<Document> = [
-        ("d1", [1.0, 0.0]),
-        ("d2", [0.92, 0.39]),
-        ("d3", [0.0, 1.0]),
-    ]
-    .into_iter()
-    .map(|(id, v)| {
-        let mut f = HashMap::new();
-        f.insert("embedding".to_string(), serde_json::json!(v));
-        Document {
-            id: id.to_string(),
-            fields: f,
-        }
-    })
-    .collect();
+    let docs: Vec<Document> = [("d1", [1.0, 0.0]), ("d2", [0.92, 0.39]), ("d3", [0.0, 1.0])]
+        .into_iter()
+        .map(|(id, v)| {
+            let mut f = HashMap::new();
+            f.insert("embedding".to_string(), serde_json::json!(v));
+            Document {
+                id: id.to_string(),
+                fields: f,
+            }
+        })
+        .collect();
     SearchBackend::index(&backend, "pg", docs).await.unwrap();
 
     let q = serde_json::to_string(&vec![1.0f32, 0.0]).unwrap();
@@ -222,7 +218,9 @@ async fn test_search_offset_paginates() {
     };
 
     // offset 0 -> nearest (d1)
-    let page0 = SearchBackend::search(&backend, "pg", base.clone()).await.unwrap();
+    let page0 = SearchBackend::search(&backend, "pg", base.clone())
+        .await
+        .unwrap();
     assert_eq!(page0.results.len(), 1);
     assert_eq!(page0.results[0].id, "d1");
 

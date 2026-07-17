@@ -296,6 +296,9 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
         };
 
         let decision = router.route("products", &query).unwrap();
@@ -341,6 +344,9 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
         };
 
         let decision = router.route("products", &query).unwrap();
@@ -396,6 +402,9 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
         };
         let decision = router.route("products", &query).unwrap();
         assert_eq!(decision.targets.len(), 3);

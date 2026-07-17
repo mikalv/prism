@@ -615,6 +615,9 @@ mod tests {
             min_score: Some(0.5),
             score_function: Some("bm25".into()),
             skip_ranking: true,
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
         };
 
         let rpc: RpcQuery = query.clone().into();
@@ -649,6 +652,9 @@ mod tests {
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
         };
 
         let rpc: RpcQuery = query.into();
@@ -799,6 +805,9 @@ mod tests {
                 min_score: None,
                 score_function: None,
                 skip_ranking: false,
+                sort: Vec::new(),
+                exists_fields: Vec::new(),
+                not_exists_fields: Vec::new(),
             },
             max_docs: 0,
             dry_run: true,
@@ -842,6 +851,9 @@ mod tests {
                 min_score: None,
                 score_function: None,
                 skip_ranking: false,
+                sort: Vec::new(),
+                exists_fields: Vec::new(),
+                not_exists_fields: Vec::new(),
             },
             source_node: Some("node-1:9100".into()),
             batch_size: 500,

@@ -512,9 +512,7 @@ async fn main() -> Result<()> {
         extension_router = extension_router
             .route(
                 "/_elastic/",
-                axum::routing::get(|| async {
-                    axum::response::Redirect::permanent("/_elastic")
-                }),
+                axum::routing::get(|| async { axum::response::Redirect::permanent("/_elastic") }),
             )
             .nest(
                 "/_elastic",

@@ -233,10 +233,7 @@ async fn test_collector_sort_paginates() {
     let (_tmp, backend) = setup().await;
     for (i, c) in [50, 40, 30, 20, 10].iter().enumerate() {
         backend
-            .index(
-                "test",
-                vec![doc_with_count(&format!("d{i}"), "T", *c)],
-            )
+            .index("test", vec![doc_with_count(&format!("d{i}"), "T", *c)])
             .await
             .unwrap();
     }

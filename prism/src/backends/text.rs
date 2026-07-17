@@ -1321,7 +1321,13 @@ impl SearchBackend for TextBackend {
             let full_docs: std::collections::HashSet<tantivy::DocAddress> =
                 searcher.search(&parsed_query, &tantivy::collector::DocSetCollector)?;
             let doc_addrs: Vec<tantivy::DocAddress> = full_docs.into_iter().collect();
-            execute_aggregations(&searcher, coll, &searchable_fields, &doc_addrs, &aggregations)?
+            execute_aggregations(
+                &searcher,
+                coll,
+                &searchable_fields,
+                &doc_addrs,
+                &aggregations,
+            )?
         };
 
         let total = all_docs.len() as u64;

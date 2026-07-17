@@ -101,10 +101,9 @@ impl EsCompatError {
     fn exposes_message(&self) -> bool {
         match self {
             Self::Internal(_) => false,
-            Self::PrismError(e) => matches!(
-                e,
-                prism::Error::InvalidQuery(_) | prism::Error::Schema(_)
-            ),
+            Self::PrismError(e) => {
+                matches!(e, prism::Error::InvalidQuery(_) | prism::Error::Schema(_))
+            }
             _ => true,
         }
     }
