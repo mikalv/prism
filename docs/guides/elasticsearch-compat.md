@@ -223,8 +223,9 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
   tracking limit (exact tracking beyond 10,000 is not yet supported).
 - `_source` filtering is applied: `_source: false` omits the source, a field
   list (`_source: ["a","b"]`) or `{"includes": [...], "excludes": [...]}` selects
-  fields. Names are matched exactly (dot-path/wildcard selection not yet
-  supported).
+  fields. Include/exclude patterns support `*` wildcards (e.g. `"*"`, `"user.*"`,
+  `"_*"`, `"*_id"`); dotted names match flat field names literally, since Prism
+  stores fields flat (no nested objects).
 
 ## See Also
 

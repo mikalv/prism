@@ -96,10 +96,47 @@ fn total_hits(backend_total: u64, track: Option<&crate::query::TrackTotalHits>) 
     }
 }
 
+/// Match a field name against an ES `_source` pattern. Patterns support `*` as a
+/// wildcard for any (possibly empty) sequence of characters (e.g. `*`, `user.*`,
+/// `_*`, `*_id`); a pattern with no `*` matches exactly. Dotted names are treated
+/// as literal characters, so `user.*` selects flat fields like `user.name`.
+fn source_pattern_matches(pattern: &str, field: &str) -> bool {
+    if !pattern.contains('*') {
+        return pattern == field;
+    }
+    // Anchored glob match with `*` = any run of characters.
+    let parts: Vec<&str> = pattern.split('*').collect();
+    let mut pos = 0usize;
+    for (i, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        if i == 0 {
+            // Leading literal must be a prefix.
+            if !field[pos..].starts_with(part) {
+                return false;
+            }
+            pos += part.len();
+        } else if i == parts.len() - 1 {
+            // Trailing literal must be a suffix (at or after the current pos).
+            return field[pos..].ends_with(part);
+        } else if let Some(idx) = field[pos..].find(part) {
+            pos += idx + part.len();
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+fn matches_any(patterns: &[String], field: &str) -> bool {
+    patterns.iter().any(|p| source_pattern_matches(p, field))
+}
+
 /// Apply an ES `_source` filter to a hit's fields. Returns `None` when the
 /// source should be omitted entirely (`_source: false`). With no filter, all
-/// fields are returned. Field names are matched exactly (dot-path and wildcard
-/// selection are not yet supported).
+/// fields are returned. Include/exclude patterns support `*` wildcards; names
+/// with dots are matched as literal flat field names (Prism fields are flat).
 fn apply_source_filter(
     fields: HashMap<String, Value>,
     source: Option<&crate::query::SourceFilter>,
@@ -111,19 +148,19 @@ fn apply_source_filter(
         Some(SourceFilter::Fields(includes)) => Some(
             fields
                 .into_iter()
-                .filter(|(k, _)| includes.contains(k))
+                .filter(|(k, _)| matches_any(includes, k))
                 .collect(),
         ),
         Some(SourceFilter::Object { includes, excludes }) => {
             let mut out: HashMap<String, Value> = match includes {
                 Some(inc) if !inc.is_empty() => fields
                     .into_iter()
-                    .filter(|(k, _)| inc.contains(k))
+                    .filter(|(k, _)| matches_any(inc, k))
                     .collect(),
                 _ => fields,
             };
             if let Some(exc) = excludes {
-                out.retain(|k, _| !exc.contains(k));
+                out.retain(|k, _| !matches_any(exc, k));
             }
             Some(out)
         }
@@ -631,6 +668,82 @@ mod tests {
         let mut keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
         keys.sort();
         assert_eq!(keys, vec!["body", "title"]);
+    }
+
+    fn dotted_fields() -> HashMap<String, Value> {
+        let mut m = HashMap::new();
+        m.insert("content".to_string(), Value::String("c".to_string()));
+        m.insert("user.name".to_string(), Value::String("n".to_string()));
+        m.insert("user.age".to_string(), Value::String("a".to_string()));
+        m.insert("_indexed_at".to_string(), Value::String("t".to_string()));
+        m
+    }
+
+    #[test]
+    fn test_source_filter_wildcard_star_includes_all() {
+        let filter = SourceFilter::Fields(vec!["*".to_string()]);
+        let out = apply_source_filter(dotted_fields(), Some(&filter)).unwrap();
+        assert_eq!(out.len(), 4);
+    }
+
+    #[test]
+    fn test_source_filter_prefix_wildcard() {
+        // "user.*" selects the dotted sub-fields, not `content`.
+        let filter = SourceFilter::Fields(vec!["user.*".to_string()]);
+        let out = apply_source_filter(dotted_fields(), Some(&filter)).unwrap();
+        let mut keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["user.age", "user.name"]);
+    }
+
+    #[test]
+    fn test_source_filter_exclude_wildcard() {
+        // Drop internal fields with a leading-underscore pattern.
+        let filter = SourceFilter::Object {
+            includes: None,
+            excludes: Some(vec!["_*".to_string()]),
+        };
+        let out = apply_source_filter(dotted_fields(), Some(&filter)).unwrap();
+        assert!(!out.contains_key("_indexed_at"));
+        assert!(out.contains_key("content"));
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn test_source_filter_include_and_exclude_wildcards() {
+        // Include everything, then drop the user.* sub-fields.
+        let filter = SourceFilter::Object {
+            includes: Some(vec!["*".to_string()]),
+            excludes: Some(vec!["user.*".to_string()]),
+        };
+        let out = apply_source_filter(dotted_fields(), Some(&filter)).unwrap();
+        let mut keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["_indexed_at", "content"]);
+    }
+
+    #[test]
+    fn test_source_filter_exact_still_works() {
+        // A literal name with no wildcard still matches exactly.
+        let filter = SourceFilter::Fields(vec!["content".to_string()]);
+        let out = apply_source_filter(dotted_fields(), Some(&filter)).unwrap();
+        let keys: Vec<&str> = out.keys().map(|s| s.as_str()).collect();
+        assert_eq!(keys, vec!["content"]);
+    }
+
+    #[test]
+    fn test_source_pattern_matches_variants() {
+        assert!(source_pattern_matches("*", "anything"));
+        assert!(source_pattern_matches("user.*", "user.name"));
+        assert!(!source_pattern_matches("user.*", "content"));
+        assert!(source_pattern_matches("*_id", "session_id"));
+        assert!(!source_pattern_matches("*_id", "session"));
+        assert!(source_pattern_matches("a*c", "abc"));
+        assert!(source_pattern_matches("a*c", "ac"));
+        assert!(!source_pattern_matches("a*c", "ab"));
+        // No wildcard → exact match.
+        assert!(source_pattern_matches("role", "role"));
+        assert!(!source_pattern_matches("rol", "role"));
     }
 
     // ===================================================================

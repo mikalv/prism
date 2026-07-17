@@ -4,6 +4,10 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **ES-compat `_source` wildcard patterns** — `_source` include/exclude entries now support `*` wildcards (`"*"`, `"user.*"`, `"_*"`, `"*_id"`, `"a*c"`) in addition to exact names, so requests can select or drop groups of fields (e.g. `{"excludes": ["_*"]}` to hide internal fields). Dotted names match flat field names literally, since Prism stores fields flat.
+
 ### Security
 
 - **`/_admin/*` endpoints now require the Admin permission** — the auth middleware only gated `/admin/*` (no underscore), so the `/_admin/*` administrative endpoints (encrypted export/import, collection detach/attach, encryption-key generation) were reachable by any authenticated API key regardless of role. When security is enabled, these now require the global Admin permission like `/admin/*`. The permission-check logic was also deduplicated into a single tested helper shared by both middleware variants.
