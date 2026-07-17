@@ -419,9 +419,7 @@ impl SearchBackend for VectorBackend {
 
                     match provider.embed_batch(&texts).await {
                         Ok(embeddings) => {
-                            for ((doc_idx, _), embedding) in
-                                texts_to_embed.iter().zip(embeddings)
-                            {
+                            for ((doc_idx, _), embedding) in texts_to_embed.iter().zip(embeddings) {
                                 docs[*doc_idx].fields.insert(
                                     target_field.clone(),
                                     serde_json::to_value(&embedding).unwrap(),

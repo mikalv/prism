@@ -238,8 +238,8 @@ impl RebalanceEngine {
         }
 
         // Estimate duration based on bandwidth limit
-        if self.config.max_bytes_per_sec > 0 {
-            plan.estimated_duration_secs = plan.total_bytes / self.config.max_bytes_per_sec;
+        if let Some(dur) = plan.total_bytes.checked_div(self.config.max_bytes_per_sec) {
+            plan.estimated_duration_secs = dur;
         }
 
         Ok(plan)
