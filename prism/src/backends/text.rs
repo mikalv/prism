@@ -386,9 +386,34 @@ impl TextBackend {
     /// also need `SegmentStorage::delete_prefix`; the local buffer directory is
     /// removed here.
     pub fn delete_collection_data(&self, name: &str) -> Result<()> {
+        // Defense in depth: this recursively deletes a directory, so validate the
+        // name as a safe single path component regardless of upstream checks. The
+        // alphanumeric/`-`/`_` charset rejects separators, `.`/`..`, and NUL.
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(Error::Storage(format!(
+                "refusing to delete data for invalid collection name '{}'",
+                name
+            )));
+        }
+
         let dir = self.base_path.join(name);
         if dir.exists() {
-            std::fs::remove_dir_all(&dir).map_err(|e| {
+            // Belt and suspenders: confirm the resolved path stays inside
+            // base_path (also catches symlink escapes) before removing it.
+            let base = std::fs::canonicalize(&self.base_path)
+                .map_err(|e| Error::Storage(e.to_string()))?;
+            let target = std::fs::canonicalize(&dir).map_err(|e| Error::Storage(e.to_string()))?;
+            if !target.starts_with(&base) {
+                return Err(Error::Storage(format!(
+                    "refusing to delete '{}' outside the data directory",
+                    name
+                )));
+            }
+            std::fs::remove_dir_all(&target).map_err(|e| {
                 Error::Storage(format!(
                     "failed to delete data directory for collection '{}': {}",
                     name, e

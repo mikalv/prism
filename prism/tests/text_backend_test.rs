@@ -1661,6 +1661,18 @@ async fn test_delete_collection_data_prevents_resurrection() {
 }
 
 #[tokio::test]
+async fn test_delete_collection_data_rejects_traversal() {
+    let (_tmp, backend) = setup().await;
+    // Path-traversal / separator / dot names must be refused, not deleted.
+    for bad in ["..", "../evil", "a/b", "a\\b", ".", "", "a b"] {
+        assert!(
+            backend.delete_collection_data(bad).is_err(),
+            "delete_collection_data must reject unsafe name {bad:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_multiple_collections() {
     let tmp = TempDir::new().unwrap();
     let backend = TextBackend::new(tmp.path()).unwrap();
