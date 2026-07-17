@@ -4,6 +4,11 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+### Fixes
+
+- **Vector search now honors `offset`** — kNN/vector pagination previously ignored `offset` (every page returned the same top results). The backend now fetches `offset + limit` candidates and skips `offset`, so paginated vector and hybrid queries return distinct pages.
+- **Aggregations are exact beyond the 10k window** — aggregation buckets and metrics were computed over only the top-10,000 documents used for hits. They now run over the full matching document set (via a `DocSetCollector`, only when aggregations are requested), so counts, sums, terms buckets, etc. are correct regardless of match count.
+
 ### Added
 
 - **ES-compat `_source` wildcard patterns** — `_source` include/exclude entries now support `*` wildcards (`"*"`, `"user.*"`, `"_*"`, `"*_id"`, `"a*c"`) in addition to exact names, so requests can select or drop groups of fields (e.g. `{"excludes": ["_*"]}` to hide internal fields). Dotted names match flat field names literally, since Prism stores fields flat.

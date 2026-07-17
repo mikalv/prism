@@ -501,11 +501,14 @@ impl SearchBackend for VectorBackend {
             )));
         }
 
-        // Fan out search to all shards with oversample factor
+        // Fan out to all shards, fetching enough to cover the requested page
+        // (offset + limit) so pagination works. Sharded searches oversample so
+        // the merged top-N is accurate.
+        let wanted = query.offset.saturating_add(query.limit).max(1);
         let oversample_k = if sharded.num_shards > 1 {
-            ((query.limit as f32) * sharded.shard_oversample).ceil() as usize
+            ((wanted as f32) * sharded.shard_oversample).ceil() as usize
         } else {
-            query.limit
+            wanted
         };
 
         let mut all_results = Vec::new();
@@ -514,24 +517,31 @@ impl SearchBackend for VectorBackend {
             all_results.extend(shard_results);
         }
 
-        // Merge results by score (descending), take top-k
+        // Merge results by score (descending).
         all_results.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Dedup by id
+        // Dedup by id.
         let mut seen = std::collections::HashSet::new();
         all_results.retain(|r| seen.insert(r.id.clone()));
 
-        all_results.truncate(query.limit);
-
-        let latency_ms = start.elapsed().as_millis() as u64;
+        // `total` reflects the retrieved candidate set (kNN has no exact total).
         let total = all_results.len();
 
+        // Apply pagination.
+        let results: Vec<_> = all_results
+            .into_iter()
+            .skip(query.offset)
+            .take(query.limit)
+            .collect();
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+
         Ok(SearchResults {
-            results: all_results,
+            results,
             total,
             latency_ms,
         })

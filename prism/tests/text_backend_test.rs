@@ -813,6 +813,35 @@ async fn test_agg_count() {
 }
 
 #[tokio::test]
+async fn test_agg_covers_all_matches_regardless_of_hit_limit() {
+    // Aggregations run over the full match set, not the returned hit page:
+    // with limit=1 only one hit comes back, but the count must still be 5.
+    let (_tmp, backend) = setup_agg_data().await;
+
+    let mut query = match_all_query();
+    query.limit = 1;
+    let result = backend
+        .search_with_aggs(
+            "test",
+            &query,
+            vec![AggregationRequest {
+                name: "total".to_string(),
+                agg_type: AggregationType::Count,
+                aggs: None,
+            }],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.results.len(), 1, "only one hit is paged in");
+    let agg = result.aggregations.get("total").unwrap();
+    match &agg.value {
+        AggregationValue::Single(v) => assert_eq!(*v as u64, 5, "agg counts all matches"),
+        _ => panic!("Expected Single value"),
+    }
+}
+
+#[tokio::test]
 async fn test_agg_sum() {
     let (_tmp, backend) = setup_agg_data().await;
 

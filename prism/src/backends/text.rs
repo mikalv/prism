@@ -1311,17 +1311,18 @@ impl SearchBackend for TextBackend {
                 .collect();
         }
 
-        // Collect all doc addresses for aggregation processing
-        let doc_addrs: Vec<tantivy::DocAddress> = all_docs.iter().map(|(_s, addr)| *addr).collect();
-
-        // Run aggregations
-        let agg_results = execute_aggregations(
-            &searcher,
-            coll,
-            &searchable_fields,
-            &doc_addrs,
-            &aggregations,
-        )?;
+        // Aggregations run over ALL matching documents, not just the top-N used
+        // for hits. A DocSetCollector gathers the full match set (only when
+        // aggregations are requested, to avoid the cost otherwise), so counts and
+        // buckets are exact even beyond the SORT_SCAN_CAP hit window.
+        let agg_results = if aggregations.is_empty() {
+            HashMap::new()
+        } else {
+            let full_docs: std::collections::HashSet<tantivy::DocAddress> =
+                searcher.search(&parsed_query, &tantivy::collector::DocSetCollector)?;
+            let doc_addrs: Vec<tantivy::DocAddress> = full_docs.into_iter().collect();
+            execute_aggregations(&searcher, coll, &searchable_fields, &doc_addrs, &aggregations)?
+        };
 
         let total = all_docs.len() as u64;
 
