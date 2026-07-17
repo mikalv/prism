@@ -37,6 +37,9 @@ fn make_query(query_string: &str, limit: usize) -> Query {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     }
 }
 

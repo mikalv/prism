@@ -157,10 +157,130 @@ fn combine_with_exists(
     Ok(Box::new(BooleanQuery::new(clauses)))
 }
 
-/// Maximum number of documents scanned to satisfy an explicit sort, matching
-/// Elasticsearch's default `index.max_result_window`. Sorting is exact when the
-/// number of matching documents does not exceed this cap.
+/// Maximum number of documents scanned to satisfy an in-memory sort (multi-key,
+/// string, or `_score` sorts, and sorts on non-fast fields), matching
+/// Elasticsearch's default `index.max_result_window`. Single-key sorts on a fast
+/// numeric/date/bool field use the collector fast path instead and have no cap.
 const SORT_SCAN_CAP: usize = 10_000;
+
+/// Fast-field value kinds that Tantivy can sort at the collector level.
+#[derive(Clone, Copy)]
+enum SortKind {
+    U64,
+    I64,
+    F64,
+    Bool,
+    Date,
+}
+
+/// Returns the collector sort kind for a field type, but only when the field is
+/// a fast field of a numeric/date/bool type. Strings and non-fast fields return
+/// `None` (they use the in-memory sort path).
+fn sort_kind_for_type(ft: &tantivy::schema::FieldType) -> Option<SortKind> {
+    use tantivy::schema::FieldType;
+    if !ft.is_fast() {
+        return None;
+    }
+    match ft {
+        FieldType::U64(_) => Some(SortKind::U64),
+        FieldType::I64(_) => Some(SortKind::I64),
+        FieldType::F64(_) => Some(SortKind::F64),
+        FieldType::Bool(_) => Some(SortKind::Bool),
+        FieldType::Date(_) => Some(SortKind::Date),
+        _ => None,
+    }
+}
+
+/// Decide whether a sort qualifies for the collector-level fast path: exactly
+/// one key, not `_score`, and a fast numeric/date/bool field. Returns the field
+/// name, its sort kind, and the direction.
+fn fast_sort_target(
+    coll: &CollectionIndex,
+    sort: &[SortField],
+) -> Option<(String, SortKind, bool)> {
+    let [key] = sort else {
+        return None;
+    };
+    if key.field == "_score" {
+        return None;
+    }
+    let &field = coll.field_map.get(&key.field)?;
+    let kind = sort_kind_for_type(coll.schema.get_field_entry(field).field_type())?;
+    Some((key.field.clone(), kind, key.ascending))
+}
+
+/// Collect the top `fetch` documents ordered by a fast field at the collector
+/// level (no scan cap), returning their addresses plus the true total match
+/// count. Missing values sort last in both directions (Tantivy default).
+fn collector_sorted_addrs(
+    searcher: &tantivy::Searcher,
+    query: &dyn tantivy::query::Query,
+    field_name: &str,
+    kind: SortKind,
+    ascending: bool,
+    fetch: usize,
+) -> Result<(Vec<tantivy::DocAddress>, usize)> {
+    use tantivy::collector::{Count, TopDocs};
+    use tantivy::{DateTime, Order};
+
+    let order = if ascending { Order::Asc } else { Order::Desc };
+    let fetch = fetch.max(1);
+
+    macro_rules! run {
+        ($t:ty) => {{
+            let (docs, total): (Vec<($t, tantivy::DocAddress)>, usize) = searcher.search(
+                query,
+                &(
+                    TopDocs::with_limit(fetch).order_by_fast_field::<$t>(field_name, order.clone()),
+                    Count,
+                ),
+            )?;
+            (docs.into_iter().map(|(_, a)| a).collect::<Vec<_>>(), total)
+        }};
+    }
+
+    let (addrs, total) = match kind {
+        SortKind::U64 => run!(u64),
+        SortKind::I64 => run!(i64),
+        SortKind::F64 => run!(f64),
+        SortKind::Bool => run!(bool),
+        SortKind::Date => run!(DateTime),
+    };
+    Ok((addrs, total))
+}
+
+/// Build a [`SearchResult`] from a document address, reading the id and all
+/// stored fields.
+fn materialize_hit(
+    searcher: &tantivy::Searcher,
+    coll: &CollectionIndex,
+    doc_addr: tantivy::DocAddress,
+    score: f32,
+) -> Result<SearchResult> {
+    let doc: TantivyDocument = searcher.doc(doc_addr)?;
+    let id_field = coll.field_map.get("id").unwrap();
+    let id = doc
+        .get_first(*id_field)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let mut fields = HashMap::new();
+    for (field, entry) in coll.schema.fields() {
+        if entry.is_stored() {
+            if let Some(value) = doc.get_first(field) {
+                if let Some(json_value) = owned_value_to_json(value) {
+                    fields.insert(entry.name().to_string(), json_value);
+                }
+            }
+        }
+    }
+    Ok(SearchResult {
+        id,
+        score,
+        fields,
+        highlight: None,
+    })
+}
 
 /// Sort search results in place by the given keys, applied in order. The special
 /// field name `_score` sorts by relevance; any other name reads the value from
@@ -725,6 +845,33 @@ impl SearchBackend for TextBackend {
             &coll.schema,
         )?;
 
+        // Fast path: a single-key sort on a fast numeric/date/bool field is done
+        // at the collector level, which fetches only the requested page (no
+        // SORT_SCAN_CAP) — a large win for "last N by timestamp"-style queries.
+        // Highlighting falls back to the in-memory path.
+        if query.highlight.is_none() {
+            if let Some((field_name, kind, ascending)) = fast_sort_target(coll, &query.sort) {
+                let fetch = query.offset.saturating_add(query.limit);
+                let (addrs, total_hits) = collector_sorted_addrs(
+                    &searcher,
+                    &parsed_query,
+                    &field_name,
+                    kind,
+                    ascending,
+                    fetch,
+                )?;
+                let mut results = Vec::new();
+                for addr in addrs.into_iter().skip(query.offset).take(query.limit) {
+                    results.push(materialize_hit(&searcher, coll, addr, 0.0)?);
+                }
+                return Ok(SearchResults {
+                    results,
+                    total: total_hits,
+                    latency_ms: start.elapsed().as_millis() as u64,
+                });
+            }
+        }
+
         // When a sort is requested we cannot use the score-ordered top-N slice:
         // the correct page depends on the sort field, so we scan up to
         // SORT_SCAN_CAP matching documents (aligned with ES `max_result_window`),
@@ -1039,6 +1186,31 @@ impl SearchBackend for TextBackend {
             &coll.field_map,
             &coll.schema,
         )?;
+
+        // Fast path: with no aggregations, a single-key fast-field sort is done at
+        // the collector level (no scan cap).
+        if aggregations.is_empty() {
+            if let Some((field_name, kind, ascending)) = fast_sort_target(coll, &query.sort) {
+                let fetch = query.offset.saturating_add(query.limit);
+                let (addrs, total) = collector_sorted_addrs(
+                    &searcher,
+                    &parsed_query,
+                    &field_name,
+                    kind,
+                    ascending,
+                    fetch,
+                )?;
+                let mut results = Vec::new();
+                for addr in addrs.into_iter().skip(query.offset).take(query.limit) {
+                    results.push(materialize_hit(&searcher, coll, addr, 0.0)?);
+                }
+                return Ok(SearchResultsWithAggs {
+                    results,
+                    total: total as u64,
+                    aggregations: HashMap::new(),
+                });
+            }
+        }
 
         // Collect matching docs for aggregations and sorting. Fetching one more
         // than SORT_SCAN_CAP lets callers distinguish "exactly SORT_SCAN_CAP
@@ -2663,6 +2835,34 @@ mod tests {
         );
         let order: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(order, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn test_sort_kind_for_type_fast_vs_slow() {
+        use tantivy::schema::{
+            DateOptions, NumericOptions, Schema, TextFieldIndexing, TextOptions, STRING,
+        };
+        let mut b = Schema::builder();
+        let fast_i64 = b.add_i64_field("n", NumericOptions::default().set_indexed().set_fast());
+        let slow_i64 = b.add_i64_field("n_slow", NumericOptions::default().set_indexed());
+        let fast_date = b.add_date_field("d", DateOptions::default().set_indexed().set_fast());
+        let fast_str = b.add_text_field(
+            "s",
+            TextOptions::default()
+                .set_fast(None)
+                .set_indexing_options(TextFieldIndexing::default().set_tokenizer("raw")),
+        );
+        let plain_str = b.add_text_field("s2", STRING);
+        let schema = b.build();
+
+        // Fast numeric/date → collector-sortable.
+        assert!(sort_kind_for_type(schema.get_field_entry(fast_i64).field_type()).is_some());
+        assert!(sort_kind_for_type(schema.get_field_entry(fast_date).field_type()).is_some());
+        // Non-fast numeric → not collector-sortable.
+        assert!(sort_kind_for_type(schema.get_field_entry(slow_i64).field_type()).is_none());
+        // Strings (even fast) → in-memory path, not collector.
+        assert!(sort_kind_for_type(schema.get_field_entry(fast_str).field_type()).is_none());
+        assert!(sort_kind_for_type(schema.get_field_entry(plain_str).field_type()).is_none());
     }
 
     #[test]

@@ -72,6 +72,9 @@ fn make_query(vec: Vec<f32>, limit: usize) -> Query {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     }
 }
 

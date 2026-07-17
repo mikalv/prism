@@ -131,6 +131,9 @@ fn make_query(q: &str) -> Query {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     }
 }
 
@@ -175,6 +178,76 @@ fn doc_full(
             ("price".to_string(), json!(price)),
         ]),
     }
+}
+
+// =========================================================================
+// Collector-level sort (fast-field fast path)
+// =========================================================================
+
+fn sorted_query(field: &str, ascending: bool) -> Query {
+    let mut q = make_query("*");
+    q.sort = vec![prism::backends::SortField {
+        field: field.to_string(),
+        ascending,
+    }];
+    q
+}
+
+#[tokio::test]
+async fn test_collector_sort_by_numeric_field() {
+    let (_tmp, backend) = setup().await;
+    // c omits `count` (missing value); a/b/d have counts.
+    backend
+        .index(
+            "test",
+            vec![
+                doc_with_count("a", "A", 30),
+                doc_with_count("b", "B", 5),
+                doc("c", "C", "no count field"),
+                doc_with_count("d", "D", 12),
+            ],
+        )
+        .await
+        .unwrap();
+
+    // Ascending: 5, 12, 30, then the missing-count doc last.
+    let asc = backend
+        .search("test", sorted_query("count", true))
+        .await
+        .unwrap();
+    let ids: Vec<&str> = asc.results.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, vec!["b", "d", "a", "c"], "ascending, missing last");
+    assert_eq!(asc.total, 4);
+
+    // Descending: 30, 12, 5, then the missing-count doc last.
+    let desc = backend
+        .search("test", sorted_query("count", false))
+        .await
+        .unwrap();
+    let ids: Vec<&str> = desc.results.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, vec!["a", "d", "b", "c"], "descending, missing last");
+}
+
+#[tokio::test]
+async fn test_collector_sort_paginates() {
+    let (_tmp, backend) = setup().await;
+    for (i, c) in [50, 40, 30, 20, 10].iter().enumerate() {
+        backend
+            .index(
+                "test",
+                vec![doc_with_count(&format!("d{i}"), "T", *c)],
+            )
+            .await
+            .unwrap();
+    }
+    let mut q = sorted_query("count", false); // 50,40,30,20,10
+    q.offset = 1;
+    q.limit = 2;
+    let page = backend.search("test", q).await.unwrap();
+    let ids: Vec<&str> = page.results.iter().map(|r| r.id.as_str()).collect();
+    // Skips 50, returns 40 then 30.
+    assert_eq!(ids, vec!["d1", "d2"]);
+    assert_eq!(page.total, 5, "total reflects all matches, not the page");
 }
 
 // =========================================================================
@@ -1165,6 +1238,9 @@ async fn test_agg_global() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let aggs = vec![AggregationRequest {
@@ -1614,6 +1690,9 @@ async fn test_search_with_aggs_on_empty_results() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let aggs = vec![AggregationRequest {

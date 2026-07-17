@@ -103,6 +103,9 @@ boosting:
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results = manager
@@ -187,6 +190,9 @@ boosting:
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results = manager
@@ -284,6 +290,9 @@ boosting:
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results = manager
@@ -374,6 +383,9 @@ boosting:
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results = manager
@@ -434,6 +446,9 @@ backends:
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results = manager

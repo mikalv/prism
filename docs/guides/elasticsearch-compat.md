@@ -214,8 +214,9 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
   native `/collections/{name}/search` endpoint for RRF/weighted hybrid ranking.
 - `sort` sorts over the first `index.max_result_window` (10,000) matching
   documents — exact when the match count is within that window, matching ES's
-  own deep-sort limit. Sorting on a field reads its stored value; missing values
-  sort last.
+  own deep-sort limit. Missing values sort last. A single-key sort on a fast
+  numeric/date/bool field (the common "last N by timestamp" case) is done at the
+  collector level with no window cap and much lower cost.
 - `hits.total` is accurate up to the 10,000 result window: within it the count
   is exact (`relation: "eq"`); beyond it `hits.total` reports
   `{"value": 10000, "relation": "gte"}`. `track_total_hits: <n>` lowers the

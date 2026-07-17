@@ -100,6 +100,9 @@ async fn test_hybrid_merge_behaviour() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
     let res = hybrid.search("col", q).await.unwrap();
 

@@ -117,6 +117,9 @@ async fn test_search_with_facets() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results = manager
@@ -169,6 +172,9 @@ async fn test_search_pagination() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results1 = manager
@@ -195,6 +201,9 @@ async fn test_search_pagination() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let results2 = manager
@@ -264,6 +273,9 @@ async fn test_collection_not_found() {
         min_score: None,
         score_function: None,
         skip_ranking: false,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
     };
 
     let result = manager.search("nonexistent", query, None).await;
