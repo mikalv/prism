@@ -711,6 +711,15 @@ impl CollectionManager {
         Ok(())
     }
 
+    /// Delete a collection's on-disk data. Call after [`remove_collection`]. The
+    /// text backend owns the collection's data directory (which also contains any
+    /// vector data), so it performs the deletion.
+    ///
+    /// [`remove_collection`]: Self::remove_collection
+    pub fn delete_collection_data(&self, name: &str) -> Result<()> {
+        self.text_backend.delete_collection_data(name)
+    }
+
     /// Add a collection to the running server from a schema.
     ///
     /// Lints the schema, creates backend routing, and initializes indexes.

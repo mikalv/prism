@@ -1639,6 +1639,28 @@ async fn test_reinitialize_collection() {
 }
 
 #[tokio::test]
+async fn test_delete_collection_data_prevents_resurrection() {
+    let (_tmp, backend) = setup().await;
+
+    backend
+        .index("test", vec![doc("ghost", "A", "should not survive")])
+        .await
+        .unwrap();
+
+    // Unload from memory AND delete the on-disk data.
+    backend.remove_collection("test");
+    backend.delete_collection_data("test").unwrap();
+
+    // Recreating the collection must yield a fresh, empty index.
+    backend.initialize("test", &make_schema()).await.unwrap();
+    let fetched = backend.get("test", "ghost").await.unwrap();
+    assert!(
+        fetched.is_none(),
+        "deleted collection data must not resurrect on recreate"
+    );
+}
+
+#[tokio::test]
 async fn test_multiple_collections() {
     let tmp = TempDir::new().unwrap();
     let backend = TextBackend::new(tmp.path()).unwrap();

@@ -4,6 +4,10 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+### Fixes
+
+- **`DELETE /collections/:name` now deletes on-disk data** — previously the endpoint only unloaded the collection from memory and removed its schema file, leaving the index data on disk. Recreating a collection with the same name resurrected the supposedly-deleted documents. The endpoint now purges the collection's data directory by default (matching Elasticsearch's `DELETE /index`); pass `?delete_data=false` to unload while keeping the data. The vector backend also no longer re-saves its index when a collection is removed (which had reinforced the resurrection), and the `detach` API's data-deletion path — which pointed at a non-existent `collections/` subdirectory and silently deleted nothing — now removes the correct directory.
+
 ### Added
 
 - **Collector-level sort (no scan cap) for fast fields** — a single-key sort on a fast numeric/date/bool field is now performed at the Tantivy collector level, fetching only the requested page instead of scanning up to 10,000 documents and sorting in memory. This removes the result-window cap for that common case (e.g. "last N by timestamp") and is dramatically faster on large collections. Missing values still sort last, matching the previous behavior. Multi-key sorts, `_score` sorts, string-field sorts, highlighting-with-sort, and sorts on non-fast fields keep using the in-memory scan path.

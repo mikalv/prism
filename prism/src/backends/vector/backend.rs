@@ -122,19 +122,10 @@ impl VectorBackend {
 
     /// Remove a collection from this backend, persisting state before dropping.
     pub async fn remove_collection(&self, name: &str) -> Result<()> {
-        let data = {
-            let mut indexes = self.indexes.write();
-            if let Some(index) = indexes.get(name) {
-                let data = serialize_sharded_index(index)?;
-                indexes.remove(name);
-                Some(data)
-            } else {
-                None
-            }
-        };
-        if let Some(data) = data {
-            self.save_index(name, &data).await?;
-        }
+        // Unload from memory only. Previously this re-serialized and saved the
+        // index back to disk, which caused deleted collections to resurrect on
+        // recreate. On-disk data is purged separately via delete_collection_data.
+        self.indexes.write().remove(name);
         Ok(())
     }
 

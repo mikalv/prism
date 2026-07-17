@@ -89,17 +89,13 @@ pub async fn detach_collection(
     // 4. Unload from the running server
     manager.remove_collection(collection).await?;
 
-    // 5. Optionally delete on-disk data
+    // 5. Optionally delete on-disk data. The collection's data lives at
+    // `{data_dir}/{collection}` (owned by the text backend), not under a
+    // `collections/` subdirectory, so delegate to the manager which knows the
+    // correct location.
+    let _ = data_dir; // data location is owned by the backend, not derived here
     let data_deleted = if delete_data {
-        let collection_dir = data_dir.join("collections").join(collection);
-        if collection_dir.exists() {
-            std::fs::remove_dir_all(&collection_dir).map_err(|e| {
-                Error::Export(format!(
-                    "Collection unloaded but failed to delete data directory: {}",
-                    e
-                ))
-            })?;
-        }
+        manager.delete_collection_data(collection)?;
         true
     } else {
         false

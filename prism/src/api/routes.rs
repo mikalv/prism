@@ -639,9 +639,16 @@ pub struct CreateCollectionResponse {
     pub backends: Vec<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize)]
 pub struct DeleteCollectionQuery {
-    #[serde(default)]
+    /// Whether to delete the collection's on-disk data. Defaults to `true`
+    /// (matching Elasticsearch's `DELETE /index`). Pass `?delete_data=false` to
+    /// unload the collection while keeping its data on disk.
+    #[serde(default = "default_true")]
     pub delete_data: bool,
 }
 
@@ -723,8 +730,6 @@ pub async fn delete_collection(
     State(manager): State<Arc<CollectionManager>>,
     axum::extract::Query(params): axum::extract::Query<DeleteCollectionQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let _ = params.delete_data; // reserved for future use
-
     // Remove from running server
     manager.remove_collection(&name).await.map_err(|e| {
         let status = match &e {
@@ -733,6 +738,19 @@ pub async fn delete_collection(
         };
         (status, Json(serde_json::json!({ "error": e.to_string() })))
     })?;
+
+    // Delete on-disk data unless the caller asked to keep it. Without this, the
+    // index files remain and a collection recreated with the same name would
+    // resurrect the old (supposedly deleted) documents.
+    if params.delete_data {
+        if let Err(e) = manager.delete_collection_data(&name) {
+            tracing::error!("Failed to delete data for collection '{}': {}", name, e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            ));
+        }
+    }
 
     // Remove schema file from disk (best-effort)
     if let Err(e) = manager.remove_schema_file(&name) {

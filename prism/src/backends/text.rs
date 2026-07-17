@@ -377,6 +377,27 @@ impl TextBackend {
         self.collections.write().unwrap().remove(name);
     }
 
+    /// Delete a collection's on-disk data. Everything for a collection (the
+    /// Tantivy index and any sibling vector data) lives under
+    /// `{base_path}/{name}`, so removing that directory purges it. Call
+    /// [`remove_collection`](Self::remove_collection) first to unload it.
+    ///
+    /// Note: with a remote (e.g. S3) segment store, remotely-held segments would
+    /// also need `SegmentStorage::delete_prefix`; the local buffer directory is
+    /// removed here.
+    pub fn delete_collection_data(&self, name: &str) -> Result<()> {
+        let dir = self.base_path.join(name);
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).map_err(|e| {
+                Error::Storage(format!(
+                    "failed to delete data directory for collection '{}': {}",
+                    name, e
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
     /// Initialize a collection from schema.
     ///
     /// Creates or opens a Tantivy index using the unified SegmentStorage.
