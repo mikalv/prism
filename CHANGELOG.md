@@ -2,7 +2,12 @@
 
 All notable changes to Prism are documented in this file.
 
-## [Unreleased]
+## [0.6.10] - 2026-07-17
+
+Elasticsearch-compatibility and correctness release: adds `exists` queries,
+`_source` filtering (with wildcards), accurate `hits.total.relation`,
+collector-level sorting, exact aggregations, and vector pagination; hardens
+collection deletion (no data resurrection) and admin-endpoint authorization.
 
 ### Fixes
 
