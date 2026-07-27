@@ -2,6 +2,21 @@
 
 All notable changes to Prism are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`prism-mailsync` client (`clients/python/mailsync`)** — an incremental,
+  resumable indexer that syncs a remote **IMAP** mailbox (many folders, very
+  large) into a Prism collection via the ES-compatible `/_elastic/_bulk`
+  endpoint, making all mail full-text searchable. Tracks a per-folder
+  `UIDVALIDITY`+UID watermark in SQLite so re-runs only fetch new mail and a
+  crash resumes where it stopped; uses `Message-ID` as the document `_id` for
+  cross-folder dedup and idempotent re-runs. Supports password and OAuth2
+  (XOAUTH2) auth, implicit SSL / STARTTLS, and an optional built-in SSH tunnel
+  to the IMAP host. `uv`-managed with 50 unit tests; verified end-to-end
+  (create → bulk → search → cleanup) against the live 0.6.10 server.
+
 ## [0.6.10] - 2026-07-17
 
 Elasticsearch-compatibility and correctness release: adds `exists` queries,
