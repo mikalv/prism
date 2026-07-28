@@ -494,7 +494,15 @@ async fn main() -> Result<()> {
     // Add UI routes if enabled
     #[cfg(feature = "ui")]
     {
-        extension_router = extension_router.nest("/ui", prism_ui::ui_router());
+        // axum's `nest` does not match the bare trailing-slash root `/ui/`
+        // (only `/ui` and `/ui/<path>`), so redirect it to `/ui` where the SPA
+        // shell is served.
+        extension_router = extension_router
+            .route(
+                "/ui/",
+                axum::routing::get(|| async { axum::response::Redirect::permanent("/ui") }),
+            )
+            .nest("/ui", prism_ui::ui_router());
         if std::path::Path::new("webui").is_dir() {
             tracing::info!("Web UI enabled at /ui (dev mode: serving from ./webui/)");
         } else {
