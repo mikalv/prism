@@ -111,33 +111,35 @@ pub struct SimpleSearchResponse {
     pub total: usize,
 }
 
-fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
-    let title = result
-        .fields
-        .get("title")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let url = result
-        .fields
+fn extract_simple(
+    id: String,
+    score: f32,
+    fields: &std::collections::HashMap<String, serde_json::Value>,
+) -> SimpleSearchResult {
+    let title = fields.get("title").and_then(|v| v.as_str()).map(String::from);
+    let url = fields
         .get("url")
-        .or_else(|| result.fields.get("link"))
+        .or_else(|| fields.get("link"))
         .and_then(|v| v.as_str())
         .map(String::from);
-    let snippet = result
-        .fields
+    let snippet = fields
         .get("snippet")
-        .or_else(|| result.fields.get("content"))
-        .or_else(|| result.fields.get("description"))
+        .or_else(|| fields.get("content"))
+        .or_else(|| fields.get("description"))
         .and_then(|v| v.as_str())
         .map(String::from);
 
     SimpleSearchResult {
-        id: result.id,
+        id,
         title,
         url,
         snippet,
-        score: result.score,
+        score,
     }
+}
+
+fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
+    extract_simple(result.id, result.score, &result.fields)
 }
 
 #[tracing::instrument(
@@ -249,17 +251,7 @@ pub async fn simple_search(
         }));
     }
 
-    // Honor an explicit collection when provided; otherwise fall back to the
-    // first registered collection for backward compatibility.
-    let target_collection = match request.collection {
-        Some(ref name) => {
-            if !manager.collection_exists(name) {
-                return Err(StatusCode::NOT_FOUND);
-            }
-            name.clone()
-        }
-        None => collections.first().unwrap().clone(),
-    };
+    let target_collection = request.collection.clone();
 
     let query = Query {
         query_string: request.query,
@@ -279,21 +271,44 @@ pub async fn simple_search(
         not_exists_fields: Vec::new(),
     };
 
-    let results = manager
-        .search(&target_collection, query, None)
-        .await
-        .map_err(|e| {
-            tracing::error!("Simple search error: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let simple_results: Vec<SimpleSearchResult> =
-        results.results.into_iter().map(result_to_simple).collect();
-
-    Ok(Json(SimpleSearchResponse {
-        results: simple_results,
-        total: results.total,
-    }))
+    match target_collection {
+        // Explicit collection: search just that one (404 if unknown).
+        Some(name) => {
+            if !manager.collection_exists(&name) {
+                return Err(StatusCode::NOT_FOUND);
+            }
+            let results = manager.search(&name, query, None).await.map_err(|e| {
+                tracing::error!("Simple search error: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            let simple_results: Vec<SimpleSearchResult> =
+                results.results.into_iter().map(result_to_simple).collect();
+            Ok(Json(SimpleSearchResponse {
+                results: simple_results,
+                total: results.total,
+            }))
+        }
+        // No collection = "All": search across every registered collection and
+        // merge (RRF), instead of the old behavior of only searching the first.
+        None => {
+            let results = manager
+                .multi_search(&collections, query, None)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Simple multi-search error: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            let simple_results: Vec<SimpleSearchResult> = results
+                .results
+                .into_iter()
+                .map(|r| extract_simple(r.id, r.score, &r.fields))
+                .collect();
+            Ok(Json(SimpleSearchResponse {
+                results: simple_results,
+                total: results.total,
+            }))
+        }
+    }
 }
 
 #[derive(Deserialize)]
