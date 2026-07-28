@@ -4,8 +4,26 @@ use std::sync::Arc;
 use super::permissions::PermissionChecker;
 use super::types::Permission;
 
-/// Routes that do not require authentication
-const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server"];
+/// Routes that do not require authentication.
+///
+/// `/ui` is the embedded web UI: its static shell (HTML/JS/CSS) must load
+/// without an API key, because the UI has to render before it can authenticate
+/// its own API calls. The UI's data requests (`/api/*`, `/collections/*`) still
+/// go through auth normally.
+const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server", "/ui"];
+
+/// Whether a path is publicly reachable without authentication.
+///
+/// Matches a whitelist entry only at a path-segment boundary: `w` matches
+/// exactly (`/ui`) or as a parent segment (`/ui/...`), never as a bare string
+/// prefix (`/uinvite` must NOT match `/ui`). This prevents an unanchored
+/// allowlist bypass where a sensitive route sharing a textual prefix with a
+/// public one would skip authentication.
+fn is_public_path(path: &str) -> bool {
+    AUTH_WHITELIST
+        .iter()
+        .any(|w| path == *w || path.strip_prefix(w).is_some_and(|rest| rest.starts_with('/')))
+}
 
 /// Extract collection name from URL path
 fn extract_collection(path: &str) -> Option<&str> {
@@ -76,7 +94,7 @@ pub async fn auth_middleware(
     let method = request.method().clone();
 
     // Skip auth for whitelisted routes
-    if AUTH_WHITELIST.iter().any(|w| path.starts_with(w)) {
+    if is_public_path(&path) {
         return Ok(next.run(request).await);
     }
 
@@ -121,7 +139,7 @@ pub async fn auth_middleware_dynamic(
     let method = request.method().clone();
 
     // Skip auth for whitelisted routes
-    if AUTH_WHITELIST.iter().any(|w| path.starts_with(w)) {
+    if is_public_path(&path) {
         return Ok(next.run(request).await);
     }
 
@@ -242,5 +260,30 @@ mod tests {
             &axum::http::Method::POST,
             "/_admin/export/encrypted"
         ));
+    }
+
+    #[test]
+    fn static_ui_is_public_but_api_is_not() {
+        // The embedded web UI shell must load without an API key (a UI has to
+        // render before it can authenticate its own API calls). The UI's data
+        // calls (/api/*, /collections/*) still require auth.
+        assert!(is_public_path("/ui"));
+        assert!(is_public_path("/ui/"));
+        assert!(is_public_path("/ui/assets/index-abc123.js"));
+        assert!(is_public_path("/health"));
+        assert!(is_public_path("/stats/server"));
+        assert!(!is_public_path("/api/search"));
+        assert!(!is_public_path("/collections/logs/search"));
+        assert!(!is_public_path("/admin/collections"));
+    }
+
+    #[test]
+    fn whitelist_matches_only_at_segment_boundary() {
+        // Unanchored-allowlist bypass guard: a route that merely shares a
+        // textual prefix with a public path must still require auth.
+        assert!(!is_public_path("/uinvite"));
+        assert!(!is_public_path("/ui-admin/secrets"));
+        assert!(!is_public_path("/healthz-internal"));
+        assert!(!is_public_path("/stats/server-secret"));
     }
 }
