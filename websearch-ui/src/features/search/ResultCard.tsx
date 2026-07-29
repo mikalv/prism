@@ -1,6 +1,6 @@
 import type { SearchResult } from '@/lib/types'
 import { Card } from '@/components/ui'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Database } from 'lucide-react'
 
 interface ResultCardProps {
   result: SearchResult
@@ -28,10 +28,16 @@ export function ResultCard({ result, compact = false }: ResultCardProps) {
             />
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-xs text-[var(--text-muted)] truncate">
                 {result.displayDomain}
               </span>
+              {result.collection && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                  <Database className="w-3 h-3 opacity-70" />
+                  {result.collection}
+                </span>
+              )}
               <ExternalLink className="w-3 h-3 text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
             <h3 className="font-medium text-[var(--accent)] group-hover:underline line-clamp-2">
@@ -43,7 +49,7 @@ export function ResultCard({ result, compact = false }: ResultCardProps) {
               </p>
             )}
             {result.publishedAt && !compact && (
-              <span className="mt-2 text-xs text-[var(--text-muted)]">
+              <span className="mt-2 text-xs text-[var(--text-muted)] inline-block">
                 {result.publishedAt}
               </span>
             )}
@@ -53,3 +59,4 @@ export function ResultCard({ result, compact = false }: ResultCardProps) {
     </Card>
   )
 }
+

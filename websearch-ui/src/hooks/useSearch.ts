@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { SearchState, SearchResult } from '@/lib/types'
-import { search as apiSearch, searchCollection } from '@/lib/api'
+import { multiSearch } from '@/lib/api'
 
 const initialState: SearchState = {
   view: 'home',
@@ -15,17 +15,23 @@ const initialState: SearchState = {
 
 export function useSearch() {
   const [state, setState] = useState<SearchState>(initialState)
-  const [collection, setCollection] = useState<string | undefined>(undefined)
+  const [collections, setCollections] = useState<string[]>([])
+
+  const isMounted = useRef(false)
 
   // Update URL when query changes
   useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true
+      return
+    }
+
     if (state.view === 'results' && state.query) {
       const url = new URL(window.location.href)
       url.searchParams.set('q', state.query)
-      if (collection) {
-        url.searchParams.set('c', collection)
-      } else {
-        url.searchParams.delete('c')
+      url.searchParams.delete('c')
+      if (collections.length > 0) {
+        collections.forEach(col => url.searchParams.append('c', col))
       }
       window.history.replaceState({}, '', url.toString())
     } else if (state.view === 'home') {
@@ -34,23 +40,23 @@ export function useSearch() {
       url.searchParams.delete('c')
       window.history.replaceState({}, '', url.toString())
     }
-  }, [state.view, state.query, collection])
+  }, [state.view, state.query, collections])
 
   // Check URL on mount for initial query
   useEffect(() => {
     const url = new URL(window.location.href)
     const q = url.searchParams.get('q')
-    const c = url.searchParams.get('c') || undefined
+    const c = url.searchParams.getAll('c')
     if (q) {
       doSearch(q, c)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const doSearch = useCallback(async (query: string, col?: string) => {
+  const doSearch = useCallback(async (query: string, cols: string[] = []) => {
     if (!query.trim()) return
 
-    setCollection(col)
+    setCollections(cols)
 
     setState((s) => ({
       ...s,
@@ -64,10 +70,7 @@ export function useSearch() {
     }))
 
     try {
-      // Use collection-specific search if collection is selected
-      const data = col
-        ? await searchCollection(col, query, 20)
-        : await apiSearch(query, 20)
+      const data = await multiSearch(cols, query, 20)
 
       const mappedResults: SearchResult[] = data.results.map((r) => ({
         id: r.id,
@@ -76,6 +79,7 @@ export function useSearch() {
         displayDomain: r.url ? new URL(r.url).hostname : '',
         snippet: r.snippet || '',
         score: r.score,
+        collection: r.collection,
       }))
 
       setState((s) => ({
@@ -101,15 +105,16 @@ export function useSearch() {
 
   const reset = useCallback(() => {
     setState(initialState)
-    setCollection(undefined)
+    setCollections([])
   }, [])
 
   return {
     ...state,
-    collection,
+    collections,
     effectiveIntent: 'search' as const,
     search: doSearch,
     setIntentOverride: () => {},
     reset,
   }
 }
+

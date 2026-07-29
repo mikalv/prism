@@ -1,0 +1,105 @@
+{
+  "collection": "agent_conversations",
+  "description": "Conversation metadata for AI assistant sessions",
+  "backends": {
+    "text": {
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "stored": true,
+          "indexed": true,
+          "tokenizer": "code"
+        },
+        {
+          "name": "conversation_id",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "project",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "started_at",
+          "type": "date",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "ended_at",
+          "type": "date",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "msg_count",
+          "type": "i64",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "source_path",
+          "type": "string",
+          "stored": true,
+          "indexed": false
+        }
+      ]
+    }
+  },
+  "facets": {
+    "allowed": [
+      "source",
+      "project",
+      "model"
+    ],
+    "default": [
+      "source"
+    ],
+    "configs": [
+      {
+        "field": "source",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "project",
+        "type": "terms",
+        "size": 20
+      },
+      {
+        "field": "model",
+        "type": "terms",
+        "size": 20
+      },
+      {
+        "field": "started_at",
+        "type": "date_histogram",
+        "interval": "day"
+      }
+    ]
+  },
+  "boosting": {
+    "recency": {
+      "field": "started_at",
+      "decay_function": "exponential",
+      "scale": "30d",
+      "decay_rate": 0.5
+    }
+  }
+}
