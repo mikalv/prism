@@ -1119,6 +1119,60 @@ pub async fn get_server_info() -> Json<ServerInfoResponse> {
     })
 }
 
+/// Load stats response
+#[derive(Serialize)]
+pub struct LoadStatsResponse {
+    pub cpu_usage_percent: f32,
+    pub memory_used_mb: u64,
+    pub memory_total_mb: u64,
+}
+
+/// GET /stats/load
+pub async fn get_load_stats() -> Json<LoadStatsResponse> {
+    // Mock data for load stats until we implement system metric fetching
+    Json(LoadStatsResponse {
+        cpu_usage_percent: 12.5,
+        memory_used_mb: 256,
+        memory_total_mb: 4096,
+    })
+}
+
+/// Task info
+#[derive(Serialize)]
+pub struct TaskInfo {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub progress_percent: u8,
+}
+
+/// Tasks response
+#[derive(Serialize)]
+pub struct TasksResponse {
+    pub active_tasks: Vec<TaskInfo>,
+}
+
+/// GET /admin/tasks
+pub async fn get_tasks() -> Json<TasksResponse> {
+    // Mock data for active tasks
+    Json(TasksResponse {
+        active_tasks: vec![
+            TaskInfo {
+                id: "job-1029".to_string(),
+                name: "Index compaction".to_string(),
+                status: "Running".to_string(),
+                progress_percent: 45,
+            },
+            TaskInfo {
+                id: "job-1030".to_string(),
+                name: "Document ingestion".to_string(),
+                status: "Pending".to_string(),
+                progress_percent: 0,
+            }
+        ]
+    })
+}
+
 // ============================================================================
 // Aggregations API (Issue #23)
 // ============================================================================

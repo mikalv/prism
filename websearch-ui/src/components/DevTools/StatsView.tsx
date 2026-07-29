@@ -1,46 +1,73 @@
 import { useState, useEffect } from 'react'
 
 export function StatsView() {
-  const [stats, setStats] = useState({
-    totalQueries: 0,
-    averageLatency: 0,
-    activeUsers: 1,
-    indexedDocuments: 0,
-  })
+  const [stats, setStats] = useState<any>(null)
+  const [cacheStats, setCacheStats] = useState<any>(null)
+  const [error, setError] = useState('')
+  const [loadHistory, setLoadHistory] = useState<number[]>(Array(20).fill(0))
 
-  // Mock fetching stats
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStats(prev => ({
-        ...prev,
-        totalQueries: prev.totalQueries + Math.floor(Math.random() * 5),
-        averageLatency: 45 + Math.floor(Math.random() * 20),
-        indexedDocuments: 145020 + Math.floor(Math.random() * 10),
-      }))
-    }, 2000)
+    const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+    
+    const fetchStats = async () => {
+      try {
+        const [serverRes, cacheRes, loadRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/stats/server`),
+          fetch(`${API_BASE_URL}/stats/cache`),
+          fetch(`${API_BASE_URL}/stats/load`)
+        ])
+        if (serverRes.ok) setStats(await serverRes.json())
+        if (cacheRes.ok) setCacheStats(await cacheRes.json())
+        
+        if (loadRes.ok) {
+          const loadData = await loadRes.json()
+          setLoadHistory(prev => {
+            const next = [...prev.slice(1), loadData.cpu_usage_percent]
+            return next
+          })
+        }
+      } catch (err: any) {
+        setError(err.message)
+      }
+    }
+    
+    fetchStats()
+    const interval = setInterval(fetchStats, 5000)
     return () => clearInterval(interval)
   }, [])
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#1e1e2e] text-[#cdd6f4] p-4 font-mono text-sm">
-      <h2 className="text-[#a6adc8] text-xs font-semibold uppercase tracking-wider mb-4 border-b border-[#313244] pb-2">System Stats</h2>
+    <div className="flex flex-col h-full w-full bg-[#1e1e2e] text-[#cdd6f4] p-4 font-mono text-sm overflow-auto">
+      <h2 className="text-[#a6adc8] text-xs font-semibold uppercase tracking-wider mb-4 border-b border-[#313244] pb-2">System Stats & Load</h2>
       
-      <div className="grid grid-cols-2 gap-4">
+      {error && <div className="text-red-400 mb-4">{error}</div>}
+      
+      <div className="mb-4 bg-[#181825] p-4 rounded border border-[#313244]">
+        <div className="text-xs text-[#a6adc8] mb-2 font-semibold border-b border-[#313244] pb-1">Server Load (Simulated)</div>
+        <div className="flex items-end h-24 gap-1 pt-2">
+          {loadHistory.map((val, i) => (
+            <div 
+              key={i} 
+              className="flex-1 bg-[var(--accent)]/50 hover:bg-[var(--accent)] transition-all rounded-t-sm"
+              style={{ height: `${val}%`, minHeight: '4px' }}
+              title={`${val}% load`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-[#181825] p-4 rounded border border-[#313244]">
-          <div className="text-xs text-[#a6adc8] mb-1">Total Queries</div>
-          <div className="text-2xl font-semibold text-white">{stats.totalQueries.toLocaleString()}</div>
+          <div className="text-xs text-[#a6adc8] mb-2 font-semibold border-b border-[#313244] pb-1">Server Stats</div>
+          <pre className="text-xs overflow-auto text-green-400 h-48">
+            {stats ? JSON.stringify(stats, null, 2) : 'Loading...'}
+          </pre>
         </div>
         <div className="bg-[#181825] p-4 rounded border border-[#313244]">
-          <div className="text-xs text-[#a6adc8] mb-1">Avg Latency</div>
-          <div className="text-2xl font-semibold text-blue-400">{stats.averageLatency}ms</div>
-        </div>
-        <div className="bg-[#181825] p-4 rounded border border-[#313244]">
-          <div className="text-xs text-[#a6adc8] mb-1">Indexed Documents</div>
-          <div className="text-2xl font-semibold text-white">{stats.indexedDocuments.toLocaleString()}</div>
-        </div>
-        <div className="bg-[#181825] p-4 rounded border border-[#313244]">
-          <div className="text-xs text-[#a6adc8] mb-1">Active Users</div>
-          <div className="text-2xl font-semibold text-white">{stats.activeUsers}</div>
+          <div className="text-xs text-[#a6adc8] mb-2 font-semibold border-b border-[#313244] pb-1">Cache Stats</div>
+          <pre className="text-xs overflow-auto text-blue-400 h-48">
+            {cacheStats ? JSON.stringify(cacheStats, null, 2) : 'Loading...'}
+          </pre>
         </div>
       </div>
     </div>

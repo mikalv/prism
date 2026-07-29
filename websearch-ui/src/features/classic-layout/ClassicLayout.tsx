@@ -1,9 +1,9 @@
-// imports
 import { HomePage } from '@/features/home'
 import { LoadingPage } from '@/features/loading'
 import { SearchPage } from '@/features/search'
 import type { useSearch } from '@/hooks'
 import { WindowManagerProvider, Taskbar, useWindowManager } from '@/components/WindowManager'
+import { FloatingAdvancedToggle } from '@/components/composed'
 import { WinBoxPortal, DevToolsScratchpad, AdminDashboard, StatsView, DebugPanel, InspectTool, ApiDocs, CollectionBrowser } from '@/components/DevTools'
 import { useAdvancedMode } from '@/hooks'
 
@@ -43,7 +43,8 @@ export function ClassicLayout({ search }: ClassicLayoutProps) {
 
   return (
     <WindowManagerProvider>
-      <div className={`min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] ${isAdvancedMode ? 'pb-9' : ''}`}>
+      <div className={`min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] relative ${isAdvancedMode ? 'pb-9' : ''}`}>
+        <FloatingAdvancedToggle />
         <WindowRenderer />
         {isAdvancedMode && <Taskbar />}
         {search.view === 'home' && <HomePage onSearch={search.search} />}
