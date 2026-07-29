@@ -3,7 +3,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 
 export function ApiDocs() {
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3080'
-  const defaultDocsUrl = `${API_BASE_URL}/docs`
+  const defaultDocsUrl = 'https://mikalv.github.io/prism/reference/api-reference/'
   
   const [url, setUrl] = useState(defaultDocsUrl)
   const [currentUrl, setCurrentUrl] = useState(defaultDocsUrl)
