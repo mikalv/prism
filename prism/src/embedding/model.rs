@@ -70,7 +70,7 @@ mod _inner {
         /// Download model from HuggingFace
         async fn download_model(config: &ModelConfig) -> Result<()> {
             // Create cache directory
-            fs::create_dir_all(&config.model_dir()).context("Failed to create cache directory")?;
+            fs::create_dir_all(config.model_dir()).context("Failed to create cache directory")?;
 
             let base_url = format!(
                 "https://huggingface.co/sentence-transformers/{}/resolve/main",

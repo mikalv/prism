@@ -223,8 +223,8 @@ fn test_s3_config_from_prism_config() {
     let config = minio_config();
 
     // Verify config can be converted to prism-storage config
-    let prism_config = if config.endpoint.is_some() {
-        PrismS3Config::minio(&config.bucket, config.endpoint.as_ref().unwrap())
+    let prism_config = if let Some(endpoint) = &config.endpoint {
+        PrismS3Config::minio(&config.bucket, endpoint)
     } else {
         PrismS3Config::aws(&config.bucket, &config.region)
     };

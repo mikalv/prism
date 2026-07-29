@@ -10,7 +10,13 @@ use super::types::Permission;
 /// without an API key, because the UI has to render before it can authenticate
 /// its own API calls. The UI's data requests (`/api/*`, `/collections/*`) still
 /// go through auth normally.
-const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server", "/stats/load", "/admin/tasks", "/ui"];
+const AUTH_WHITELIST: &[&str] = &[
+    "/health",
+    "/stats/server",
+    "/stats/load",
+    "/admin/tasks",
+    "/ui",
+];
 
 /// Whether a path is publicly reachable without authentication.
 ///
@@ -20,9 +26,12 @@ const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server", "/stats/load", "/a
 /// allowlist bypass where a sensitive route sharing a textual prefix with a
 /// public one would skip authentication.
 fn is_public_path(path: &str) -> bool {
-    AUTH_WHITELIST
-        .iter()
-        .any(|w| path == *w || path.strip_prefix(w).is_some_and(|rest| rest.starts_with('/')))
+    AUTH_WHITELIST.iter().any(|w| {
+        path == *w
+            || path
+                .strip_prefix(w)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
 }
 
 /// Extract collection name from URL path

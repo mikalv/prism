@@ -116,7 +116,10 @@ fn extract_simple(
     score: f32,
     fields: &std::collections::HashMap<String, serde_json::Value>,
 ) -> SimpleSearchResult {
-    let title = fields.get("title").and_then(|v| v.as_str()).map(String::from);
+    let title = fields
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let url = fields
         .get("url")
         .or_else(|| fields.get("link"))
@@ -1168,8 +1171,8 @@ pub async fn get_tasks() -> Json<TasksResponse> {
                 name: "Document ingestion".to_string(),
                 status: "Pending".to_string(),
                 progress_percent: 0,
-            }
-        ]
+            },
+        ],
     })
 }
 

@@ -178,7 +178,7 @@ impl EncryptionConfig {
     /// # Security Warning
     /// Handle the returned string carefully - it contains the raw key material.
     pub fn to_hex(&self) -> String {
-        hex::encode(&self.key)
+        hex::encode(self.key)
     }
 
     /// Get the key identifier.

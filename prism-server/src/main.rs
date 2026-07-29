@@ -583,6 +583,9 @@ fn cluster_routes(
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            sort: vec![],
+            exists_fields: vec![],
+            not_exists_fields: vec![],
         };
 
         match fed.search(&collection, rpc_query).await {
