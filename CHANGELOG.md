@@ -16,6 +16,16 @@ All notable changes to Prism are documented in this file.
 
 ### Fixed
 
+- **`/api/search` with no collection now searches ALL collections** — the web
+  UI's default "All" search (`simple_search`) fell back to the first registered
+  collection when no collection was specified, so it silently searched one
+  arbitrary collection. A query with 1600+ hits in the `mail` collection could
+  return nothing. It now uses `multi_search` (RRF-merged) across every
+  registered collection; an explicit collection still searches just that one.
+- **Collection dropdown is searchable, scrollable, and height-capped** — with
+  many collections (83 on prod) the selector rendered an uncapped list. It now
+  has a filter input (autofocused; Enter picks the first match, Esc closes) and
+  a fixed max-height scrollable list with an empty state.
 - **Web UI static shell no longer requires authentication** — the auth
   middleware whitelist covered only `/health` and `/stats/server`, so with
   security enabled every `/ui/*` asset (including `index.html`) returned `401`
