@@ -29,7 +29,7 @@ class Config:
     max_chars: int | None = None
 
     # Batch size for Prism indexing
-    batch_size: int = 100
+    batch_size: int = 1000
 
     # Source configurations with platform-aware defaults
     sources: dict[str, SourceConfig] = field(default_factory=dict)

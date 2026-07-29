@@ -10,6 +10,13 @@ export function Taskbar() {
       {/* Launcher Menu Buttons */}
       <div className="relative group flex items-center gap-1 border-r border-[#313244] pr-2 mr-2">
         <button
+          onClick={() => openWindow('browser', 'Collection Browser')}
+          className="flex items-center justify-center gap-1.5 h-7 px-2 bg-[#313244] hover:bg-[#45475a] text-[#89b4fa] font-bold rounded shadow-sm transition-colors border border-[#11111b]"
+          title="Browse Collections"
+        >
+          <Terminal size={12} /> Browse
+        </button>
+        <button
           onClick={() => openWindow('admin', 'Admin Dashboard')}
           className="flex items-center justify-center gap-1.5 h-7 px-2 bg-[#313244] hover:bg-[#45475a] text-[#89b4fa] font-bold rounded shadow-sm transition-colors border border-[#11111b]"
           title="Admin Dashboard"

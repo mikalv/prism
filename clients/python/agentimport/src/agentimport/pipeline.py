@@ -89,6 +89,16 @@ class Pipeline:
                 source_cfg = self.config.sources.get(source.name)
                 roots = source_cfg.roots if source_cfg and source_cfg.roots else source.default_roots()
 
+                message_buffer: list[NormalizedMessage] = []
+
+                def flush_messages(force: bool = False) -> None:
+                    nonlocal message_buffer
+                    while len(message_buffer) >= self.config.batch_size or (force and message_buffer):
+                        chunk = message_buffer[: self.config.batch_size]
+                        message_buffer = message_buffer[self.config.batch_size :]
+                        indexed = prism.upsert_messages(chunk, self.config.batch_size)
+                        stats.messages_indexed += indexed
+
                 for path in source.discover(roots):
                     stats.files_scanned += 1
 
@@ -110,9 +120,8 @@ class Pipeline:
                             filtered.append(self.content_filter.apply_limits(msg))
 
                     if filtered:
-                        # Index messages
-                        indexed = prism.upsert_messages(filtered, self.config.batch_size)
-                        stats.messages_indexed += indexed
+                        message_buffer.extend(filtered)
+                        flush_messages(force=False)
 
                         # Track for conversation aggregation
                         for msg in filtered:
@@ -122,6 +131,9 @@ class Pipeline:
                     state.mark_imported(path, source.name)
                     stats.files_imported += 1
                     logger.info("Imported %s: %d messages from %s", source.name, len(filtered), path.name)
+
+                # Flush any remaining messages for this source
+                flush_messages(force=True)
 
             # Aggregate and index conversation metadata
             if conv_messages:

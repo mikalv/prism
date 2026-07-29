@@ -4,7 +4,7 @@ import { LoadingPage } from '@/features/loading'
 import { SearchPage } from '@/features/search'
 import type { useSearch } from '@/hooks'
 import { WindowManagerProvider, Taskbar, useWindowManager } from '@/components/WindowManager'
-import { WinBoxPortal, DevToolsScratchpad, AdminDashboard, StatsView, DebugPanel, InspectTool, ApiDocs } from '@/components/DevTools'
+import { WinBoxPortal, DevToolsScratchpad, AdminDashboard, StatsView, DebugPanel, InspectTool, ApiDocs, CollectionBrowser } from '@/components/DevTools'
 import { useAdvancedMode } from '@/hooks'
 
 interface ClassicLayoutProps {
@@ -21,8 +21,8 @@ function WindowRenderer() {
           key={win.id}
           id={win.id}
           title={win.title}
-          width={800}
-          height={600}
+          width={900}
+          height={650}
           onClose={() => closeWindow(win.id)}
         >
           {win.type === 'devtools' && <DevToolsScratchpad />}
@@ -31,6 +31,7 @@ function WindowRenderer() {
           {win.type === 'debug' && <DebugPanel />}
           {win.type === 'inspect' && <InspectTool />}
           {win.type === 'apidocs' && <ApiDocs />}
+          {win.type === 'browser' && <CollectionBrowser />}
         </WinBoxPortal>
       ))}
     </>
