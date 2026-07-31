@@ -43,6 +43,7 @@ impl ShardedGraphBackend {
                     &shard_name,
                     &config.edges,
                     storage.clone(),
+                    config.wal.clone(),
                 )
             })
             .collect();
@@ -57,6 +58,60 @@ impl ShardedGraphBackend {
 
     /// Initialize all shards (load persisted data).
     pub async fn initialize(&self) -> Result<()> {
+        let mut needs_migration = false;
+        if self.num_shards > 1 {
+            let meta_path = crate::storage::StoragePath::graph(&self.collection, "meta", "hash_version.json").unwrap();
+            if let Some(storage) = &self.shards[0].storage {
+                match storage.read_vec(&meta_path).await {
+                    Ok(bytes) => {
+                        let version: u32 = serde_json::from_slice(&bytes).unwrap_or(0);
+                        if version == 0 {
+                            needs_migration = true;
+                        }
+                    }
+                    Err(_) => {
+                        needs_migration = true;
+                    }
+                }
+            }
+        }
+        
+        if needs_migration {
+            tracing::info!("Migrating graph backend to format version 1 (stable hashing) for collection {}", self.collection);
+            let mut all_nodes = Vec::new();
+            let mut all_edges = Vec::new();
+            for shard in &self.shards {
+                shard.initialize().await?;
+                all_nodes.extend(shard.nodes.read().values().cloned());
+                for (from, edges) in shard.edges.read().iter() {
+                    for edge_entry in edges {
+                        all_edges.push(crate::backends::graph::shard::GraphEdge {
+                            from: from.clone(),
+                            to: edge_entry.to.clone(),
+                            edge_type: edge_entry.edge_type.clone(),
+                            weight: edge_entry.weight,
+                        });
+                    }
+                }
+                shard.clear().await?;
+            }
+            
+            for node in all_nodes {
+                let idx = self.shard_idx(&node.id);
+                self.shards[idx].add_node(node).await?;
+            }
+            for edge in all_edges {
+                let idx = self.shard_idx(&edge.from);
+                self.shards[idx].add_edge(edge).await?;
+            }
+            
+            if let Some(storage) = &self.shards[0].storage {
+                let meta_path = crate::storage::StoragePath::graph(&self.collection, "meta", "hash_version.json").unwrap();
+                let _ = storage.write_bytes(&meta_path, b"1").await;
+            }
+            return Ok(());
+        }
+
         for shard in &self.shards {
             shard.initialize().await?;
         }
@@ -122,9 +177,14 @@ impl ShardedGraphBackend {
     }
 
     /// BFS traversal — entirely local within the start node's shard.
-    pub fn bfs(&self, start: &str, edge_type: &str, max_depth: usize) -> Vec<String> {
+    pub fn bfs(&self, start: &str, edge_type: &str, max_depth: usize) -> crate::Result<Vec<String>> {
+        if self.scope == GraphScope::Collection {
+            return Err(crate::error::Error::InvalidQuery(
+                "Cross-shard traversal (scope=Collection) is not yet supported for BFS".to_string(),
+            ));
+        }
         let idx = self.shard_idx(start);
-        self.shards[idx].bfs(start, edge_type, max_depth)
+        Ok(self.shards[idx].bfs(start, edge_type, max_depth))
     }
 
     /// Shortest path. Returns None if start and target are on different shards.
@@ -133,15 +193,20 @@ impl ShardedGraphBackend {
         start: &str,
         target: &str,
         edge_types: Option<&[String]>,
-    ) -> Option<Vec<String>> {
+    ) -> crate::Result<Option<Vec<String>>> {
+        if self.scope == GraphScope::Collection {
+            return Err(crate::error::Error::InvalidQuery(
+                "Cross-shard traversal (scope=Collection) is not yet supported for shortest_path".to_string(),
+            ));
+        }
         let start_idx = self.shard_idx(start);
         let target_idx = self.shard_idx(target);
 
         if start_idx != target_idx {
-            return None;
+            return Ok(None);
         }
 
-        self.shards[start_idx].shortest_path(start, target, edge_types)
+        Ok(self.shards[start_idx].shortest_path(start, target, edge_types))
     }
 
     /// Aggregate stats across all shards.
@@ -235,6 +300,8 @@ mod tests {
             }],
             num_shards,
             scope: GraphScope::Shard,
+            index_on_write: false,
+            wal: crate::schema::types::WalConfig::default(),
         }
     }
 
@@ -364,6 +431,6 @@ mod tests {
         let b = id_b.unwrap();
 
         // Shortest path between nodes on different shards => None
-        assert!(backend.shortest_path(&a, &b, None).is_none());
+        assert!(backend.shortest_path(&a, &b, None).unwrap().is_none());
     }
 }

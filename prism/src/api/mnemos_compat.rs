@@ -127,6 +127,7 @@ pub async fn context(
     let limit = req.max_tokens.unwrap_or(400) / 50; // Rough estimate: 50 tokens per result
 
     let query = Query {
+        vector: None,
         query_string: req.user_message.clone(),
         fields: vec![], // Use default fields
         limit: limit as usize,
@@ -169,6 +170,7 @@ pub async fn context(
 
     // Search memories
     let query2 = Query {
+        vector: None,
         query_string: req.user_message,
         fields: vec![],
         limit: limit as usize,
@@ -234,6 +236,7 @@ pub async fn search(
     let limit = (req.limit.unwrap_or(10) as usize).min(10_000);
 
     let query = Query {
+        vector: None,
         query_string: req.query,
         fields: vec![],
         limit,

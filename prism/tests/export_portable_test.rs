@@ -91,7 +91,7 @@ fn sample_docs() -> Vec<Document> {
 // Export -> Import round-trip
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_export_import_round_trip() {
     let (_temp, manager) = setup_export_env().await;
 
@@ -149,7 +149,7 @@ async fn test_export_import_round_trip() {
 // Import with default collection name (from header)
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_import_uses_original_name() {
     let (_temp, manager) = setup_export_env().await;
     manager.index("docs", sample_docs()).await.unwrap();
@@ -185,7 +185,7 @@ async fn test_import_uses_original_name() {
 // Checksum verification
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_export_returns_checksum() {
     let (_temp, manager) = setup_export_env().await;
     manager.index("docs", sample_docs()).await.unwrap();
@@ -208,7 +208,7 @@ async fn test_export_returns_checksum() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_checksum_not_in_header_so_import_skips_verification() {
     // The current export format writes checksum=null in the header and
     // returns the computed checksum only in the metadata result. Because
@@ -256,7 +256,7 @@ async fn test_checksum_not_in_header_so_import_skips_verification() {
 // Malformed input errors
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_import_empty_file_errors() {
     let temp = TempDir::new().unwrap();
     let data_dir = temp.path().join("data");
@@ -276,7 +276,7 @@ async fn test_import_empty_file_errors() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_import_invalid_json_header_errors() {
     let temp = TempDir::new().unwrap();
     let data_dir = temp.path().join("data");
@@ -297,7 +297,7 @@ async fn test_import_invalid_json_header_errors() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_import_unsupported_format_errors() {
     let temp = TempDir::new().unwrap();
     let data_dir = temp.path().join("data");
@@ -338,7 +338,7 @@ async fn test_import_unsupported_format_errors() {
 // Export nonexistent collection
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_export_nonexistent_collection_errors() {
     let (_temp, manager) = setup_export_env().await;
 
@@ -355,7 +355,7 @@ async fn test_export_nonexistent_collection_errors() {
 // Export empty collection
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_export_empty_collection() {
     let (_temp, manager) = setup_export_env().await;
 

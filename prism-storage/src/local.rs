@@ -58,7 +58,11 @@ impl SegmentStorage for LocalStorage {
         self.ensure_parent(&fs_path).await?;
 
         debug!("Writing {} bytes to {:?}", data.len(), fs_path);
-        fs::write(&fs_path, &data).await?;
+        let tmp_path = fs_path.with_extension(format!("tmp.{}", uuid::Uuid::new_v4()));
+        let mut f = tokio::fs::File::create(&tmp_path).await?;
+        tokio::io::AsyncWriteExt::write_all(&mut f, &data).await?;
+        f.sync_all().await?;
+        fs::rename(&tmp_path, &fs_path).await?;
         Ok(())
     }
 
@@ -263,7 +267,14 @@ impl SegmentStorageSync for LocalStorage {
         if let Some(parent) = fs_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&fs_path, data)?;
+        let tmp_path = fs_path.with_extension(format!("tmp.{}", uuid::Uuid::new_v4()));
+        
+        let mut f = std::fs::File::create(&tmp_path)?;
+        use std::io::Write;
+        f.write_all(data)?;
+        f.sync_all()?;
+        
+        std::fs::rename(&tmp_path, &fs_path)?;
         Ok(())
     }
 

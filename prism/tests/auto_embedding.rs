@@ -4,7 +4,7 @@ use prism::backends::SearchBackend;
 use prism::schema::CollectionSchema;
 
 // A minimal test that indexes a document with a precomputed embedding to verify indexing path
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_with_embedding_field() {
     let tmp = tempfile::tempdir().unwrap();
     let backend = VectorBackend::new(tmp.path()).unwrap();
@@ -15,6 +15,7 @@ async fn test_index_with_embedding_field() {
         backends: prism::schema::types::Backends {
             text: None,
             vector: Some(prism::schema::types::VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
                 embedding_field: "embedding".into(),
                 dimension: 8,
                 distance: prism::schema::types::VectorDistance::Cosine,

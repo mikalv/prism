@@ -103,8 +103,16 @@ impl VectorSegment {
         k: usize,
         ef_search: usize,
     ) -> Result<Vec<SearchResult>> {
-        let matches = self.hnsw.search(query_vector, k, ef_search)?;
-        let mut results = Vec::new();
+        let total = self.total_count();
+        let live = self.live_count();
+        let mut query_k = k;
+        if live > 0 && total > live {
+            let ratio = (total as f64) / (live as f64);
+            query_k = ((k as f64 * ratio).ceil() as usize).min(k * 10).max(k);
+        }
+
+        let matches = self.hnsw.search(query_vector, query_k, ef_search)?;
+        let mut results = Vec::with_capacity(k);
         for (key, score) in matches {
             if self.tombstones.contains(key) {
                 continue;
@@ -117,6 +125,9 @@ impl VectorSegment {
                         fields: fields.clone(),
                         highlight: None,
                     });
+                    if results.len() >= k {
+                        break;
+                    }
                 }
             }
         }
@@ -148,6 +159,22 @@ impl VectorSegment {
         } else {
             None
         }
+    }
+
+    pub fn extract_all(&self) -> Vec<(String, Vec<f32>, HashMap<String, serde_json::Value>)> {
+        let points = self.hnsw.extract_all_points();
+        let mut out = Vec::new();
+        for (id, key) in &self.id_to_key {
+            if self.tombstones.contains(*key) {
+                continue;
+            }
+            if let Some(vec) = points.get(key) {
+                if let Some(fields) = self.documents.get(id) {
+                    out.push((id.clone(), vec.clone(), fields.clone()));
+                }
+            }
+        }
+        out
     }
 
     /// Seal this segment, making it immutable.

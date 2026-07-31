@@ -5,7 +5,7 @@ use prism::schema::types::{Backends, CollectionSchema, VectorBackendConfig, Vect
 use std::sync::Arc;
 use tempfile::TempDir;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_initialize_collection() {
     let temp_dir = TempDir::new().unwrap();
     let backend = Arc::new(VectorBackend::new(temp_dir.path()).unwrap());
@@ -16,6 +16,7 @@ async fn test_initialize_collection() {
         backends: Backends {
             text: None,
             vector: Some(VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
                 embedding_field: "embedding".to_string(),
                 dimension: 384,
                 distance: VectorDistance::Cosine,
@@ -50,7 +51,7 @@ async fn test_initialize_collection() {
     assert!(got.is_none());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_and_search() {
     use prism::backends::SearchBackend;
 
@@ -63,6 +64,7 @@ async fn test_index_and_search() {
         backends: Backends {
             text: None,
             vector: Some(VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
                 embedding_field: "embedding".to_string(),
                 dimension: 4,
                 distance: VectorDistance::Cosine,
@@ -119,6 +121,7 @@ async fn test_index_and_search() {
     // Query with vector close to doc1
     let q = serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap();
     let query = prism::backends::r#trait::Query {
+        vector: None,
         query_string: q,
         fields: vec![],
         limit: 10,
@@ -142,7 +145,7 @@ async fn test_index_and_search() {
     assert_eq!(results.results[0].id, "d1");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_offset_paginates() {
     use prism::backends::SearchBackend;
     use std::collections::HashMap;
@@ -156,6 +159,7 @@ async fn test_search_offset_paginates() {
         backends: Backends {
             text: None,
             vector: Some(VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
                 embedding_field: "embedding".to_string(),
                 dimension: 2,
                 distance: VectorDistance::Cosine,
@@ -200,6 +204,7 @@ async fn test_search_offset_paginates() {
 
     let q = serde_json::to_string(&vec![1.0f32, 0.0]).unwrap();
     let base = prism::backends::r#trait::Query {
+        vector: None,
         query_string: q,
         fields: vec![],
         limit: 1,

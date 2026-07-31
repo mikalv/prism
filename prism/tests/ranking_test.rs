@@ -36,7 +36,7 @@ async fn setup_ranking_environment(schema_yaml: &str) -> (TempDir, Arc<Collectio
     (temp, manager)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_field_boosting() {
     // Schema with title boosted 3x over content
     let schema = r#"
@@ -91,6 +91,7 @@ boosting:
 
     // Search for "rust"
     let query = Query {
+        vector: None,
         query_string: "rust".to_string(),
         limit: 10,
         offset: 0,
@@ -125,7 +126,7 @@ boosting:
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_popularity_boost() {
     // Schema with document_boost enabled
     let schema = r#"
@@ -178,6 +179,7 @@ boosting:
 
     // Search for "rust"
     let query = Query {
+        vector: None,
         query_string: "rust".to_string(),
         limit: 10,
         offset: 0,
@@ -216,7 +218,7 @@ boosting:
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_recency_decay() {
     // Recency decay is tested with live indexing since _indexed_at is auto-set
 
@@ -278,6 +280,7 @@ boosting:
 
     // Search for "rust programming"
     let query = Query {
+        vector: None,
         query_string: "rust programming".to_string(),
         limit: 10,
         offset: 0,
@@ -312,7 +315,7 @@ boosting:
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_combined_ranking() {
     // Schema with all ranking features enabled
     let schema = r#"
@@ -371,6 +374,7 @@ boosting:
 
     // Search for "rust"
     let query = Query {
+        vector: None,
         query_string: "rust".to_string(),
         limit: 10,
         offset: 0,
@@ -407,7 +411,7 @@ boosting:
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_no_boosting_config() {
     // Schema without boosting config - should work normally
     let schema = r#"
@@ -434,6 +438,7 @@ backends:
         .expect("Failed to index documents");
 
     let query = Query {
+        vector: None,
         query_string: "rust".to_string(),
         limit: 10,
         offset: 0,

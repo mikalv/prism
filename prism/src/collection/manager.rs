@@ -388,6 +388,11 @@ impl CollectionManager {
         // Fallback: try text backend
         if has_text {
             self.text_backend.index(collection, docs).await?;
+        } else if !has_backend {
+            return Err(crate::error::Error::InvalidQuery(format!(
+                "Collection '{}' has no document backend configured (graph-only collections cannot store documents directly)",
+                collection
+            )));
         }
 
         Ok(())
@@ -636,6 +641,16 @@ impl CollectionManager {
         self.schemas.read().contains_key(name)
     }
 
+    /// Check if a collection is hybrid (has both text and vector backends)
+    pub fn is_hybrid(&self, collection: &str) -> bool {
+        let schemas = self.schemas.read();
+        if let Some(schema) = schemas.get(collection) {
+            schema.backends.text.is_some() && schema.backends.vector.is_some()
+        } else {
+            false
+        }
+    }
+
     /// Validate collection name — alphanumeric, hyphens, underscores only
     pub fn validate_collection_name(name: &str) -> Result<()> {
         if name.is_empty() {
@@ -863,6 +878,7 @@ impl CollectionManager {
         // Text-only search
         if !has_vector || vector.is_none() {
             let query = Query {
+        vector: None,
                 query_string: text_query.to_string(),
                 fields: vec![],
                 limit,
@@ -886,6 +902,7 @@ impl CollectionManager {
         if !has_text {
             let vec = vector.unwrap();
             let query = Query {
+        vector: None,
                 query_string: serde_json::to_string(&vec).unwrap_or_default(),
                 fields: vec![],
                 limit,
@@ -909,6 +926,7 @@ impl CollectionManager {
         let vec = vector.unwrap();
 
         let text_query_obj = Query {
+        vector: None,
             query_string: text_query.to_string(),
             fields: vec![],
             limit,
@@ -927,6 +945,7 @@ impl CollectionManager {
         };
 
         let vec_query_obj = Query {
+        vector: None,
             query_string: serde_json::to_string(&vec).unwrap_or_default(),
             fields: vec![],
             limit,
@@ -968,7 +987,7 @@ impl CollectionManager {
             }
             _ => {
                 // Default to RRF
-                HybridSearchCoordinator::merge_rrf_public(text_results, vec_results, 60, limit)
+                HybridSearchCoordinator::merge_rrf_public(text_results, vec_results, 60, 0, limit)
             }
         };
 
@@ -1221,6 +1240,7 @@ impl CollectionManager {
                 results: vec![],
                 total: 0,
                 collections_searched: vec![],
+                errors: std::collections::HashMap::new(),
                 latency_ms: 0,
             });
         }
@@ -1258,12 +1278,14 @@ impl CollectionManager {
         }
 
         // Log any errors (but don't fail the entire request)
+        let mut error_map = std::collections::HashMap::new();
         for (collection, error) in errors {
             tracing::warn!(
                 "Multi-search: error in collection '{}': {:?}",
                 collection,
                 error
             );
+            error_map.insert(collection, error.to_string());
         }
 
         // Merge results using RRF
@@ -1276,6 +1298,7 @@ impl CollectionManager {
             results: merged.results,
             total: merged.total,
             collections_searched,
+            errors: error_map,
             latency_ms,
         })
     }
@@ -1363,6 +1386,8 @@ pub struct MultiSearchResults {
     pub results: Vec<MultiSearchResult>,
     pub total: usize,
     pub collections_searched: Vec<String>,
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty", default)]
+    pub errors: std::collections::HashMap<String, String>,
     pub latency_ms: u64,
 }
 
@@ -1418,6 +1443,7 @@ backends:
 
     fn make_query(q: &str, limit: usize) -> Query {
         Query {
+            vector: None,
             query_string: q.to_string(),
             fields: vec![],
             limit,
@@ -1436,7 +1462,7 @@ backends:
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_collection_manager_search() -> Result<()> {
         let temp = TempDir::new()?;
         let schemas_dir = temp.path().join("schemas");
@@ -1480,6 +1506,7 @@ backends:
 
         // Search
         let query = Query {
+        vector: None,
             query_string: "rust".to_string(),
             fields: vec!["title".to_string(), "content".to_string()],
             limit: 10,
@@ -1538,7 +1565,7 @@ backends:
     // delete tests
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_delete_documents() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1574,7 +1601,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_delete_nonexistent_collection() {
         let temp = TempDir::new().unwrap();
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1587,7 +1614,7 @@ backends:
     // stats tests
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_stats_empty_collection() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1597,7 +1624,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_stats_after_indexing() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1617,7 +1644,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_stats_nonexistent_collection() {
         let temp = TempDir::new().unwrap();
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1630,7 +1657,7 @@ backends:
     // get tests
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_get_existing_document() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1652,7 +1679,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_get_missing_document() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1662,7 +1689,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_get_nonexistent_collection() {
         let temp = TempDir::new().unwrap();
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1675,7 +1702,7 @@ backends:
     // search_with_aggs tests
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_search_with_aggs_nonexistent_collection() {
         let temp = TempDir::new().unwrap();
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1685,7 +1712,7 @@ backends:
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_search_with_aggs_empty_aggregations() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1712,7 +1739,7 @@ backends:
     // add_collection / remove_collection / persist_schema / remove_schema_file
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_add_and_remove_collection() -> Result<()> {
         let temp = TempDir::new()?;
         let schemas_dir = temp.path().join("schemas");
@@ -1770,7 +1797,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_remove_collection_nonexistent() {
         let temp = TempDir::new().unwrap();
         let schemas_dir = temp.path().join("schemas");
@@ -1787,7 +1814,7 @@ backends:
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_persist_schema_and_remove() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, schemas_dir) = setup_manager(&temp, "articles").await;
@@ -1810,7 +1837,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_remove_schema_file_nonexistent() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1826,7 +1853,7 @@ backends:
     // collection_exists / get_schema / list_collections / lint_schemas
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_collection_exists() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1836,7 +1863,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_get_schema() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1850,7 +1877,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_list_collections() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1861,7 +1888,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_lint_schemas_clean() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -1988,7 +2015,7 @@ backends:
     // expand_collection_patterns tests
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_expand_collection_patterns_exact() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -2003,7 +2030,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_expand_collection_patterns_no_duplicates() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -2018,7 +2045,7 @@ backends:
     // multi_search tests
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_multi_search() -> Result<()> {
         let temp = TempDir::new()?;
         let schemas_dir = temp.path().join("schemas");
@@ -2083,6 +2110,7 @@ backends:
 
         // Multi-search across both collections
         let query = Query {
+        vector: None,
             query_string: "rust".to_string(),
             fields: vec!["title".to_string()],
             limit: 10,
@@ -2119,7 +2147,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_multi_search_empty_patterns() -> Result<()> {
         let temp = TempDir::new()?;
         let (manager, _) = setup_manager(&temp, "articles").await;
@@ -2132,7 +2160,7 @@ backends:
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_multi_search_with_wildcard() -> Result<()> {
         let temp = TempDir::new()?;
         let schemas_dir = temp.path().join("schemas");
@@ -2225,7 +2253,7 @@ reranking:
     // index error paths
     // ========================================================================
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_index_nonexistent_collection() {
         let temp = TempDir::new().unwrap();
         let (manager, _) = setup_manager(&temp, "articles").await;

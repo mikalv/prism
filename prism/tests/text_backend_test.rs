@@ -119,6 +119,7 @@ fn make_schema() -> CollectionSchema {
 
 fn make_query(q: &str) -> Query {
     Query {
+        vector: None,
         query_string: q.to_string(),
         fields: vec![],
         limit: 100,
@@ -193,7 +194,7 @@ fn sorted_query(field: &str, ascending: bool) -> Query {
     q
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_collector_sort_by_numeric_field() {
     let (_tmp, backend) = setup().await;
     // c omits `count` (missing value); a/b/d have counts.
@@ -228,7 +229,7 @@ async fn test_collector_sort_by_numeric_field() {
     assert_eq!(ids, vec!["a", "d", "b", "c"], "descending, missing last");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_collector_sort_paginates() {
     let (_tmp, backend) = setup().await;
     for (i, c) in [50, 40, 30, 20, 10].iter().enumerate() {
@@ -251,7 +252,7 @@ async fn test_collector_sort_paginates() {
 // 1. Indexing & Get
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_and_get_document() {
     let (_tmp, backend) = setup().await;
 
@@ -269,7 +270,7 @@ async fn test_index_and_get_document() {
     assert_eq!(fetched.fields.get("body").unwrap(), "A greeting");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_nonexistent_document() {
     let (_tmp, backend) = setup().await;
 
@@ -277,7 +278,7 @@ async fn test_get_nonexistent_document() {
     assert!(result.is_none());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_upsert_replaces_document() {
     let (_tmp, backend) = setup().await;
 
@@ -301,7 +302,7 @@ async fn test_upsert_replaces_document() {
     assert_eq!(stats.document_count, 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_multiple_documents() {
     let (_tmp, backend) = setup().await;
 
@@ -320,7 +321,7 @@ async fn test_index_multiple_documents() {
     assert_eq!(stats.document_count, 3);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_document_with_numeric_field() {
     let (_tmp, backend) = setup().await;
 
@@ -333,7 +334,7 @@ async fn test_index_document_with_numeric_field() {
     assert_eq!(fetched.fields.get("count").unwrap(), 42);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_document_with_date_field() {
     let (_tmp, backend) = setup().await;
 
@@ -351,7 +352,7 @@ async fn test_index_document_with_date_field() {
     assert!(date_val.starts_with("2025-06-15"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_document_with_f64_field() {
     let (_tmp, backend) = setup().await;
 
@@ -369,7 +370,7 @@ async fn test_index_document_with_f64_field() {
     assert!((price - 19.99).abs() < 0.001);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_to_nonexistent_collection_errors() {
     let (_tmp, backend) = setup().await;
 
@@ -381,7 +382,7 @@ async fn test_index_to_nonexistent_collection_errors() {
 // 2. Delete
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_single() {
     let (_tmp, backend) = setup().await;
 
@@ -402,7 +403,7 @@ async fn test_delete_single() {
     assert!(backend.get("test", "d2").await.unwrap().is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_multiple() {
     let (_tmp, backend) = setup().await;
 
@@ -428,7 +429,7 @@ async fn test_delete_multiple() {
     assert!(backend.get("test", "c").await.unwrap().is_none());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_nonexistent_does_not_error() {
     let (_tmp, backend) = setup().await;
 
@@ -439,7 +440,7 @@ async fn test_delete_nonexistent_does_not_error() {
         .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_then_stats_reflects_change() {
     let (_tmp, backend) = setup().await;
 
@@ -462,7 +463,7 @@ async fn test_delete_then_stats_reflects_change() {
 // 3. Stats
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_stats_empty_collection() {
     let (_tmp, backend) = setup().await;
 
@@ -470,7 +471,7 @@ async fn test_stats_empty_collection() {
     assert_eq!(stats.document_count, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_stats_after_indexing() {
     let (_tmp, backend) = setup().await;
 
@@ -486,7 +487,7 @@ async fn test_stats_after_indexing() {
     assert_eq!(stats.document_count, 3);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_stats_nonexistent_collection_errors() {
     let (_tmp, backend) = setup().await;
 
@@ -498,7 +499,7 @@ async fn test_stats_nonexistent_collection_errors() {
 // 4. Search
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_basic_text_search() {
     let (_tmp, backend) = setup().await;
 
@@ -521,7 +522,7 @@ async fn test_basic_text_search() {
     assert!(ids.contains(&"d3"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_returns_stored_fields() {
     let (_tmp, backend) = setup().await;
 
@@ -540,7 +541,7 @@ async fn test_search_returns_stored_fields() {
     assert_eq!(hit.fields.get("body").unwrap(), "Greetings");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_specific_fields() {
     let (_tmp, backend) = setup().await;
 
@@ -564,7 +565,7 @@ async fn test_search_specific_fields() {
     assert_eq!(results.results[0].id, "d1");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_limit() {
     let (_tmp, backend) = setup().await;
 
@@ -579,7 +580,7 @@ async fn test_search_limit() {
     assert_eq!(results.results.len(), 3);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_offset() {
     let (_tmp, backend) = setup().await;
 
@@ -608,7 +609,7 @@ async fn test_search_offset() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_empty_query_returns_no_results() {
     let (_tmp, backend) = setup().await;
 
@@ -625,7 +626,7 @@ async fn test_search_empty_query_returns_no_results() {
     assert!(results.results.len() <= 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_no_match() {
     let (_tmp, backend) = setup().await;
 
@@ -641,7 +642,7 @@ async fn test_search_no_match() {
     assert_eq!(results.total, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_nonexistent_collection_errors() {
     let (_tmp, backend) = setup().await;
 
@@ -653,7 +654,7 @@ async fn test_search_nonexistent_collection_errors() {
 // 5. Search with highlights
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_with_highlight() {
     let (_tmp, backend) = setup().await;
 
@@ -694,7 +695,7 @@ async fn test_search_with_highlight() {
     assert!(has_highlight, "Expected highlighted text with <b> tags");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_highlight_non_matching_field_omitted() {
     let (_tmp, backend) = setup().await;
 
@@ -786,7 +787,7 @@ fn match_all_query() -> Query {
     make_query("item")
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_count() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -809,7 +810,7 @@ async fn test_agg_count() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_covers_all_matches_regardless_of_hit_limit() {
     // Aggregations run over the full match set, not the returned hit page:
     // with limit=1 only one hit comes back, but the count must still be 5.
@@ -838,7 +839,7 @@ async fn test_agg_covers_all_matches_regardless_of_hit_limit() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_sum() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -863,7 +864,7 @@ async fn test_agg_sum() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_avg() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -888,7 +889,7 @@ async fn test_agg_avg() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_min() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -913,7 +914,7 @@ async fn test_agg_min() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_max() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -938,7 +939,7 @@ async fn test_agg_max() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_stats() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -967,7 +968,7 @@ async fn test_agg_stats() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_percentiles() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -998,7 +999,7 @@ async fn test_agg_percentiles() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_terms() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1031,7 +1032,7 @@ async fn test_agg_terms() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_histogram() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1061,7 +1062,7 @@ async fn test_agg_histogram() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_histogram_with_extended_bounds() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1097,7 +1098,7 @@ async fn test_agg_histogram_with_extended_bounds() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_range() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1148,7 +1149,7 @@ async fn test_agg_range() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_date_histogram() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1182,7 +1183,7 @@ async fn test_agg_date_histogram() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_filter() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1210,7 +1211,7 @@ async fn test_agg_filter() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_filters() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1245,13 +1246,14 @@ async fn test_agg_filters() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_global() {
     let (_tmp, backend) = setup_agg_data().await;
 
     // Global should return count of ALL docs, even though our query only matches
     // some. We query "alpha" but global should see all 5.
     let narrow_query = Query {
+        vector: None,
         query_string: "alpha".to_string(),
         fields: vec![],
         limit: 100,
@@ -1290,7 +1292,7 @@ async fn test_agg_global() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_terms_with_sub_aggregation() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1324,7 +1326,7 @@ async fn test_agg_terms_with_sub_aggregation() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_agg_multiple_aggregations() {
     let (_tmp, backend) = setup_agg_data().await;
 
@@ -1365,7 +1367,7 @@ async fn test_agg_multiple_aggregations() {
 //    get_segments, reconstruct_document
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_top_terms() {
     let (_tmp, backend) = setup().await;
 
@@ -1391,7 +1393,7 @@ async fn test_get_top_terms() {
     assert!(rust_term.unwrap().doc_freq >= 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_top_terms_limit() {
     let (_tmp, backend) = setup().await;
 
@@ -1410,7 +1412,7 @@ async fn test_get_top_terms_limit() {
     assert!(terms.len() <= 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_suggest_terms_prefix() {
     let (_tmp, backend) = setup().await;
 
@@ -1441,7 +1443,7 @@ async fn test_suggest_terms_prefix() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_suggest_terms_fuzzy() {
     let (_tmp, backend) = setup().await;
 
@@ -1466,7 +1468,7 @@ async fn test_suggest_terms_fuzzy() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_more_like_this_by_id() {
     let (_tmp, backend) = setup().await;
 
@@ -1512,7 +1514,7 @@ async fn test_more_like_this_by_id() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_more_like_this_by_text() {
     let (_tmp, backend) = setup().await;
 
@@ -1546,7 +1548,7 @@ async fn test_more_like_this_by_text() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_more_like_this_no_source_returns_error() {
     let (_tmp, backend) = setup().await;
 
@@ -1554,7 +1556,7 @@ async fn test_more_like_this_no_source_returns_error() {
     assert!(result.is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_segments() {
     let (_tmp, backend) = setup().await;
 
@@ -1569,7 +1571,7 @@ async fn test_get_segments() {
     assert!(segments.delete_ratio >= 0.0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_segments_empty_collection() {
     let (_tmp, backend) = setup().await;
 
@@ -1578,7 +1580,7 @@ async fn test_get_segments_empty_collection() {
     assert_eq!(segments.total_docs, 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_reconstruct_document() {
     let (_tmp, backend) = setup().await;
 
@@ -1618,7 +1620,7 @@ async fn test_reconstruct_document() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_reconstruct_nonexistent_document() {
     let (_tmp, backend) = setup().await;
 
@@ -1630,7 +1632,7 @@ async fn test_reconstruct_nonexistent_document() {
 // 8. Edge cases & remove_collection
 // =========================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_remove_collection() {
     let (_tmp, backend) = setup().await;
 
@@ -1646,7 +1648,7 @@ async fn test_remove_collection() {
     assert!(result.is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_reinitialize_collection() {
     let (_tmp, backend) = setup().await;
 
@@ -1664,7 +1666,7 @@ async fn test_reinitialize_collection() {
     assert!(fetched.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_collection_data_prevents_resurrection() {
     let (_tmp, backend) = setup().await;
 
@@ -1686,7 +1688,7 @@ async fn test_delete_collection_data_prevents_resurrection() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_collection_data_rejects_traversal() {
     let (_tmp, backend) = setup().await;
     // Path-traversal / separator / dot names must be refused, not deleted.
@@ -1698,7 +1700,7 @@ async fn test_delete_collection_data_rejects_traversal() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multiple_collections() {
     let tmp = TempDir::new().unwrap();
     let backend = TextBackend::new(tmp.path()).unwrap();
@@ -1727,7 +1729,7 @@ async fn test_multiple_collections() {
     assert_eq!(b.fields.get("title").unwrap(), "Beta");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_with_aggs_on_empty_results() {
     let (_tmp, backend) = setup().await;
 
@@ -1738,6 +1740,7 @@ async fn test_search_with_aggs_on_empty_results() {
         .unwrap();
 
     let q = Query {
+        vector: None,
         query_string: "zzyzx_nonexistent".to_string(),
         fields: vec![],
         limit: 10,
@@ -1770,7 +1773,7 @@ async fn test_search_with_aggs_on_empty_results() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_with_aggs_returns_paginated_results() {
     let (_tmp, backend) = setup_agg_data().await;
 

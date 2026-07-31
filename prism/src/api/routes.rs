@@ -145,6 +145,32 @@ fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
     extract_simple(result.id, result.score, &result.fields)
 }
 
+async fn resolve_vector(
+    manager: &Arc<CollectionManager>,
+    collections: &[&str],
+    request_vector: Option<Vec<f32>>,
+    query_text: Option<&String>,
+) -> Option<Vec<f32>> {
+    if request_vector.is_some() {
+        return request_vector;
+    }
+    let text = match query_text {
+        Some(t) if !t.is_empty() => t,
+        _ => return None,
+    };
+    
+    let is_hybrid = collections.iter().any(|&col| manager.is_hybrid(col));
+
+    if is_hybrid {
+        if let Some(&first_col) = collections.first() {
+            if let Ok(v) = manager.embed_query(first_col, text).await {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
 #[tracing::instrument(
     name = "search",
     skip(manager, request),
@@ -157,14 +183,12 @@ pub async fn search(
 ) -> Result<Json<SearchResults>, (StatusCode, String)> {
     let start = std::time::Instant::now();
 
-    let qstr = if let Some(vec) = request.vector.clone() {
-        serde_json::to_string(&vec).unwrap_or_default()
-    } else {
-        request.query.clone().unwrap_or_default()
-    };
+    let has_vector = request.vector.is_some();
+    let vec_override = resolve_vector(&manager, &[&collection], request.vector, request.query.as_ref()).await;
 
     let query = Query {
-        query_string: qstr,
+        query_string: request.query.clone().unwrap_or_default(),
+        vector: vec_override,
         fields: request.fields,
         limit: request.limit,
         offset: request.offset,
@@ -215,23 +239,39 @@ pub async fn search(
                 results.total = results.results.len();
             }
 
+            let search_type = if request.query.is_some() && has_vector {
+                "hybrid"
+            } else if has_vector {
+                "vector"
+            } else {
+                "text"
+            };
+
             metrics::histogram!("prism_search_duration_seconds",
                 "collection" => collection.clone(),
-                "search_type" => "text",
+                "search_type" => search_type,
             )
             .record(duration);
             metrics::counter!("prism_search_total",
                 "collection" => collection,
-                "search_type" => "text",
+                "search_type" => search_type,
                 "status" => "ok",
             )
             .increment(1);
             Ok(Json(results))
         }
         Err(e) => {
+            let search_type = if request.query.is_some() && has_vector {
+                "hybrid"
+            } else if has_vector {
+                "vector"
+            } else {
+                "text"
+            };
+
             metrics::counter!("prism_search_total",
                 "collection" => collection,
-                "search_type" => "text",
+                "search_type" => search_type,
                 "status" => "error",
             )
             .increment(1);
@@ -243,9 +283,20 @@ pub async fn search(
 
 pub async fn simple_search(
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(request): Json<SimpleSearchRequest>,
 ) -> Result<Json<SimpleSearchResponse>, StatusCode> {
-    let collections = manager.list_collections();
+    let all_collections = manager.list_collections();
+    
+    let collections: Vec<String> = if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) = (&user_ext, &checker_ext) {
+        all_collections
+            .into_iter()
+            .filter(|c| checker.check_permission(user, c, crate::security::types::Permission::Search))
+            .collect()
+    } else {
+        all_collections
+    };
 
     if collections.is_empty() {
         return Ok(Json(SimpleSearchResponse {
@@ -257,6 +308,7 @@ pub async fn simple_search(
     let target_collection = request.collection.clone();
 
     let query = Query {
+        vector: None,
         query_string: request.query,
         fields: vec![],
         limit: request.limit,
@@ -279,6 +331,11 @@ pub async fn simple_search(
         Some(name) => {
             if !manager.collection_exists(&name) {
                 return Err(StatusCode::NOT_FOUND);
+            }
+            if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) = (&user_ext, &checker_ext) {
+                if !checker.check_permission(user, &name, crate::security::types::Permission::Search) {
+                    return Err(StatusCode::FORBIDDEN);
+                }
             }
             let results = manager.search(&name, query, None).await.map_err(|e| {
                 tracing::error!("Simple search error: {:?}", e);
@@ -585,6 +642,7 @@ pub async fn list_documents(
     }
 
     let search_query = Query {
+        vector: None,
         query_string: "*".to_string(),
         fields: vec![],
         limit: query.limit,
@@ -1131,13 +1189,8 @@ pub struct LoadStatsResponse {
 }
 
 /// GET /stats/load
-pub async fn get_load_stats() -> Json<LoadStatsResponse> {
-    // Mock data for load stats until we implement system metric fetching
-    Json(LoadStatsResponse {
-        cpu_usage_percent: 12.5,
-        memory_used_mb: 256,
-        memory_total_mb: 4096,
-    })
+pub async fn get_load_stats() -> Result<Json<LoadStatsResponse>, StatusCode> {
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
 /// Task info
@@ -1153,27 +1206,23 @@ pub struct TaskInfo {
 #[derive(Serialize)]
 pub struct TasksResponse {
     pub active_tasks: Vec<TaskInfo>,
+    pub failed_jobs: Vec<crate::api::server::DlqEntry>,
 }
 
 /// GET /admin/tasks
-pub async fn get_tasks() -> Json<TasksResponse> {
-    // Mock data for active tasks
-    Json(TasksResponse {
-        active_tasks: vec![
-            TaskInfo {
-                id: "job-1029".to_string(),
-                name: "Index compaction".to_string(),
-                status: "Running".to_string(),
-                progress_percent: 45,
-            },
-            TaskInfo {
-                id: "job-1030".to_string(),
-                name: "Document ingestion".to_string(),
-                status: "Pending".to_string(),
-                progress_percent: 0,
-            },
-        ],
-    })
+pub async fn get_tasks(
+    State(state): State<crate::api::server::AppState>,
+) -> Result<Json<TasksResponse>, StatusCode> {
+    let failed_jobs = if let Some(dlq) = &state.dlq {
+        dlq.read_all().await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    Ok(Json(TasksResponse {
+        active_tasks: vec![],
+        failed_jobs,
+    }))
 }
 
 // ============================================================================
@@ -1223,6 +1272,7 @@ pub async fn aggregate(
     // Build search query
     let query_string = request.query.unwrap_or_else(|| "*".to_string());
     let query = Query {
+        vector: None,
         query_string,
         fields: vec![],
         limit: request.scan_limit,
@@ -1603,23 +1653,31 @@ pub struct MultiSearchRequest {
 /// POST /_msearch - Multi-collection search
 #[tracing::instrument(
     name = "msearch",
-    skip(manager, request),
+    skip(manager, user_ext, checker_ext, request),
     fields(collections = ?request.collections)
 )]
 pub async fn multi_search(
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(request): Json<MultiSearchRequest>,
 ) -> Result<Json<MultiSearchResults>, StatusCode> {
+    if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) = (user_ext, checker_ext) {
+        for c in &request.collections {
+            if !checker.check_permission(&user, c, crate::security::types::Permission::Search) {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     let start = std::time::Instant::now();
 
-    let qstr = if let Some(vec) = request.vector.clone() {
-        serde_json::to_string(&vec).unwrap_or_default()
-    } else {
-        request.query.clone().unwrap_or_default()
-    };
+    let collection_refs: Vec<&str> = request.collections.iter().map(|s| s.as_str()).collect();
+    let vec_override = resolve_vector(&manager, &collection_refs, request.vector, request.query.as_ref()).await;
 
     let query = Query {
-        query_string: qstr,
+        query_string: request.query.clone().unwrap_or_default(),
+        vector: vec_override,
         fields: request.fields,
         limit: request.limit,
         offset: request.offset,
@@ -1666,12 +1724,14 @@ pub async fn multi_search(
 /// Supports: /products,articles/_search or /logs-2026-*/_search
 #[tracing::instrument(
     name = "multi_index_search",
-    skip(manager, request),
+    skip(manager, user_ext, checker_ext, request),
     fields(collections = %collections)
 )]
 pub async fn multi_index_search(
     Path(collections): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<MultiSearchResults>, StatusCode> {
     let start = std::time::Instant::now();
@@ -1687,14 +1747,20 @@ pub async fn multi_index_search(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let qstr = if let Some(vec) = request.vector.clone() {
-        serde_json::to_string(&vec).unwrap_or_default()
-    } else {
-        request.query.clone().unwrap_or_default()
-    };
+    if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) = (user_ext, checker_ext) {
+        for c in &collection_list {
+            if !checker.check_permission(&user, c, crate::security::types::Permission::Search) {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
+    let collection_refs: Vec<&str> = collection_list.iter().map(|s| s.as_str()).collect();
+    let vec_override = resolve_vector(&manager, &collection_refs, request.vector, request.query.as_ref()).await;
 
     let query = Query {
-        query_string: qstr,
+        query_string: request.query.clone().unwrap_or_default(),
+        vector: vec_override,
         fields: request.fields,
         limit: request.limit,
         offset: request.offset,
@@ -2492,11 +2558,12 @@ pub async fn graph_bfs(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
     Json(request): Json<BfsRequest>,
-) -> Result<Json<BfsResponse>, StatusCode> {
+) -> Result<Json<BfsResponse>, (StatusCode, String)> {
     let graph = manager
         .graph_backend(&collection)
-        .ok_or(StatusCode::NOT_FOUND)?;
-    let nodes = graph.bfs(&request.start, &request.edge_type, request.max_depth);
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("No graph backend for collection '{}'", collection)))?;
+    let nodes = graph.bfs(&request.start, &request.edge_type, request.max_depth)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let count = nodes.len();
     Ok(Json(BfsResponse { nodes, count }))
 }
@@ -2506,12 +2573,13 @@ pub async fn graph_shortest_path(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
     Json(request): Json<ShortestPathRequest>,
-) -> Result<Json<ShortestPathResponse>, StatusCode> {
+) -> Result<Json<ShortestPathResponse>, (StatusCode, String)> {
     let graph = manager
         .graph_backend(&collection)
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("No graph backend for collection '{}'", collection)))?;
     let edge_types = request.edge_types.as_deref();
-    let path = graph.shortest_path(&request.start, &request.target, edge_types);
+    let path = graph.shortest_path(&request.start, &request.target, edge_types)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let length = path.as_ref().map(|p| p.len().saturating_sub(1));
     Ok(Json(ShortestPathResponse { path, length }))
 }

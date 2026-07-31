@@ -139,6 +139,7 @@ async fn iterate_all_documents(
 
     // Search with match-all query (empty query string matches all in Tantivy)
     let query = crate::backends::Query {
+        vector: None,
         query_string: "*".to_string(),
         fields: vec![],
         limit: total.max(10000), // Tantivy's TopDocs limit

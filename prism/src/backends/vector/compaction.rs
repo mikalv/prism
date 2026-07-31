@@ -114,7 +114,7 @@ mod tests {
                 serde_json::to_value(vec![i as f32, 0.0, 0.0, 0.0]).unwrap(),
             );
             shard
-                .index(&format!("doc{}", i), &[i as f32, 0.0, 0.0, 0.0], fields)
+                .index(&format!("doc{}", i), &[i as f32, 0.0, 0.0, 0.0], fields, 10000)
                 .unwrap();
         }
 
@@ -129,6 +129,7 @@ mod tests {
         let config = VectorCompactionConfig {
             min_segments: 3,
             delete_ratio_threshold: 0.2,
+            max_active_segment_size: 10000,
         };
         let compacted = compact_shard(&mut shard, &config).unwrap();
         assert_eq!(compacted, 0);
@@ -155,7 +156,7 @@ mod tests {
                 let mut fields = HashMap::new();
                 let vec = vec![(batch * 5 + i) as f32, 0.0, 0.0, 0.0];
                 fields.insert("embedding".to_string(), serde_json::to_value(&vec).unwrap());
-                shard.index(&doc_id, &vec, fields).unwrap();
+                shard.index(&doc_id, &vec, fields, 10000).unwrap();
             }
             shard.seal_active().unwrap();
         }
@@ -171,6 +172,7 @@ mod tests {
         let config = VectorCompactionConfig {
             min_segments: 2,
             delete_ratio_threshold: 0.2,
+            max_active_segment_size: 10000,
         };
 
         let compacted = compact_shard(&mut shard, &config).unwrap();
@@ -210,7 +212,7 @@ mod tests {
                 let mut fields = HashMap::new();
                 let vec = vec![(batch * 5 + i) as f32, 0.0, 0.0, 0.0];
                 fields.insert("embedding".to_string(), serde_json::to_value(&vec).unwrap());
-                shard.index(&doc_id, &vec, fields).unwrap();
+                shard.index(&doc_id, &vec, fields, 10000).unwrap();
             }
             shard.seal_active().unwrap();
         }
@@ -218,6 +220,7 @@ mod tests {
         let config = VectorCompactionConfig {
             min_segments: 2,
             delete_ratio_threshold: 0.2,
+            max_active_segment_size: 10000,
         };
 
         let compacted = compact_shard(&mut shard, &config).unwrap();

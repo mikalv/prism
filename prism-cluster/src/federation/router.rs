@@ -284,6 +284,7 @@ mod tests {
         let router = QueryRouter::new(state);
 
         let query = RpcQuery {
+            vector: None,
             query_string: "test".into(),
             fields: vec!["title".into()],
             limit: 10,
@@ -332,6 +333,7 @@ mod tests {
         let router = QueryRouter::new(state);
 
         let query = RpcQuery {
+            vector: None,
             query_string: "test".into(),
             fields: vec![],
             limit: 10,
@@ -390,6 +392,7 @@ mod tests {
 
         // All 3 shards should be routed
         let query = RpcQuery {
+            vector: None,
             query_string: "test".into(),
             fields: vec!["title".into()],
             limit: 10,

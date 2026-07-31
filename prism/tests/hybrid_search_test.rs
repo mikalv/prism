@@ -3,7 +3,7 @@ use prism::backends::{HybridSearchCoordinator, TextBackend, VectorBackend};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_hybrid_merge_behaviour() {
     // Create simple backends
     let tmp = tempfile::TempDir::new().unwrap();
@@ -32,6 +32,7 @@ async fn test_hybrid_merge_behaviour() {
                 bm25_b: None,
             }),
             vector: Some(prism::schema::types::VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
                 embedding_field: "embedding".to_string(),
                 dimension: 3,
                 distance: prism::schema::types::VectorDistance::Cosine,
@@ -86,9 +87,10 @@ async fn test_hybrid_merge_behaviour() {
         .await
         .unwrap();
 
-    // For this test, set query_string to the vector JSON and include text field
+    // For this test, set query_string to text and include text field
     let q = Query {
-        query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0]).unwrap(),
+        vector: Some(vec![1.0, 0.0, 0.0]),
+        query_string: "hello".to_string(),
         fields: vec!["text".to_string()],
         limit: 10,
         offset: 0,

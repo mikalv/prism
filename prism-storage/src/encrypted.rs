@@ -46,7 +46,7 @@ use crate::traits::{ListOptions, ObjectMeta, SegmentStorage};
 const ENCRYPTION_MAGIC: u8 = 0xE0;
 
 /// Current encryption format version
-const ENCRYPTION_VERSION: u8 = 0x01;
+const ENCRYPTION_VERSION: u8 = 0x02;
 
 /// Header size: magic (1) + version (1) + nonce (12)
 const HEADER_SIZE: usize = 14;
@@ -213,18 +213,25 @@ impl EncryptedStorage {
     }
 
     /// Encrypt data with a random nonce.
-    fn encrypt(&self, data: &[u8]) -> Result<Bytes> {
+    fn encrypt(&self, path: &StoragePath, data: &[u8]) -> Result<Bytes> {
         use aes_gcm::aead::rand_core::RngCore;
+        use aes_gcm::aead::Payload;
 
         // Generate random nonce
         let mut nonce_bytes = [0u8; NONCE_SIZE];
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
+        let path_str = path.to_string();
+        let payload = Payload {
+            msg: data,
+            aad: path_str.as_bytes(),
+        };
+
         // Encrypt
         let ciphertext = self
             .cipher
-            .encrypt(nonce, data)
+            .encrypt(nonce, payload)
             .map_err(|e| StorageError::Encryption(format!("Encryption failed: {}", e)))?;
 
         // Build output: magic + version + nonce + ciphertext
@@ -238,7 +245,7 @@ impl EncryptedStorage {
     }
 
     /// Decrypt data, extracting nonce from header.
-    fn decrypt(&self, data: &[u8]) -> Result<Bytes> {
+    fn decrypt(&self, path: &StoragePath, data: &[u8]) -> Result<Bytes> {
         // Check minimum size
         if data.len() < HEADER_SIZE {
             return Err(StorageError::Encryption(
@@ -254,10 +261,11 @@ impl EncryptedStorage {
         }
 
         // Check version
-        if data[1] != ENCRYPTION_VERSION {
+        let version = data[1];
+        if version != 0x01 && version != 0x02 {
             return Err(StorageError::Encryption(format!(
                 "Unsupported encryption version: {}",
-                data[1]
+                version
             )));
         }
 
@@ -265,15 +273,31 @@ impl EncryptedStorage {
         let nonce = Nonce::from_slice(&data[2..HEADER_SIZE]);
 
         // Decrypt
-        let plaintext = self
-            .cipher
-            .decrypt(nonce, &data[HEADER_SIZE..])
-            .map_err(|e| {
-                StorageError::Encryption(format!(
-                    "Decryption failed (wrong key or corrupted data): {}",
-                    e
-                ))
-            })?;
+        let plaintext = if version == 0x01 {
+            self.cipher
+                .decrypt(nonce, &data[HEADER_SIZE..])
+                .map_err(|e| {
+                    StorageError::Encryption(format!(
+                        "Decryption failed (wrong key or corrupted data): {}",
+                        e
+                    ))
+                })?
+        } else {
+            use aes_gcm::aead::Payload;
+            let path_str = path.to_string();
+            let payload = Payload {
+                msg: &data[HEADER_SIZE..],
+                aad: path_str.as_bytes(),
+            };
+            self.cipher
+                .decrypt(nonce, payload)
+                .map_err(|e| {
+                    StorageError::Encryption(format!(
+                        "Decryption failed (wrong key, wrong path, or corrupted data): {}",
+                        e
+                    ))
+                })?
+        };
 
         Ok(Bytes::from(plaintext))
     }
@@ -295,7 +319,7 @@ impl SegmentStorage for EncryptedStorage {
     async fn write(&self, path: &StoragePath, data: Bytes) -> Result<()> {
         debug!("EncryptedStorage write: {} ({} bytes)", path, data.len());
 
-        let encrypted = self.encrypt(&data)?;
+        let encrypted = self.encrypt(path, &data)?;
 
         debug!(
             "Encrypted {} bytes -> {} bytes (overhead: {} bytes)",
@@ -312,7 +336,7 @@ impl SegmentStorage for EncryptedStorage {
         debug!("EncryptedStorage read: {}", path);
 
         let data = self.inner.read(path).await?;
-        let decrypted = self.decrypt(&data)?;
+        let decrypted = self.decrypt(path, &data)?;
 
         debug!(
             "Decrypted {} bytes -> {} bytes",

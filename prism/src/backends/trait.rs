@@ -22,6 +22,7 @@ pub struct SortField {
 #[derive(Debug, Clone, Default)]
 pub struct Query {
     pub query_string: String,
+    pub vector: Option<Vec<f32>>,
     pub fields: Vec<String>,
     pub limit: usize,
     pub offset: usize,

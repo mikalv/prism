@@ -2,7 +2,7 @@ use prism::migration::import::DataImporter;
 use std::fs;
 use tempfile::TempDir;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_import_creates_importer() {
     let temp_dir = TempDir::new().unwrap();
     let input_dir = temp_dir.path().join("input");
@@ -13,7 +13,7 @@ async fn test_import_creates_importer() {
     // Just verify it constructs successfully (the line above would panic on failure)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_import_reads_jsonl() {
     let temp_dir = TempDir::new().unwrap();
     let input_dir = temp_dir.path().join("input");

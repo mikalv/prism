@@ -25,6 +25,7 @@ use tempfile::TempDir;
 /// Build a `Query` with sensible defaults for testing.
 fn make_query(query_string: &str, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: query_string.to_string(),
         fields: vec![],
         limit,
@@ -224,7 +225,7 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 /// 5. Empty query string.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_empty_query() {
     let (_temp, manager) = setup_fuzz_environment().await;
     let q = make_query("", 10);
@@ -242,7 +243,7 @@ async fn test_empty_query() {
 }
 
 /// 6. Very long query string (10,000 characters).
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_very_long_query() {
     let (_temp, manager) = setup_fuzz_environment().await;
     let long_query = "rust ".repeat(2000); // 10,000 chars
@@ -252,7 +253,7 @@ async fn test_very_long_query() {
 }
 
 /// 7. Query consisting entirely of special characters.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_only_special_chars() {
     let (_temp, manager) = setup_fuzz_environment().await;
     let q = make_query("*&^%$#@!", 10);
@@ -260,7 +261,7 @@ async fn test_only_special_chars() {
 }
 
 /// 8. Unbalanced parentheses.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_unbalanced_parens() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -282,7 +283,7 @@ async fn test_unbalanced_parens() {
 }
 
 /// 9. Unbalanced quotes.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_unbalanced_quotes() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -302,7 +303,7 @@ async fn test_unbalanced_quotes() {
 }
 
 /// 10. SQL injection attempt.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_sql_injection_attempt() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -331,7 +332,7 @@ async fn test_sql_injection_attempt() {
 /// 11. Field:value syntax with a non-existent field.
 ///     This was an actual production bug where Tantivy's QueryParser panics
 ///     on `nonexistent_field:value`.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_field_value_nonexistent_field() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -355,7 +356,7 @@ async fn test_field_value_nonexistent_field() {
 }
 
 /// 12. Wildcard patterns.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_wildcard_patterns() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -370,7 +371,7 @@ async fn test_wildcard_patterns() {
 }
 
 /// 13. Bare boolean operators.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_boolean_operators() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -393,7 +394,7 @@ async fn test_boolean_operators() {
 }
 
 /// 14. Nested boolean expressions.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_nested_boolean() {
     let (_temp, manager) = setup_fuzz_environment().await;
 
@@ -414,7 +415,7 @@ async fn test_nested_boolean() {
 }
 
 /// 15. Null bytes embedded in the query string.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_null_bytes() {
     let (_temp, manager) = setup_fuzz_environment().await;
 

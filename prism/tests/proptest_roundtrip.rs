@@ -78,6 +78,7 @@ async fn setup() -> (TempDir, Arc<CollectionManager>) {
 
 fn make_query(query_string: &str, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: query_string.to_string(),
         fields: vec![],
         limit,

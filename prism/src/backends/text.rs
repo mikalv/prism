@@ -811,10 +811,12 @@ impl SearchBackend for TextBackend {
             writer.add_document(tantivy_doc)?;
         }
 
-        writer.commit()?;
-
-        // Reload reader to ensure newly committed documents are visible
-        coll.reader.reload()?;
+        tokio::task::block_in_place(|| -> Result<()> {
+            writer.commit()?;
+            // Reload reader to ensure newly committed documents are visible
+            coll.reader.reload()?;
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -1138,7 +1140,10 @@ impl SearchBackend for TextBackend {
             writer.delete_term(term);
         }
 
-        writer.commit()?;
+        tokio::task::block_in_place(|| -> Result<()> {
+            writer.commit()?;
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -2469,7 +2474,10 @@ impl TextBackend {
 
         // Search for size + 1 to allow excluding the source doc
         let fetch_limit = if exclude_id.is_some() { size + 1 } else { size };
-        let top_docs = searcher.search(&parsed_query, &TopDocs::with_limit(fetch_limit))?;
+        let (top_docs, total_hits) = searcher.search(
+            &parsed_query,
+            &(TopDocs::with_limit(fetch_limit), tantivy::collector::Count),
+        )?;
 
         let id_field = coll.field_map.get("id").unwrap();
         let mut results = Vec::new();
@@ -2512,7 +2520,7 @@ impl TextBackend {
             }
         }
 
-        let total = results.len();
+        let total = total_hits;
         let latency_ms = start.elapsed().as_millis() as u64;
         Ok(SearchResults {
             results,
@@ -2600,8 +2608,9 @@ impl TextBackend {
         }
 
         // Merge all segments into one — runs synchronously while we hold the lock
-        let merge_future = writer.merge(&segment_ids);
-        let _segment_meta = futures::executor::block_on(merge_future)?;
+        let _segment_meta = tokio::task::block_in_place(|| {
+            futures::executor::block_on(writer.merge(&segment_ids))
+        })?;
 
         writer.commit()?;
         drop(writer); // Release lock before reload

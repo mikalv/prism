@@ -63,7 +63,7 @@ backends:
     (temp, manager)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_with_facets() {
     let (_temp, manager) = setup_test_environment().await;
 
@@ -105,6 +105,7 @@ async fn test_search_with_facets() {
 
     // Search for errors
     let query = Query {
+        vector: None,
         query_string: "error".to_string(),
         fields: vec!["message".to_string()],
         limit: 10,
@@ -138,7 +139,7 @@ async fn test_search_with_facets() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_pagination() {
     let (_temp, manager) = setup_test_environment().await;
 
@@ -160,6 +161,7 @@ async fn test_search_pagination() {
 
     // First page
     let query1 = Query {
+        vector: None,
         query_string: "test".to_string(),
         fields: vec!["message".to_string()],
         limit: 5,
@@ -189,6 +191,7 @@ async fn test_search_pagination() {
 
     // Second page
     let query2 = Query {
+        vector: None,
         query_string: "test".to_string(),
         fields: vec!["message".to_string()],
         limit: 5,
@@ -225,7 +228,7 @@ async fn test_search_pagination() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_hybrid_search_text_only_fallback() {
     let (_temp, manager) = setup_test_environment().await;
 
@@ -256,11 +259,12 @@ async fn test_hybrid_search_text_only_fallback() {
     assert_eq!(results.results[0].id, "doc1");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_collection_not_found() {
     let (_temp, manager) = setup_test_environment().await;
 
     let query = Query {
+        vector: None,
         query_string: "test".to_string(),
         fields: vec![],
         limit: 10,

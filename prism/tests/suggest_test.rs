@@ -51,7 +51,7 @@ backends:
     (temp, manager)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_prefix_suggestion() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -128,7 +128,7 @@ async fn test_prefix_suggestion() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_empty_prefix_returns_top_terms() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -180,7 +180,7 @@ async fn test_empty_prefix_returns_top_terms() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_no_matches() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -206,7 +206,7 @@ async fn test_no_matches() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_limit_parameter() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -243,7 +243,7 @@ async fn test_limit_parameter() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_field_specific_suggestions() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -296,7 +296,7 @@ async fn test_field_specific_suggestions() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_case_sensitivity() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -332,7 +332,7 @@ async fn test_case_sensitivity() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_nonexistent_field() {
     let (_temp, manager) = setup_suggest_environment().await;
 
@@ -353,7 +353,7 @@ async fn test_nonexistent_field() {
     assert!(result.is_err(), "Should error on nonexistent field");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_nonexistent_collection() {
     let (_temp, manager) = setup_suggest_environment().await;
 

@@ -19,6 +19,7 @@ use tempfile::TempDir;
 
 fn make_query(q: &str, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: q.to_string(),
         fields: vec![],
         limit,
@@ -92,7 +93,7 @@ fn make_article(id: &str, title: &str, body: &str, author: &str) -> Document {
 // 1. Disk schema survives restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_disk_schema_survives_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -158,7 +159,7 @@ async fn test_disk_schema_survives_restart() {
 // 2. API-created collection survives restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_api_created_collection_survives_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -212,7 +213,7 @@ async fn test_api_created_collection_survives_restart() {
 // 3. Multiple collections survive restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multiple_collections_survive_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -347,7 +348,7 @@ backends:
 // 4. All field types survive restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_all_field_types_survive_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -448,7 +449,7 @@ backends:
 // 5. Delete before restart persists
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_before_restart_persists() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -509,7 +510,7 @@ async fn test_delete_before_restart_persists() {
 // 6. Upsert before restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_upsert_before_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -551,7 +552,7 @@ async fn test_upsert_before_restart() {
 // 7. Empty collection survives restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_empty_collection_survives_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -584,7 +585,7 @@ async fn test_empty_collection_survives_restart() {
 // 8. Multiple restarts
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multiple_restarts() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -689,7 +690,7 @@ async fn test_multiple_restarts() {
 // 9. Schema file written on API create
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_schema_file_written_on_api_create() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -735,7 +736,7 @@ async fn test_schema_file_written_on_api_create() {
 // 10. Concurrent collections restart
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_concurrent_collections_restart() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");

@@ -63,8 +63,6 @@ clap = { workspace = true }
 # Query parsing (formerly engraph-query)
 nom = { workspace = true }
 time = { workspace = true }
-
-# Vector backends (optional)
 instant-distance = { workspace = true, optional = true }
 usearch = { workspace = true, optional = true }
 
@@ -97,6 +95,7 @@ prism-storage = { workspace = true, features = ["tantivy-adapter"] }
 # Tree-sitter code tokenizer (optional)
 prism-treesitter = { workspace = true, optional = true }
 subtle = "2.6.1"
+twox-hash = "2.1.3"
 
 [features]
 default = ["vector-instant", "provider-ollama"]
