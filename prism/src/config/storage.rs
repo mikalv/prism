@@ -251,8 +251,8 @@ impl UnifiedStorageConfig {
 
                 use prism_storage::{S3Config, S3Storage};
 
-                let mut config = if s3_config.endpoint.is_some() {
-                    S3Config::minio(&s3_config.bucket, s3_config.endpoint.as_ref().unwrap())
+                let mut config = if let Some(endpoint) = &s3_config.endpoint {
+                    S3Config::minio(&s3_config.bucket, endpoint)
                 } else {
                     S3Config::aws(&s3_config.bucket, &s3_config.region)
                 };
@@ -283,8 +283,8 @@ impl UnifiedStorageConfig {
                 use prism_storage::{S3Config, S3Storage};
 
                 // Create L2 (S3)
-                let mut config = if s3_config.endpoint.is_some() {
-                    S3Config::minio(&s3_config.bucket, s3_config.endpoint.as_ref().unwrap())
+                let mut config = if let Some(endpoint) = &s3_config.endpoint {
+                    S3Config::minio(&s3_config.bucket, endpoint)
                 } else {
                     S3Config::aws(&s3_config.bucket, &s3_config.region)
                 };

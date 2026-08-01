@@ -574,6 +574,8 @@ impl ApiServer {
             // Stats API (Issue #22)
             .route("/stats/cache", get(crate::api::routes::get_cache_stats))
             .route("/stats/server", get(crate::api::routes::get_server_info))
+            .route("/stats/load", get(crate::api::routes::get_load_stats))
+            .route("/admin/tasks", get(crate::api::routes::get_tasks))
             // Aggregations API (Issue #23)
             .route(
                 "/collections/:collection/aggregate",

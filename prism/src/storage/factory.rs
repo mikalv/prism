@@ -34,8 +34,8 @@ impl StorageFactory {
             StorageConfig::S3(s3) => {
                 use prism_storage::{S3Config as PrismS3Config, S3Storage};
 
-                let mut s3_config = if s3.endpoint.is_some() {
-                    PrismS3Config::minio(&s3.bucket, s3.endpoint.as_ref().unwrap())
+                let mut s3_config = if let Some(endpoint) = &s3.endpoint {
+                    PrismS3Config::minio(&s3.bucket, endpoint)
                 } else {
                     PrismS3Config::aws(&s3.bucket, &s3.region)
                 };

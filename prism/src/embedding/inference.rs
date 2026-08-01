@@ -2,6 +2,7 @@
 
 #[cfg(feature = "provider-onnx")]
 mod _inner {
+    #![allow(unused_imports)]
     use crate::embedding::ModelConfig;
     use anyhow::Result;
 
@@ -23,6 +24,7 @@ mod _inner {
             use std::sync::{Arc, Mutex};
             use tokenizers::Tokenizer;
 
+            #[allow(dead_code)]
             pub struct RealEmbedderFull {
                 session: Arc<Mutex<Session>>,
                 tokenizer: Arc<Tokenizer>,
@@ -75,13 +77,13 @@ mod _inner {
                         let padding = seq_len - ids.len();
 
                         input_ids.extend(ids.iter().map(|&id| id as i64));
-                        input_ids.extend(std::iter::repeat(0i64).take(padding));
+                        input_ids.extend(std::iter::repeat_n(0i64, padding));
 
                         attention_mask.extend(mask.iter().map(|&m| m as i64));
-                        attention_mask.extend(std::iter::repeat(0i64).take(padding));
+                        attention_mask.extend(std::iter::repeat_n(0i64, padding));
 
                         token_type_ids.extend(type_ids.iter().map(|&t| t as i64));
-                        token_type_ids.extend(std::iter::repeat(0i64).take(padding));
+                        token_type_ids.extend(std::iter::repeat_n(0i64, padding));
                     }
 
                     // Create ort Tensor values from arrays
@@ -117,6 +119,7 @@ mod _inner {
                         let seq_dim = dims[1];
                         let hidden_size = dims[2];
 
+                        #[allow(clippy::needless_range_loop)]
                         for b in 0..batch_size {
                             // Mean pooling over sequence dimension
                             let mut embedding = vec![0f32; hidden_size];
@@ -218,6 +221,7 @@ mod _inner {
                         let mut hasher = Sha256::new();
                         hasher.update(token.as_bytes());
                         let hash = hasher.finalize();
+                        #[allow(clippy::needless_range_loop)]
                         for i in 0..self.dimension {
                             let idx = i % hash.len();
                             let val = (hash[idx] as f32) / 255.0;
@@ -231,6 +235,7 @@ mod _inner {
                         let mut hasher = Sha256::new();
                         hasher.update(t.as_bytes());
                         let hash = hasher.finalize();
+                        #[allow(clippy::needless_range_loop)]
                         for i in 0..self.dimension {
                             let idx = i % hash.len();
                             accum[i] = (hash[idx] as f32) / 255.0;

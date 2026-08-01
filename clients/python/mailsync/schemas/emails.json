@@ -1,0 +1,106 @@
+{
+  "collection": "emails",
+  "description": "Email messages synced from IMAP",
+  "backends": {
+    "text": {
+      "fields": [
+        {
+          "name": "subject",
+          "type": "text",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "cc",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "message_id",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "mailbox",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "flags",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        }
+      ]
+    }
+  },
+  "facets": {
+    "allowed": [
+      "from",
+      "to",
+      "mailbox",
+      "flags"
+    ],
+    "default": [
+      "from",
+      "mailbox"
+    ],
+    "configs": [
+      {
+        "field": "from",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "mailbox",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "flags",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "date",
+        "type": "date_histogram",
+        "interval": "day"
+      }
+    ]
+  },
+  "boosting": {
+    "recency": {
+      "field": "date",
+      "decay_function": "exponential",
+      "scale": "30d",
+      "decay_rate": 0.5
+    }
+  }
+}

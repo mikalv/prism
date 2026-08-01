@@ -1,0 +1,136 @@
+{
+  "collection": "agent_messages",
+  "description": "Individual messages from AI assistant conversations (Claude, Codex, Gemini, Copilot, ChatGPT)",
+  "backends": {
+    "text": {
+      "fields": [
+        {
+          "name": "text",
+          "type": "text",
+          "stored": true,
+          "indexed": true,
+          "tokenizer": "code"
+        },
+        {
+          "name": "conversation_id",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "content_type",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "tool_name",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "project",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "seq",
+          "type": "i64",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "ts",
+          "type": "date",
+          "stored": true,
+          "indexed": true
+        },
+        {
+          "name": "source_path",
+          "type": "string",
+          "stored": true,
+          "indexed": false
+        }
+      ]
+    }
+  },
+  "facets": {
+    "allowed": [
+      "source",
+      "role",
+      "content_type",
+      "model",
+      "project"
+    ],
+    "default": [
+      "source",
+      "role"
+    ],
+    "configs": [
+      {
+        "field": "source",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "role",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "content_type",
+        "type": "terms",
+        "size": 10
+      },
+      {
+        "field": "model",
+        "type": "terms",
+        "size": 20
+      },
+      {
+        "field": "project",
+        "type": "terms",
+        "size": 20
+      },
+      {
+        "field": "ts",
+        "type": "date_histogram",
+        "interval": "day"
+      }
+    ]
+  },
+  "boosting": {
+    "recency": {
+      "field": "ts",
+      "decay_function": "exponential",
+      "scale": "30d",
+      "decay_rate": 0.5
+    }
+  },
+  "embedding_generation": {
+    "enabled": false,
+    "model": "all-MiniLM-L6-v2",
+    "source_field": "text",
+    "target_field": "text_vector"
+  }
+}

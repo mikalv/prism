@@ -16,6 +16,37 @@ All notable changes to Prism are documented in this file.
   (XOAUTH2) auth, implicit SSL / STARTTLS, and an optional built-in SSH tunnel
   to the IMAP host. `uv`-managed with 50 unit tests; verified end-to-end
   (create → bulk → search → cleanup) against the live 0.6.10 server.
+- **Embedded web UI is now shippable to prod** — the `websearch-ui` React app is
+  compiled into the server binary (via `prism-ui`/`rust-embed`) and served at
+  `/ui/`. It was previously dropped from prod builds because `build.rs` needs
+  `npm` to build `websearch-ui/dist` and the server host has no Node. The build
+  only runs npm when `dist/index.html` is missing, so a pre-built `dist` can be
+  shipped as a deploy artifact and embedded with the `ui` feature — no Node
+  required on the build host.
+
+### Fixed
+
+- **`/api/search` with no collection now searches ALL collections** — the web
+  UI's default "All" search (`simple_search`) fell back to the first registered
+  collection when no collection was specified, so it silently searched one
+  arbitrary collection. A query with 1600+ hits in the `mail` collection could
+  return nothing. It now uses `multi_search` (RRF-merged) across every
+  registered collection; an explicit collection still searches just that one.
+- **Collection dropdown is searchable, scrollable, and height-capped** — with
+  many collections (83 on prod) the selector rendered an uncapped list. It now
+  has a filter input (autofocused; Enter picks the first match, Esc closes) and
+  a fixed max-height scrollable list with an empty state.
+- **Web UI static shell no longer requires authentication** — the auth
+  middleware whitelist covered only `/health` and `/stats/server`, so with
+  security enabled every `/ui/*` asset (including `index.html`) returned `401`
+  and the UI could never render to prompt for a key. `/ui` is now whitelisted
+  (extracted into a tested `is_public_path` helper); the UI's data requests
+  (`/api/*`, `/collections/*`, `/admin/*`) still authenticate normally.
+- **`websearch-ui` production API base URL** — `.env.production` set
+  `VITE_API_URL=/api`, which combined with the code's own `/api/...` prefix to
+  produce broken `/api/api/...` request paths. It is now empty so the embedded
+  UI calls the API on the same origin (`/api/search`, `/collections/:c/search`,
+  `/admin/collections`).
 
 ## [0.6.10] - 2026-07-17
 

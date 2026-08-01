@@ -1,7 +1,7 @@
-import { useState, KeyboardEvent } from 'react'
-import { Search, Moon, Sun } from 'lucide-react'
-import { Input, Button } from '@/components/ui'
-import { useTheme } from '@/hooks'
+import { useState, KeyboardEvent, useEffect, useRef } from 'react'
+import { Search } from 'lucide-react'
+import { Input } from '@/components/ui'
+import { HeaderActions } from '@/components/composed'
 
 interface TopBarProps {
   query: string
@@ -10,7 +10,18 @@ interface TopBarProps {
 
 export function TopBar({ query: initialQuery, onSearch }: TopBarProps) {
   const [query, setQuery] = useState(initialQuery)
-  const { mode, toggleMode } = useTheme()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handleKeyDownGlobal = (e: globalThis.KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement !== inputRef.current) {
+        e.preventDefault()
+        inputRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDownGlobal)
+    return () => document.removeEventListener('keydown', handleKeyDownGlobal)
+  }, [])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && query.trim()) {
@@ -30,6 +41,7 @@ export function TopBar({ query: initialQuery, onSearch }: TopBarProps) {
 
         <div className="flex-1 max-w-xl">
           <Input
+            ref={inputRef}
             size="md"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -39,11 +51,7 @@ export function TopBar({ query: initialQuery, onSearch }: TopBarProps) {
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={toggleMode}>
-            {mode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
-        </div>
+        <HeaderActions />
       </div>
     </header>
   )

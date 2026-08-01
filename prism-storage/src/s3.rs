@@ -152,7 +152,7 @@ impl S3Storage {
     }
 
     /// Convert object_store Path back to StoragePath.
-    fn from_object_path(&self, obj_path: &ObjectPath) -> Option<StoragePath> {
+    fn resolve_object_path(&self, obj_path: &ObjectPath) -> Option<StoragePath> {
         let path_str = obj_path.as_ref();
         let relative = if !self.prefix.is_empty() {
             path_str.strip_prefix(&self.prefix)?.trim_start_matches('/')
@@ -237,7 +237,7 @@ impl SegmentStorage for S3Storage {
         let mut stream = self.store.list(Some(&obj_prefix));
 
         while let Some(meta) = stream.try_next().await.map_err(StorageError::from)? {
-            if let Some(storage_path) = self.from_object_path(&meta.location) {
+            if let Some(storage_path) = self.resolve_object_path(&meta.location) {
                 results.push(ObjectMeta {
                     path: storage_path,
                     size: meta.size as u64,
@@ -375,14 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn test_from_object_path() {
+    fn test_resolve_object_path() {
         let storage = S3Storage {
             store: Arc::new(object_store::memory::InMemory::new()),
             prefix: "data/".to_string(),
         };
 
         let obj_path = ObjectPath::from("data/products/vector/shard_0/index.bin");
-        let storage_path = storage.from_object_path(&obj_path).unwrap();
+        let storage_path = storage.resolve_object_path(&obj_path).unwrap();
 
         assert_eq!(storage_path.collection(), "products");
         assert_eq!(storage_path.backend(), StorageBackend::Vector);

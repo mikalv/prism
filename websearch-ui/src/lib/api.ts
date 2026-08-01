@@ -12,6 +12,7 @@ export interface SimpleSearchResult {
   url?: string;
   snippet?: string;
   score: number;
+  collection?: string;
 }
 
 export interface SimpleSearchResponse {
@@ -84,11 +85,58 @@ export async function searchCollection(
         url: (r.fields as Record<string, unknown>)?.url as string,
         snippet: r.snippet as string || (r.fields as Record<string, unknown>)?.content as string,
         score: r.score as number,
+        collection: collection,
       })),
       total: data.total,
     };
   } catch (error) {
     console.error('Collection search API error:', error);
+    throw error;
+  }
+}
+
+// Search multiple collections
+export async function multiSearch(
+  collections: string[],
+  query: string,
+  limit = 10
+): Promise<SimpleSearchResponse> {
+  if (collections.length === 0) {
+    return search(query, limit);
+  }
+  if (collections.length === 1) {
+    return searchCollection(collections[0], query, limit);
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/_msearch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ collections, query, limit }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Search failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // Transform MultiSearchResults to SimpleSearchResponse format
+    return {
+      results: data.results.map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        title: (r.fields as Record<string, unknown>)?.title as string || r.id as string,
+        url: (r.fields as Record<string, unknown>)?.url as string,
+        snippet: (r.fields as Record<string, unknown>)?.snippet as string || (r.fields as Record<string, unknown>)?.content as string,
+        score: r.score as number,
+        collection: r._collection as string,
+      })),
+      total: data.total,
+    };
+  } catch (error) {
+    console.error('Multi-collection search API error:', error);
     throw error;
   }
 }

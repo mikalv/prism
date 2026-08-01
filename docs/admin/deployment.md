@@ -393,6 +393,22 @@ With JSON logging, use logrotate:
 }
 ```
 
+## Manual Server Deployment (from Source)
+
+If you are deploying directly on a server (e.g., `192.168.88.212`) from source and running as a systemd unit, use the following steps:
+
+1. **Prerequisites**: Ensure both Rust (`cargo`) and Node/npm are available in your path. If `npm` is managed via `mise` for the root user, make sure to add it to the path.
+2. **Update Code**: SSH into the server, navigate to the `prism` repository, and run `git pull` or `git fetch --all && git reset --hard origin/main`.
+3. **Build Frontend**: Navigate to `websearch-ui`, run `npm install` and `npm run build`.
+4. **Build Backend**: From the project root, run `cargo clean -p prismsearch-ui` (to ensure the fresh UI is picked up by `rust-embed`) and then `cargo build --release --bin prism-server`.
+5. **Deploy**:
+   ```bash
+   sudo systemctl stop prismsearch
+   sudo cp target/release/prism-server /usr/bin/prism-server
+   sudo systemctl start prismsearch
+   sudo systemctl status prismsearch
+   ```
+
 ## See Also
 
 - [Configuration](configuration.md) — Full config reference

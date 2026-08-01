@@ -112,13 +112,13 @@ mod onnx_impl {
                 for i in 0..batch_size {
                     let padding = seq_len - all_input_ids[i].len();
                     flat_ids.extend_from_slice(&all_input_ids[i]);
-                    flat_ids.extend(std::iter::repeat(0i64).take(padding));
+                    flat_ids.extend(std::iter::repeat_n(0i64, padding));
 
                     flat_mask.extend_from_slice(&all_attention_masks[i]);
-                    flat_mask.extend(std::iter::repeat(0i64).take(padding));
+                    flat_mask.extend(std::iter::repeat_n(0i64, padding));
 
                     flat_types.extend_from_slice(&all_token_type_ids[i]);
-                    flat_types.extend(std::iter::repeat(0i64).take(padding));
+                    flat_types.extend(std::iter::repeat_n(0i64, padding));
                 }
 
                 let input_ids_array = Array2::from_shape_vec((batch_size, seq_len), flat_ids)?;

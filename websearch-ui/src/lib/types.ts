@@ -4,6 +4,7 @@ export interface SearchResult {
   url: string
   displayDomain: string
   snippet: string
+  collection?: string
   publishedAt?: string
   faviconUrl?: string
   score: number
