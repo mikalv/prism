@@ -130,6 +130,18 @@ pub trait SearchBackend: Send + Sync {
         query: &Query,
         aggregations: Vec<crate::aggregations::AggregationRequest>,
     ) -> Result<SearchResultsWithAggs>;
+
+    /// Fetch stored embedding vectors for the given document ids, when the
+    /// backend has them. Missing ids are simply absent from the map. The default
+    /// returns an empty map (text-only backends store no vectors). Used by
+    /// semantic near-duplicate collapse.
+    async fn get_vectors(
+        &self,
+        _collection: &str,
+        _ids: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        Ok(HashMap::new())
+    }
 }
 
 #[derive(Debug, Clone)]

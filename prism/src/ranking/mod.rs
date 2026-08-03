@@ -8,6 +8,7 @@
 pub mod collapse;
 pub mod cross_encoder;
 pub mod decay;
+pub mod near_dup;
 pub mod reranker;
 pub mod score_function;
 

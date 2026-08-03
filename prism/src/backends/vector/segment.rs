@@ -161,6 +161,16 @@ impl VectorSegment {
         }
     }
 
+    /// Get the stored embedding vector for a document, if present and not
+    /// tombstoned.
+    pub fn get_vector(&self, doc_id: &str) -> Option<Vec<f32>> {
+        let key = *self.id_to_key.get(doc_id)?;
+        if self.tombstones.contains(key) {
+            return None;
+        }
+        self.hnsw.get_point(key)
+    }
+
     pub fn extract_all(&self) -> Vec<(String, Vec<f32>, HashMap<String, serde_json::Value>)> {
         let points = self.hnsw.extract_all_points();
         let mut out = Vec::new();

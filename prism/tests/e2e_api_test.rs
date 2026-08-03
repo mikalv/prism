@@ -336,6 +336,120 @@ async fn test_search_collapse_by_field() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_search_near_duplicate_collapse() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    // A hybrid (text + vector) collection with 4-dim embeddings. Hybrid is used
+    // because the /search route feeds the query vector via `query.vector`, which
+    // the hybrid coordinator honours (the raw vector backend expects it inline).
+    let resp = client
+        .put(format!("{}/collections/vec-e2e", base_url))
+        .json(&json!({
+            "collection": "vec-e2e",
+            "backends": {
+                "text": {
+                    "fields": [
+                        {"name": "body", "type": "text", "stored": true, "indexed": true}
+                    ]
+                },
+                "vector": { "embedding_field": "embedding", "dimension": 4 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        matches!(resp.status().as_u16(), 200 | 201),
+        "creating hybrid collection failed: {}",
+        resp.status()
+    );
+
+    // Two near-duplicate clusters: {a,b} ~ [1,0,0,0] and {c,d} ~ [0,1,0,0].
+    // All share a text term so a hybrid query returns every doc.
+    let docs = json!([
+        { "id": "a", "fields": { "body": "shared content", "embedding": [1.0, 0.0, 0.0, 0.0] } },
+        { "id": "b", "fields": { "body": "shared content", "embedding": [0.999, 0.001, 0.0, 0.0] } },
+        { "id": "c", "fields": { "body": "shared content", "embedding": [0.0, 1.0, 0.0, 0.0] } },
+        { "id": "d", "fields": { "body": "shared content", "embedding": [0.001, 0.999, 0.0, 0.0] } },
+    ]);
+    index_docs(&client, &base_url, "vec-e2e", &docs).await;
+
+    // Sanity: a hybrid query returns all four without near-dup collapse.
+    let resp = client
+        .post(format!("{}/collections/vec-e2e/search", base_url))
+        .json(&json!({ "query": "content", "vector": [1.0, 1.0, 0.0, 0.0], "limit": 10 }))
+        .send()
+        .await
+        .unwrap();
+    let sanity_status = resp.status().as_u16();
+    let sanity_bytes = resp.bytes().await.unwrap();
+    assert_eq!(
+        sanity_status,
+        200,
+        "sanity search failed: {}",
+        String::from_utf8_lossy(&sanity_bytes)
+    );
+    let body: Value = serde_json::from_slice(&sanity_bytes).unwrap();
+    assert_eq!(
+        body["results"].as_array().unwrap().len(),
+        4,
+        "sanity: all four docs should be returned without near-dup collapse"
+    );
+
+    // With near-dup collapse, each cluster reduces to one hit → two results.
+    let resp = client
+        .post(format!("{}/collections/vec-e2e/search", base_url))
+        .json(&json!({
+            "query": "content",
+            "vector": [1.0, 1.0, 0.0, 0.0],
+            "limit": 10,
+            "near_dup": { "threshold": 0.95 }
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    let ids: Vec<&str> = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["id"].as_str())
+        .collect();
+
+    assert_eq!(
+        ids.len(),
+        2,
+        "near-dup collapse should keep one hit per cluster, got {:?}",
+        ids
+    );
+    // One survivor from {a,b}, one from {c,d}.
+    let cluster1 = ids.iter().filter(|id| **id == "a" || **id == "b").count();
+    let cluster2 = ids.iter().filter(|id| **id == "c" || **id == "d").count();
+    assert_eq!(
+        cluster1, 1,
+        "exactly one of a/b should survive, got {:?}",
+        ids
+    );
+    assert_eq!(
+        cluster2, 1,
+        "exactly one of c/d should survive, got {:?}",
+        ids
+    );
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_and_get_by_id() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();

@@ -161,6 +161,14 @@ impl InstantDistanceAdapter {
         }
         map
     }
+
+    /// Return the stored vector for a single key, if present.
+    pub fn get_point(&self, key: u32) -> Option<Vec<f32>> {
+        self.keys
+            .iter()
+            .position(|k| *k == key)
+            .map(|i| self.points[i].v.clone())
+    }
 }
 
 #[cfg(feature = "vector-instant")]
