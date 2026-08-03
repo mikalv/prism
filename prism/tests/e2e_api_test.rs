@@ -250,6 +250,92 @@ async fn test_index_and_search() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_search_collapse_by_field() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Five docs sharing a common body term, in two categories:
+    // three in "cat-a", two in "cat-b".
+    let categories = ["cat-a", "cat-a", "cat-a", "cat-b", "cat-b"];
+    let docs: Vec<Value> = categories
+        .iter()
+        .enumerate()
+        .map(|(i, cat)| {
+            json!({
+                "id": format!("doc-{}", i),
+                "fields": {
+                    "title": format!("Document number {}", i),
+                    "body": "shared searchable content",
+                    "category": cat,
+                    "count": i
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // Without collapse: all five docs match "content".
+    let resp = client
+        .post(format!("{}/collections/test-e2e/search", base_url))
+        .json(&json!({ "query": "content", "limit": 10 }))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    assert_eq!(
+        body["results"].as_array().unwrap().len(),
+        5,
+        "sanity: all five docs should match without collapse"
+    );
+
+    // With collapse on `category`, max 1 per group → one hit per category.
+    let resp = client
+        .post(format!("{}/collections/test-e2e/search", base_url))
+        .json(&json!({
+            "query": "content",
+            "limit": 10,
+            "collapse": { "field": "category", "max_per_group": 1 }
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    let results = body["results"].as_array().unwrap();
+
+    assert_eq!(
+        results.len(),
+        2,
+        "collapse max_per_group=1 over two categories should yield 2 hits, got {:?}",
+        results
+    );
+    let cats: Vec<&str> = results
+        .iter()
+        .filter_map(|r| r["fields"]["category"].as_str())
+        .collect();
+    let mut sorted = cats.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(
+        sorted.len(),
+        cats.len(),
+        "each returned hit should have a distinct category, got {:?}",
+        cats
+    );
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_and_get_by_id() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
