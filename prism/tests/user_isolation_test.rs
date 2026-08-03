@@ -4,9 +4,10 @@
 //! access to. Here we call the `/admin/collections` handler directly with an
 //! auth context and assert it filters via the permission model.
 
-use axum::extract::State;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::Extension;
-use prism::api::routes::list_collections;
+use prism::api::routes::{list_collections, search, SearchRequest};
 use prism::backends::{TextBackend, VectorBackend};
 use prism::collection::CollectionManager;
 use prism::config::{RoleConfig, SecurityConfig};
@@ -84,6 +85,27 @@ async fn list_collections_filters_to_visible_when_authenticated() {
     .await;
 
     assert_eq!(resp.0.collections, vec!["ws_mikalv_a".to_string()]);
+}
+
+#[tokio::test]
+async fn per_collection_search_denied_for_unauthorized_collection() {
+    let (_temp, manager) = manager_with(&["ws_mikalv_a", "ws_eyrmedical_b"]).await;
+    let checker = checker_granting("mikalv", "ws_mikalv_*", &["search"]);
+    let user = user_with_role("mikalv");
+    let req: SearchRequest = serde_json::from_value(serde_json::json!({"query": "*"})).unwrap();
+
+    // Directly searching a collection outside the caller's grant is forbidden,
+    // even though simple_search already filters — this closes the direct-name hole.
+    let res = search(
+        Path("ws_eyrmedical_b".to_string()),
+        State(manager.clone()),
+        Some(Extension(user)),
+        Some(Extension(checker)),
+        axum::Json(req),
+    )
+    .await;
+
+    assert!(matches!(res, Err((StatusCode::FORBIDDEN, _))));
 }
 
 #[tokio::test]

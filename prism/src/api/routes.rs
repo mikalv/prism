@@ -171,16 +171,51 @@ async fn resolve_vector(
     None
 }
 
+/// Authorize access to a single named collection.
+///
+/// With no auth context (security disabled) this is a no-op. When the caller
+/// lacks the permission, returns `404 Not Found` under isolation mode (so
+/// collection names don't leak via status codes) or `403 Forbidden` otherwise.
+fn authorize_collection(
+    user_ext: &Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: &Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
+    collection: &str,
+    permission: crate::security::types::Permission,
+) -> Result<(), StatusCode> {
+    if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) =
+        (user_ext, checker_ext)
+    {
+        if !checker.check_permission(user, collection, permission) {
+            return Err(if checker.is_isolation() {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::FORBIDDEN
+            });
+        }
+    }
+    Ok(())
+}
+
 #[tracing::instrument(
     name = "search",
-    skip(manager, request),
+    skip(manager, request, user_ext, checker_ext),
     fields(collection = %collection, search_type = "text")
 )]
 pub async fn search(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<SearchResults>, (StatusCode, String)> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Search,
+    )
+    .map_err(|c| (c, "forbidden".to_string()))?;
+
     let start = std::time::Instant::now();
 
     let has_vector = request.vector.is_some();

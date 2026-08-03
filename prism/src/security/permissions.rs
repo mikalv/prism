@@ -98,6 +98,13 @@ impl PermissionChecker {
             .collect()
     }
 
+    /// Whether opt-in isolation mode is enabled. Surfaces use this to decide
+    /// whether a denied single-collection access should 404 (hide existence)
+    /// rather than 403.
+    pub fn is_isolation(&self) -> bool {
+        self.isolation
+    }
+
     pub fn check_permission(
         &self,
         user: &AuthUser,
