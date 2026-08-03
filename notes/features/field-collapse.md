@@ -23,6 +23,12 @@ conversation.
 - **Group key:** stored field value, stringified (`group_key` in collapse.rs).
   Results missing the field are always kept (cannot be grouped).
 
+## Not wired (by design, consistent with existing behaviour)
+`multi_index_search` (`/a,b/_search`) takes `SearchRequest` but already ignores
+`min_score` and `score_function` (they're set to `None` and never applied
+post-search). Collapse follows the same handler: not applied there. Wiring all
+three post-search steps into multi-index search is a separate, larger change.
+
 ## Known limitation
 Collapse runs on the already-paginated result page (backend applied
 `limit`/`offset` first), so a collapsed page can contain fewer than `limit`
