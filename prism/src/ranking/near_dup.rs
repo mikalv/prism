@@ -9,7 +9,21 @@
 //! `id -> vector` map (fetched from the vector backend for the returned hits).
 
 use crate::backends::SearchResult;
+use serde::Deserialize;
 use std::collections::HashMap;
+
+/// Configuration for semantic near-duplicate collapse.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NearDupConfig {
+    /// Cosine similarity at or above which two hits are treated as duplicates
+    /// (default: 0.95).
+    #[serde(default = "default_threshold")]
+    pub threshold: f32,
+}
+
+fn default_threshold() -> f32 {
+    0.95
+}
 
 /// Collapse score-ordered `results`, dropping any hit whose cosine similarity to
 /// an already-kept hit is `>= threshold`. Input order is preserved, so the

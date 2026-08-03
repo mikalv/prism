@@ -6,6 +6,14 @@ All notable changes to Prism are documented in this file.
 
 ### Added
 
+- **Semantic near-duplicate collapse on search.** A search request may include
+  `"near_dup": { "threshold": 0.95 }` to drop results whose embedding cosine
+  similarity to a higher-scoring result is at/above `threshold` (default 0.95),
+  preserving score order — so a page isn't dominated by many rephrasings of the
+  same content. Comparison vectors are fetched from the collection's vector
+  backend for the returned hits (new `SearchBackend::get_vectors`); hits without
+  a vector are always kept. Requires a collection with a vector backend; applied
+  post-search, after field `collapse`.
 - **Field collapse on search** (Elasticsearch-style `collapse`). A search request
   may include `"collapse": { "field": "<field>", "max_per_group": N }` to keep at
   most `N` results per distinct value of a stored field (default `N = 1`),

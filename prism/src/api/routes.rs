@@ -78,6 +78,11 @@ pub struct SearchRequest {
     /// (Elasticsearch-style `collapse`). Applied post-search.
     #[serde(default)]
     pub collapse: Option<crate::ranking::collapse::CollapseConfig>,
+    /// Optional semantic near-duplicate collapse: drop results whose embedding
+    /// is too similar to a higher-scoring result. Applied post-search, after
+    /// `collapse`. Requires a collection with a vector backend.
+    #[serde(default)]
+    pub near_dup: Option<crate::ranking::near_dup::NearDupConfig>,
 }
 
 fn default_limit() -> usize {
@@ -294,6 +299,20 @@ pub async fn search(
                     std::mem::take(&mut results.results),
                     &collapse.field,
                     collapse.max_per_group,
+                );
+                results.total = results.results.len();
+            }
+
+            // Apply semantic near-duplicate collapse (drop hits too similar to a
+            // higher-scoring one). Vectors are fetched from the collection's
+            // vector backend for the surviving result ids.
+            if let Some(ref near_dup) = request.near_dup {
+                let ids: Vec<String> = results.results.iter().map(|r| r.id.clone()).collect();
+                let vectors = manager.vectors_for(&collection, &ids).await;
+                results.results = crate::ranking::near_dup::collapse_near_duplicates(
+                    std::mem::take(&mut results.results),
+                    &vectors,
+                    near_dup.threshold,
                 );
                 results.total = results.results.len();
             }

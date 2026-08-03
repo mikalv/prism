@@ -208,7 +208,7 @@ async fn test_get_vectors_returns_stored_embeddings() {
     assert_eq!(vectors.len(), 2, "only stored ids should be returned");
     assert_eq!(vectors.get("d1").unwrap(), &vec![1.0, 0.0, 0.0, 0.0]);
     assert_eq!(vectors.get("d2").unwrap(), &vec![0.0, 1.0, 0.0, 0.0]);
-    assert!(vectors.get("missing").is_none());
+    assert!(!vectors.contains_key("missing"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
