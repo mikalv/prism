@@ -215,6 +215,11 @@ pub struct SecurityConfig {
     pub roles: HashMap<String, RoleConfig>,
     #[serde(default)]
     pub audit: AuditConfig,
+    /// Opt-in isolation mode. When true, an api key's `namespace` implicitly
+    /// grants read+search on `<namespace>*`, and enumeration/search surfaces
+    /// restrict results to what the caller may see. Off by default.
+    #[serde(default)]
+    pub isolation: bool,
 }
 
 impl Default for SecurityConfig {
@@ -224,6 +229,7 @@ impl Default for SecurityConfig {
             api_keys: Vec::new(),
             roles: HashMap::new(),
             audit: AuditConfig::default(),
+            isolation: false,
         }
     }
 }
@@ -234,6 +240,10 @@ pub struct ApiKeyConfig {
     pub name: String,
     #[serde(default)]
     pub roles: Vec<String>,
+    /// Collection namespace for this key. Under `isolation` mode this implicitly
+    /// grants read+search on `<namespace>*` without needing an explicit role.
+    #[serde(default)]
+    pub namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

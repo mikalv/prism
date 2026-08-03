@@ -304,7 +304,9 @@ mod tests {
         shard
             .index("doc1", &[1.0, 0.0, 0.0, 0.0], fields.clone(), 10000)
             .unwrap();
-        shard.index("doc2", &[0.0, 1.0, 0.0, 0.0], fields, 10000).unwrap();
+        shard
+            .index("doc2", &[0.0, 1.0, 0.0, 0.0], fields, 10000)
+            .unwrap();
 
         let results = shard.search(&[1.0, 0.0, 0.0, 0.0], 2).unwrap();
         assert!(!results.is_empty());

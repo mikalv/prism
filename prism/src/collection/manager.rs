@@ -878,7 +878,7 @@ impl CollectionManager {
         // Text-only search
         if !has_vector || vector.is_none() {
             let query = Query {
-        vector: None,
+                vector: None,
                 query_string: text_query.to_string(),
                 fields: vec![],
                 limit,
@@ -902,7 +902,7 @@ impl CollectionManager {
         if !has_text {
             let vec = vector.unwrap();
             let query = Query {
-        vector: None,
+                vector: None,
                 query_string: serde_json::to_string(&vec).unwrap_or_default(),
                 fields: vec![],
                 limit,
@@ -926,7 +926,7 @@ impl CollectionManager {
         let vec = vector.unwrap();
 
         let text_query_obj = Query {
-        vector: None,
+            vector: None,
             query_string: text_query.to_string(),
             fields: vec![],
             limit,
@@ -945,7 +945,7 @@ impl CollectionManager {
         };
 
         let vec_query_obj = Query {
-        vector: None,
+            vector: None,
             query_string: serde_json::to_string(&vec).unwrap_or_default(),
             fields: vec![],
             limit,
@@ -1506,7 +1506,7 @@ backends:
 
         // Search
         let query = Query {
-        vector: None,
+            vector: None,
             query_string: "rust".to_string(),
             fields: vec!["title".to_string(), "content".to_string()],
             limit: 10,
@@ -2110,7 +2110,7 @@ backends:
 
         // Multi-search across both collections
         let query = Query {
-        vector: None,
+            vector: None,
             query_string: "rust".to_string(),
             fields: vec!["title".to_string()],
             limit: 10,

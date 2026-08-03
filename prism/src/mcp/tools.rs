@@ -141,7 +141,7 @@ impl McpTool for SearchTool {
         let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
         let query = Query {
-        vector: None,
+            vector: None,
             query_string: query_string.to_string(),
             fields: vec![],
             limit,

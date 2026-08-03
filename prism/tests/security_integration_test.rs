@@ -61,11 +61,13 @@ fn security_config() -> SecurityConfig {
                 key: "test_admin_key".to_string(),
                 name: "admin".to_string(),
                 roles: vec!["admin".to_string()],
+                namespace: None,
             },
             ApiKeyConfig {
                 key: "test_reader_key".to_string(),
                 name: "reader".to_string(),
                 roles: vec!["reader".to_string()],
+                namespace: None,
             },
         ],
         roles,
@@ -73,6 +75,7 @@ fn security_config() -> SecurityConfig {
             enabled: false,
             index_to_collection: false,
         },
+        isolation: false,
     }
 }
 

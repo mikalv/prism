@@ -114,7 +114,12 @@ mod tests {
                 serde_json::to_value(vec![i as f32, 0.0, 0.0, 0.0]).unwrap(),
             );
             shard
-                .index(&format!("doc{}", i), &[i as f32, 0.0, 0.0, 0.0], fields, 10000)
+                .index(
+                    &format!("doc{}", i),
+                    &[i as f32, 0.0, 0.0, 0.0],
+                    fields,
+                    10000,
+                )
                 .unwrap();
         }
 

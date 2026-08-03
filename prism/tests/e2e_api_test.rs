@@ -144,7 +144,11 @@ async fn test_root_endpoint() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["name"], "prism");
@@ -171,7 +175,11 @@ async fn test_create_collection_and_list() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     let collections = body["collections"].as_array().unwrap();
@@ -217,7 +225,11 @@ async fn test_index_and_search() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
@@ -264,7 +276,11 @@ async fn test_index_and_get_by_id() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["id"], "doc-1");
@@ -304,7 +320,11 @@ async fn test_collection_stats() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["collection"], "test-e2e");
@@ -333,7 +353,11 @@ async fn test_collection_schema_endpoint() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["collection"], "test-e2e");
@@ -380,7 +404,11 @@ async fn test_search_empty_collection() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
@@ -463,7 +491,11 @@ async fn test_index_with_all_field_types() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["id"], "all-fields-doc");
@@ -842,7 +874,11 @@ async fn test_get_top_terms() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["field"], "title");
@@ -898,7 +934,11 @@ async fn test_get_segments() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     // Should have segment information
@@ -965,7 +1005,11 @@ async fn test_suggest_endpoint() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["suggestions"].is_array());
@@ -1038,7 +1082,11 @@ async fn test_more_like_this_by_text() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
@@ -1152,7 +1200,11 @@ async fn test_multi_search_endpoint() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
@@ -1184,7 +1236,11 @@ async fn test_multi_index_search_comma_separated() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
@@ -1252,7 +1308,11 @@ async fn test_search_with_highlight() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
@@ -1296,7 +1356,11 @@ async fn test_search_with_min_score() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
@@ -1354,7 +1418,11 @@ async fn test_server_info_endpoint() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["version"].is_string());
@@ -1470,7 +1538,11 @@ async fn test_list_pipelines_endpoint() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["pipelines"].is_array());
@@ -1503,7 +1575,11 @@ async fn test_simple_search_api() {
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.unwrap();
     if status != 200 {
-        panic!("Status was {}, body: {}", status, String::from_utf8_lossy(&bytes));
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
     }
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());

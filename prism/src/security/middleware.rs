@@ -10,11 +10,7 @@ use super::types::Permission;
 /// without an API key, because the UI has to render before it can authenticate
 /// its own API calls. The UI's data requests (`/api/*`, `/collections/*`) still
 /// go through auth normally.
-const AUTH_WHITELIST: &[&str] = &[
-    "/health",
-    "/stats/server",
-    "/ui",
-];
+const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server", "/ui"];
 
 /// Whether a path is publicly reachable without authentication.
 ///
@@ -205,9 +201,11 @@ mod tests {
                 key: "k".to_string(),
                 name: "u".to_string(),
                 roles: vec![role.to_string()],
+                namespace: None,
             }],
             roles,
             audit: Default::default(),
+            isolation: false,
         };
         PermissionChecker::new(&config)
     }
@@ -217,6 +215,7 @@ mod tests {
             name: "u".to_string(),
             roles: vec![role.to_string()],
             key_prefix: "k".to_string(),
+            namespace: None,
         }
     }
 

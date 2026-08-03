@@ -268,12 +268,12 @@ impl SegmentStorageSync for LocalStorage {
             std::fs::create_dir_all(parent)?;
         }
         let tmp_path = fs_path.with_extension(format!("tmp.{}", uuid::Uuid::new_v4()));
-        
+
         let mut f = std::fs::File::create(&tmp_path)?;
         use std::io::Write;
         f.write_all(data)?;
         f.sync_all()?;
-        
+
         std::fs::rename(&tmp_path, &fs_path)?;
         Ok(())
     }
