@@ -691,8 +691,20 @@ use crate::schema::CollectionSchema;
 
 pub async fn list_collections(
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Json<CollectionsList> {
-    let collections = manager.list_collections();
+    let all = manager.list_collections();
+    // When security is enabled, restrict the listing to collections the caller
+    // may search — the same enforcement point used by simple_search. Without an
+    // auth context (security disabled) the full list is returned unchanged.
+    let collections = match (user_ext, checker_ext) {
+        (
+            Some(axum::extract::Extension(user)),
+            Some(axum::extract::Extension(checker)),
+        ) => checker.visible_collections(&user, all, crate::security::types::Permission::Search),
+        _ => all,
+    };
     Json(CollectionsList { collections })
 }
 
