@@ -37,7 +37,7 @@ def main(ctx: click.Context, prism_url: str, api_key: str | None, state_db: str 
 
 
 @main.command()
-@click.option("--sources", default=None, help="Comma-separated list of sources (claude_code,codex,gemini,copilot,chatgpt)")
+@click.option("--sources", default=None, help="Comma-separated sources (claude_code,codex,gemini,copilot,chatgpt,antigravity,pi,cursor,kilo,cline,roo)")
 @click.option("--include-tool-results", is_flag=True, help="Include tool result content")
 @click.option("--include-thinking", is_flag=True, help="Include thinking/reasoning blocks")
 @click.option("--roles", default=None, help="Comma-separated roles to include (user,assistant,system,tool)")
