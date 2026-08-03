@@ -131,7 +131,7 @@ impl GraphShard {
             let wal_prefix =
                 StoragePath::graph(&self.collection, &self.shard_name, "wal/").unwrap();
             if let Ok(mut files) = storage.list(&wal_prefix).await {
-                files.sort_by(|a, b| a.path.to_string().cmp(&b.path.to_string()));
+                files.sort_by_key(|f| f.path.to_string());
                 let mut replayed = 0;
                 for file in files {
                     if let Ok(data) = storage.read(&file.path).await {

@@ -416,7 +416,7 @@ impl VectorBackend {
         }
 
         // Sort by path to replay in chronological order (since we use timestamp in filename)
-        files.sort_by(|a, b| a.path.to_string().cmp(&b.path.to_string()));
+        files.sort_by_key(|f| f.path.to_string());
 
         let mut replayed = 0;
         let mut files_to_delete = Vec::new();
