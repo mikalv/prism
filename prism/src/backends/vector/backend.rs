@@ -172,11 +172,11 @@ impl VectorBackend {
                 Ok(restored) => {
                     // Verify persisted dimensions match schema
                     let persisted_dims = restored.shards.first().map(|s| s.dimensions).unwrap_or(0);
-                    let persisted_metric = restored.shards.first().map(|s| s.metric.clone());
+                    let persisted_metric = restored.shards.first().map(|s| s.metric);
 
                     let dims_mismatch =
                         persisted_dims != vector_config.dimension && persisted_dims > 0;
-                    let metric_mismatch = persisted_metric.map_or(false, |m| m != metric);
+                    let metric_mismatch = persisted_metric.is_some_and(|m| m != metric);
 
                     if dims_mismatch || metric_mismatch {
                         tracing::warn!(
@@ -374,7 +374,7 @@ impl VectorBackend {
     }
 
     fn wal_file_path(collection: &str, file_name: &str) -> StoragePath {
-        StoragePath::vector(collection, "default", &format!("wal/{}", file_name)).unwrap()
+        StoragePath::vector(collection, "default", format!("wal/{}", file_name)).unwrap()
     }
 
     async fn save_index(&self, collection: &str, data: &[u8]) -> Result<()> {
@@ -847,7 +847,7 @@ fn deserialize_sharded_index(
         let mut new_shards = Vec::new();
         if !old_shards.is_empty() {
             let dimensions = old_shards[0].dimensions;
-            let metric = old_shards[0].metric.clone();
+            let metric = old_shards[0].metric;
             let source_field = old_shards[0].embedding_source_field.clone();
             let target_field = old_shards[0].embedding_target_field.clone();
 
@@ -855,7 +855,7 @@ fn deserialize_sharded_index(
                 new_shards.push(VectorShard::new(
                     i as u32,
                     dimensions,
-                    metric.clone(),
+                    metric,
                     vector_config.hnsw_m,
                     vector_config.hnsw_ef_construction,
                     vector_config.hnsw_ef_search,

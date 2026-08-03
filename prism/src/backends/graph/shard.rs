@@ -76,6 +76,7 @@ pub enum GraphOp {
 
 /// A single graph shard with SegmentStorage support.
 pub struct GraphShard {
+    #[allow(dead_code)]
     pub(crate) shard_id: u32,
     pub(crate) collection: String,
     pub(crate) shard_name: String,
@@ -224,7 +225,7 @@ impl GraphShard {
             let wal_path = StoragePath::graph(
                 &self.collection,
                 &self.shard_name,
-                &format!("wal/{}", wal_filename),
+                format!("wal/{}", wal_filename),
             )
             .unwrap();
             storage

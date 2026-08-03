@@ -107,6 +107,7 @@ impl HybridSearchCoordinator {
     }
 
     /// Weighted merge with configurable normalization strategy.
+    #[allow(clippy::too_many_arguments)]
     pub fn merge_weighted_with_normalization(
         text: SearchResults,
         vector: SearchResults,
