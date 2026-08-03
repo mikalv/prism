@@ -7,7 +7,9 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Extension;
-use prism::api::routes::{list_collections, search, SearchRequest};
+use prism::api::routes::{
+    get_collection_stats, get_document, list_collections, search, SearchRequest,
+};
 use prism::backends::{TextBackend, VectorBackend};
 use prism::collection::CollectionManager;
 use prism::config::{RoleConfig, SecurityConfig};
@@ -106,6 +108,50 @@ async fn per_collection_search_denied_for_unauthorized_collection() {
     .await;
 
     assert!(matches!(res, Err((StatusCode::FORBIDDEN, _))));
+}
+
+#[tokio::test]
+async fn per_collection_get_document_denied_for_unauthorized_collection() {
+    let (_temp, manager) = manager_with(&["ws_mikalv_a", "ws_eyrmedical_b"]).await;
+    let checker = checker_granting("mikalv", "ws_mikalv_*", &["read"]);
+    let user = user_with_role("mikalv");
+
+    let res = get_document(
+        Path(("ws_eyrmedical_b".to_string(), "doc1".to_string())),
+        State(manager.clone()),
+        Some(Extension(user)),
+        Some(Extension(checker)),
+    )
+    .await;
+
+    assert!(matches!(res, Err(StatusCode::FORBIDDEN)));
+}
+
+#[tokio::test]
+async fn per_collection_stats_denied_for_unauthorized_collection() {
+    let (_temp, manager) = manager_with(&["ws_mikalv_a", "ws_eyrmedical_b"]).await;
+    let checker = checker_granting("mikalv", "ws_mikalv_*", &["read"]);
+    let user = user_with_role("mikalv");
+
+    // Own collection is allowed...
+    let ok = get_collection_stats(
+        Path("ws_mikalv_a".to_string()),
+        State(manager.clone()),
+        Some(Extension(user.clone())),
+        Some(Extension(checker.clone())),
+    )
+    .await;
+    assert!(ok.is_ok());
+
+    // ...another user's is not.
+    let denied = get_collection_stats(
+        Path("ws_eyrmedical_b".to_string()),
+        State(manager.clone()),
+        Some(Extension(user)),
+        Some(Extension(checker)),
+    )
+    .await;
+    assert!(matches!(denied, Err(StatusCode::FORBIDDEN)));
 }
 
 #[tokio::test]

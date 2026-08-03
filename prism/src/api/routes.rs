@@ -619,7 +619,10 @@ pub async fn list_pipelines(State(state): State<AppState>) -> Json<PipelineListR
 pub async fn get_document(
     Path((collection, id)): Path<(String, String)>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Result<Json<Option<Document>>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Read)?;
     manager
         .get(&collection, &id)
         .await
@@ -655,7 +658,11 @@ pub async fn list_documents(
     Path(collection): Path<String>,
     axum::extract::Query(query): axum::extract::Query<ScrollQuery>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Result<Json<ScrollResponse>, (StatusCode, String)> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Read)
+        .map_err(|c| (c, "forbidden".to_string()))?;
     let stats = manager.stats(&collection).await.map_err(|e| {
         (
             StatusCode::NOT_FOUND,
@@ -1090,7 +1097,10 @@ pub struct CollectionSchemaResponse {
 pub async fn get_collection_schema(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Result<Json<CollectionSchemaResponse>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Read)?;
     let schema = manager
         .get_schema(&collection)
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -1139,7 +1149,10 @@ pub async fn get_collection_schema(
 pub async fn get_collection_schema_raw(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Result<Json<CollectionSchema>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Read)?;
     let schema = manager
         .get_schema(&collection)
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -1158,7 +1171,10 @@ pub struct CollectionStatsResponse {
 pub async fn get_collection_stats(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Result<Json<CollectionStatsResponse>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Read)?;
     // Check if collection exists
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
@@ -1307,8 +1323,11 @@ pub struct AggregateResponse {
 pub async fn aggregate(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(request): Json<AggregateRequest>,
 ) -> Result<Json<AggregateResponse>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Search)?;
     let start = std::time::Instant::now();
 
     // Check if collection exists
@@ -1406,7 +1425,10 @@ pub async fn get_top_terms(
 pub async fn get_segments(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
 ) -> Result<Json<SegmentsInfo>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Read)?;
     // Check if collection exists
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
@@ -1520,8 +1542,11 @@ pub struct SuggestResponse {
 pub async fn suggest(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(req): Json<SuggestRequest>,
 ) -> Result<Json<SuggestResponse>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Search)?;
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -1634,8 +1659,11 @@ pub struct MltRequest {
 pub async fn more_like_this(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>>,
     Json(req): Json<MltRequest>,
 ) -> Result<Json<SearchResults>, StatusCode> {
+    authorize_collection(&user_ext, &checker_ext, &collection, crate::security::types::Permission::Search)?;
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
     }

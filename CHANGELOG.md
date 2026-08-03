@@ -4,6 +4,20 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Opt-in user isolation mode** (`[security] isolation`, off by default). An api
+  key's `namespace` implicitly grants read+search on `<namespace>*` (never
+  write/delete/admin) without a hand-written role, and every collection
+  enumeration/read/search surface restricts results to what the caller may see:
+  `GET /admin/collections`, per-collection `/search`, `get_document`,
+  `list_documents`, `stats`, `schema` (+ raw), `aggregate`, `_suggest`, `_mlt`,
+  and `segments`. Denied single-collection access returns `404` under isolation
+  (so names don't leak via status codes), else `403`. With security disabled the
+  behavior is unchanged. This also closes a direct-name ACL hole: per-collection
+  `/collections/:c/search` previously searched any named collection without a
+  permission check, bypassing the filtering `simple_search`/`_msearch` already do.
+
 ## [0.6.12] - 2026-08-03
 
 Ships the work that was staged as 0.6.11 but never released (its tag was never
