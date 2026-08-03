@@ -293,7 +293,10 @@ impl SearchBackend for HybridSearchCoordinator {
 
     async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
         // Look for explicit vector in the query struct. (Legacy fallback: parse query_string just in case)
-        let maybe_vec = query.vector.clone().or_else(|| serde_json::from_str(&query.query_string).ok());
+        let maybe_vec = query
+            .vector
+            .clone()
+            .or_else(|| serde_json::from_str(&query.query_string).ok());
 
         let (tres, vres) = if let Some(vec) = maybe_vec {
             // Run vector search and text search in parallel

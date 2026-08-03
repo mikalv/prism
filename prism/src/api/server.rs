@@ -57,7 +57,7 @@ async fn metrics_middleware(
     response
 }
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
@@ -529,7 +529,9 @@ impl ApiServer {
         // Background indexing queue (capacity 1000 jobs)
         let (index_queue_tx, mut index_queue_rx) = mpsc::channel::<IndexJob>(1000);
 
-        let dlq = self.data_dir.as_ref().map(|d| DiskDlq { path: d.join("dlq.jsonl") });
+        let dlq = self.data_dir.as_ref().map(|d| DiskDlq {
+            path: d.join("dlq.jsonl"),
+        });
         if let Some(ref d) = dlq {
             if let Some(parent) = d.path.parent() {
                 let _ = tokio::fs::create_dir_all(parent).await;

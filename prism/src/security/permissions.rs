@@ -125,9 +125,7 @@ impl PermissionChecker {
 
         // Isolation mode: an api key's namespace implicitly grants read+search
         // on `<namespace>*` (never write/delete/admin) without an explicit role.
-        if self.isolation
-            && matches!(permission, Permission::Read | Permission::Search)
-        {
+        if self.isolation && matches!(permission, Permission::Read | Permission::Search) {
             if let Some(ns) = &user.namespace {
                 if collection.starts_with(ns.as_str()) {
                     return true;
@@ -217,7 +215,10 @@ mod tests {
 
         assert_eq!(
             visible,
-            vec!["ws_mikalv_code_a".to_string(), "ws_mikalv_docs_b".to_string()]
+            vec![
+                "ws_mikalv_code_a".to_string(),
+                "ws_mikalv_docs_b".to_string()
+            ]
         );
     }
 

@@ -174,7 +174,8 @@ impl VectorBackend {
                     let persisted_dims = restored.shards.first().map(|s| s.dimensions).unwrap_or(0);
                     let persisted_metric = restored.shards.first().map(|s| s.metric.clone());
 
-                    let dims_mismatch = persisted_dims != vector_config.dimension && persisted_dims > 0;
+                    let dims_mismatch =
+                        persisted_dims != vector_config.dimension && persisted_dims > 0;
                     let metric_mismatch = persisted_metric.map_or(false, |m| m != metric);
 
                     if dims_mismatch || metric_mismatch {
@@ -274,7 +275,7 @@ impl VectorBackend {
             let ep = self.embedding_provider.read();
             ep.clone()
         };
-        
+
         if let Some(provider) = provider {
             let result = provider
                 .embed(text)
@@ -306,10 +307,9 @@ impl VectorBackend {
         };
 
         if let Some(provider) = provider {
-            let result = provider
-                .embed_batch(texts)
-                .await
-                .map_err(|e| crate::error::Error::Backend(format!("Batch embedding failed: {}", e)));
+            let result = provider.embed_batch(texts).await.map_err(|e| {
+                crate::error::Error::Backend(format!("Batch embedding failed: {}", e))
+            });
 
             let duration = start.elapsed().as_secs_f64();
             let status = if result.is_ok() { "ok" } else { "error" };
@@ -337,7 +337,7 @@ impl VectorBackend {
         let query_vector = self.embed_text(text).await?;
 
         let query = Query {
-        vector: None,
+            vector: None,
             query_string: serde_json::to_string(&query_vector)
                 .map_err(|e| crate::error::Error::Backend(format!("JSON error: {}", e)))?,
             fields: vec![],
@@ -422,7 +422,11 @@ impl VectorBackend {
         let mut files_to_delete = Vec::new();
 
         for file in files {
-            let data = self.storage.read(&file.path).await.map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+            let data = self
+                .storage
+                .read(&file.path)
+                .await
+                .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
             let docs: Vec<Document> = match serde_json::from_slice(&data) {
                 Ok(d) => d,
                 Err(e) => {
@@ -431,7 +435,11 @@ impl VectorBackend {
                 }
             };
 
-            let target_field = sharded.shards.first().map(|s| s.embedding_target_field.clone()).unwrap_or_else(|| "embedding".to_string());
+            let target_field = sharded
+                .shards
+                .first()
+                .map(|s| s.embedding_target_field.clone())
+                .unwrap_or_else(|| "embedding".to_string());
             let dimensions = sharded.shards.first().map(|s| s.dimensions).unwrap_or(0);
 
             for doc in docs {
@@ -439,7 +447,12 @@ impl VectorBackend {
                     if let Ok(vector) = serde_json::from_value::<Vec<f32>>(vector_value.clone()) {
                         if vector.len() == dimensions {
                             let shard_id = shard_for_doc(&doc.id, sharded.num_shards) as usize;
-                            if let Err(e) = sharded.shards[shard_id].index(&doc.id, &vector, doc.fields.clone(), sharded.compaction_config.max_active_segment_size) {
+                            if let Err(e) = sharded.shards[shard_id].index(
+                                &doc.id,
+                                &vector,
+                                doc.fields.clone(),
+                                sharded.compaction_config.max_active_segment_size,
+                            ) {
                                 tracing::warn!(error = %e, "Failed to replay doc into shard");
                             }
                         }
@@ -462,7 +475,11 @@ impl VectorBackend {
                 }
             }
 
-            tracing::info!(collection, replayed, "Replayed vector WAL files and snapshotted");
+            tracing::info!(
+                collection,
+                replayed,
+                "Replayed vector WAL files and snapshotted"
+            );
         }
         Ok(())
     }
@@ -540,10 +557,21 @@ impl SearchBackend for VectorBackend {
         }
 
         // Write WAL first for durability
-        let wal_data = serde_json::to_vec(&docs).map_err(|e| crate::error::Error::Schema(e.to_string()))?;
-        let wal_filename = format!("{}_{}.json", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(), uuid::Uuid::new_v4());
+        let wal_data =
+            serde_json::to_vec(&docs).map_err(|e| crate::error::Error::Schema(e.to_string()))?;
+        let wal_filename = format!(
+            "{}_{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            uuid::Uuid::new_v4()
+        );
         let wal_path = Self::wal_file_path(collection, &wal_filename);
-        self.storage.write_bytes(&wal_path, &wal_data).await.map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+        self.storage
+            .write_bytes(&wal_path, &wal_data)
+            .await
+            .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
 
         // Index documents with embeddings, routing to shards by doc ID hash
         let (needs_flush, save_lock_opt) = {
@@ -578,10 +606,18 @@ impl SearchBackend for VectorBackend {
                 }
 
                 let shard_id = shard_for_doc(&doc.id, sharded.num_shards) as usize;
-                sharded.shards[shard_id].index(&doc.id, &vector, doc.fields, sharded.compaction_config.max_active_segment_size)?;
+                sharded.shards[shard_id].index(
+                    &doc.id,
+                    &vector,
+                    doc.fields,
+                    sharded.compaction_config.max_active_segment_size,
+                )?;
             }
 
-            let current_unflushed = sharded.unflushed_inserts.fetch_add(docs_len, Ordering::SeqCst) + docs_len;
+            let current_unflushed = sharded
+                .unflushed_inserts
+                .fetch_add(docs_len, Ordering::SeqCst)
+                + docs_len;
             let batch_size = sharded.wal_config.batch_size;
 
             if batch_size > 0 && current_unflushed >= batch_size {
@@ -727,7 +763,7 @@ impl SearchBackend for VectorBackend {
         };
 
         let _guard = save_lock_opt.lock().await;
-        
+
         let data = {
             let indexes = self.indexes.read();
             if let Some(sharded) = indexes.get(collection) {
@@ -799,22 +835,22 @@ fn deserialize_sharded_index(
     vector_config: &crate::schema::types::VectorBackendConfig,
 ) -> Result<ShardedVectorIndex> {
     let persisted: PersistedShardedIndex = serde_json::from_slice(bytes)?;
-    
+
     if persisted.hash_version == 0 && persisted.num_shards > 1 {
         tracing::info!("Migrating sharded index to format version 1 (stable hashing)");
-        
+
         let mut old_shards = Vec::new();
         for shard_p in persisted.shards {
             old_shards.push(VectorShard::from_persisted(shard_p)?);
         }
-        
+
         let mut new_shards = Vec::new();
         if !old_shards.is_empty() {
             let dimensions = old_shards[0].dimensions;
             let metric = old_shards[0].metric.clone();
             let source_field = old_shards[0].embedding_source_field.clone();
             let target_field = old_shards[0].embedding_target_field.clone();
-            
+
             for i in 0..persisted.num_shards {
                 new_shards.push(VectorShard::new(
                     i as u32,
@@ -827,21 +863,36 @@ fn deserialize_sharded_index(
                     target_field.clone(),
                 )?);
             }
-            
+
             for old_shard in old_shards {
                 for seg in &old_shard.sealed_segments {
                     for (id, vec, fields) in seg.extract_all() {
-                        let new_shard_idx = crate::backends::vector::shard::shard_for_doc(&id, persisted.num_shards) as usize;
-                        new_shards[new_shard_idx].index(&id, &vec, fields, persisted.compaction_config.max_active_segment_size)?;
+                        let new_shard_idx = crate::backends::vector::shard::shard_for_doc(
+                            &id,
+                            persisted.num_shards,
+                        ) as usize;
+                        new_shards[new_shard_idx].index(
+                            &id,
+                            &vec,
+                            fields,
+                            persisted.compaction_config.max_active_segment_size,
+                        )?;
                     }
                 }
                 for (id, vec, fields) in old_shard.active_segment.extract_all() {
-                    let new_shard_idx = crate::backends::vector::shard::shard_for_doc(&id, persisted.num_shards) as usize;
-                    new_shards[new_shard_idx].index(&id, &vec, fields, persisted.compaction_config.max_active_segment_size)?;
+                    let new_shard_idx =
+                        crate::backends::vector::shard::shard_for_doc(&id, persisted.num_shards)
+                            as usize;
+                    new_shards[new_shard_idx].index(
+                        &id,
+                        &vec,
+                        fields,
+                        persisted.compaction_config.max_active_segment_size,
+                    )?;
                 }
             }
         }
-        
+
         return Ok(ShardedVectorIndex {
             shards: new_shards,
             num_shards: persisted.num_shards,
@@ -1009,7 +1060,7 @@ mod tests {
 
         // Search
         let query = Query {
-        vector: None,
+            vector: None,
             query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap(),
             fields: vec![],
             limit: 10,
@@ -1099,7 +1150,7 @@ mod tests {
         backend.index("test", docs).await.unwrap();
 
         let query = Query {
-        vector: None,
+            vector: None,
             query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap(),
             fields: vec![],
             limit: 10,

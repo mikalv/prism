@@ -10,11 +10,7 @@ use super::types::Permission;
 /// without an API key, because the UI has to render before it can authenticate
 /// its own API calls. The UI's data requests (`/api/*`, `/collections/*`) still
 /// go through auth normally.
-const AUTH_WHITELIST: &[&str] = &[
-    "/health",
-    "/stats/server",
-    "/ui",
-];
+const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server", "/ui"];
 
 /// Whether a path is publicly reachable without authentication.
 ///

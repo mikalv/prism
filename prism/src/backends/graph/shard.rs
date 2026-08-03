@@ -67,7 +67,11 @@ pub enum GraphOp {
     AddNode(GraphNode),
     RemoveNode(String),
     AddEdge(GraphEdge),
-    RemoveEdge { from: String, to: String, edge_type: Option<String> },
+    RemoveEdge {
+        from: String,
+        to: String,
+        edge_type: Option<String>,
+    },
 }
 
 /// A single graph shard with SegmentStorage support.
@@ -123,7 +127,8 @@ impl GraphShard {
             }
 
             // Replay WAL
-            let wal_prefix = StoragePath::graph(&self.collection, &self.shard_name, "wal/").unwrap();
+            let wal_prefix =
+                StoragePath::graph(&self.collection, &self.shard_name, "wal/").unwrap();
             if let Ok(mut files) = storage.list(&wal_prefix).await {
                 files.sort_by(|a, b| a.path.to_string().cmp(&b.path.to_string()));
                 let mut replayed = 0;
@@ -174,13 +179,20 @@ impl GraphShard {
                     weight: edge.weight,
                 };
                 let list = edges.entry(edge.from).or_default();
-                if let Some(existing) = list.iter_mut().find(|e| e.to == entry.to && e.edge_type == entry.edge_type) {
+                if let Some(existing) = list
+                    .iter_mut()
+                    .find(|e| e.to == entry.to && e.edge_type == entry.edge_type)
+                {
                     existing.weight = entry.weight;
                 } else {
                     list.push(entry);
                 }
             }
-            GraphOp::RemoveEdge { from, to, edge_type } => {
+            GraphOp::RemoveEdge {
+                from,
+                to,
+                edge_type,
+            } => {
                 let mut edges = self.edges.write();
                 if let Some(edge_list) = edges.get_mut(&from) {
                     edge_list.retain(|e| {
@@ -201,13 +213,32 @@ impl GraphShard {
     async fn append_wal(&self, op: GraphOp) -> Result<()> {
         if let Some(ref storage) = self.storage {
             let data = serde_json::to_vec(&vec![op]).unwrap();
-            let wal_filename = format!("{}_{}.json", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(), uuid::Uuid::new_v4());
-            let wal_path = StoragePath::graph(&self.collection, &self.shard_name, &format!("wal/{}", wal_filename)).unwrap();
-            storage.write_bytes(&wal_path, &data).await.map_err(|e| Error::Storage(e.to_string()))?;
+            let wal_filename = format!(
+                "{}_{}.json",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+                uuid::Uuid::new_v4()
+            );
+            let wal_path = StoragePath::graph(
+                &self.collection,
+                &self.shard_name,
+                &format!("wal/{}", wal_filename),
+            )
+            .unwrap();
+            storage
+                .write_bytes(&wal_path, &data)
+                .await
+                .map_err(|e| Error::Storage(e.to_string()))?;
 
-            let current = self.unflushed_ops.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            let current = self
+                .unflushed_ops
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
             if self.wal_config.batch_size > 0 && current >= self.wal_config.batch_size {
-                self.unflushed_ops.store(0, std::sync::atomic::Ordering::SeqCst);
+                self.unflushed_ops
+                    .store(0, std::sync::atomic::Ordering::SeqCst);
                 self.persist().await?;
             }
         }
@@ -265,7 +296,14 @@ impl GraphShard {
         // Just apply it unconditionally, graph ops are idempotent or safe
         let existed = {
             let edges = self.edges.read();
-            edges.get(from).map(|l| l.iter().any(|e| e.to == to && (edge_type.is_none() || e.edge_type == edge_type.unwrap()))).unwrap_or(false)
+            edges
+                .get(from)
+                .map(|l| {
+                    l.iter().any(|e| {
+                        e.to == to && (edge_type.is_none() || e.edge_type == edge_type.unwrap())
+                    })
+                })
+                .unwrap_or(false)
         };
         if existed {
             self.apply_op(GraphOp::RemoveEdge {
@@ -277,7 +315,8 @@ impl GraphShard {
                 from: from.to_string(),
                 to: to.to_string(),
                 edge_type: edge_type.map(String::from),
-            }).await?;
+            })
+            .await?;
         }
         Ok(existed)
     }
@@ -614,7 +653,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_and_get_node() {
-        let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), None, crate::schema::types::WalConfig::default());
+        let shard = GraphShard::new(
+            0,
+            "test",
+            "default",
+            &test_edge_configs(),
+            None,
+            crate::schema::types::WalConfig::default(),
+        );
 
         let node = GraphNode {
             id: "n1".to_string(),
@@ -632,7 +678,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_and_get_edges() {
-        let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), None, crate::schema::types::WalConfig::default());
+        let shard = GraphShard::new(
+            0,
+            "test",
+            "default",
+            &test_edge_configs(),
+            None,
+            crate::schema::types::WalConfig::default(),
+        );
 
         shard
             .add_node(GraphNode {
@@ -670,7 +723,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_bfs() {
-        let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), None, crate::schema::types::WalConfig::default());
+        let shard = GraphShard::new(
+            0,
+            "test",
+            "default",
+            &test_edge_configs(),
+            None,
+            crate::schema::types::WalConfig::default(),
+        );
 
         for id in &["a", "b", "c", "d"] {
             shard
@@ -704,7 +764,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_shortest_path() {
-        let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), None, crate::schema::types::WalConfig::default());
+        let shard = GraphShard::new(
+            0,
+            "test",
+            "default",
+            &test_edge_configs(),
+            None,
+            crate::schema::types::WalConfig::default(),
+        );
 
         for id in &["a", "b", "c", "d"] {
             shard
@@ -818,7 +885,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats() {
-        let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), None, crate::schema::types::WalConfig::default());
+        let shard = GraphShard::new(
+            0,
+            "test",
+            "default",
+            &test_edge_configs(),
+            None,
+            crate::schema::types::WalConfig::default(),
+        );
 
         shard
             .add_node(GraphNode {
@@ -856,7 +930,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_edge_type() {
-        let shard = GraphShard::new(0, "test", "default", &test_edge_configs(), None, crate::schema::types::WalConfig::default());
+        let shard = GraphShard::new(
+            0,
+            "test",
+            "default",
+            &test_edge_configs(),
+            None,
+            crate::schema::types::WalConfig::default(),
+        );
 
         let result = shard
             .add_edge(GraphEdge {

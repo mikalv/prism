@@ -289,14 +289,12 @@ impl EncryptedStorage {
                 msg: &data[HEADER_SIZE..],
                 aad: path_str.as_bytes(),
             };
-            self.cipher
-                .decrypt(nonce, payload)
-                .map_err(|e| {
-                    StorageError::Encryption(format!(
-                        "Decryption failed (wrong key, wrong path, or corrupted data): {}",
-                        e
-                    ))
-                })?
+            self.cipher.decrypt(nonce, payload).map_err(|e| {
+                StorageError::Encryption(format!(
+                    "Decryption failed (wrong key, wrong path, or corrupted data): {}",
+                    e
+                ))
+            })?
         };
 
         Ok(Bytes::from(plaintext))

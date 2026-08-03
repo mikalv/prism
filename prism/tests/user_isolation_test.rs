@@ -33,12 +33,10 @@ async fn manager_with(names: &[&str]) -> (TempDir, Arc<CollectionManager>) {
     std::fs::create_dir_all(&schemas_dir).unwrap();
     let text = Arc::new(TextBackend::new(&data_dir).unwrap());
     let vector = Arc::new(VectorBackend::new(&data_dir).unwrap());
-    let manager =
-        Arc::new(CollectionManager::new(&schemas_dir, text, vector, None).unwrap());
+    let manager = Arc::new(CollectionManager::new(&schemas_dir, text, vector, None).unwrap());
     manager.initialize().await.unwrap();
     for name in names {
-        let schema: CollectionSchema =
-            serde_yaml::from_str(&text_schema_yaml(name)).unwrap();
+        let schema: CollectionSchema = serde_yaml::from_str(&text_schema_yaml(name)).unwrap();
         manager.add_collection(schema).await.unwrap();
     }
     (temp, manager)

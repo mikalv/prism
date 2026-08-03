@@ -374,9 +374,9 @@ impl InstantDistanceAdapter {
             points.push(p.1.clone());
             keys.push(values[i]);
         }
-        
+
         let built_size = keys.len();
-        
+
         // Append unbuilt points from meta
         keys.extend(meta.unbuilt_keys);
         points.extend(meta.unbuilt_points);
@@ -527,7 +527,6 @@ impl InstantDistanceAdapter {
         adapter.rebuild()?;
         Ok(adapter)
     }
-
 }
 
 // When vector-instant is enabled (including when both are enabled), prefer it.
