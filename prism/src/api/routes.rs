@@ -74,6 +74,10 @@ pub struct SearchRequest {
     /// Ad-hoc score expression (e.g., "_score * 2")
     #[serde(default)]
     pub score_function: Option<String>,
+    /// Optional field collapse: keep at most K results per distinct field value
+    /// (Elasticsearch-style `collapse`). Applied post-search.
+    #[serde(default)]
+    pub collapse: Option<crate::ranking::collapse::CollapseConfig>,
 }
 
 fn default_limit() -> usize {
@@ -281,6 +285,16 @@ pub async fn search(
             // Apply minimum score filter
             if let Some(min) = request.min_score {
                 results.results.retain(|r| r.score >= min);
+                results.total = results.results.len();
+            }
+
+            // Apply field collapse (keep at most K hits per distinct field value)
+            if let Some(ref collapse) = request.collapse {
+                results.results = crate::ranking::collapse::collapse_results(
+                    std::mem::take(&mut results.results),
+                    &collapse.field,
+                    collapse.max_per_group,
+                );
                 results.total = results.results.len();
             }
 

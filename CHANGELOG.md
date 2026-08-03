@@ -6,6 +6,12 @@ All notable changes to Prism are documented in this file.
 
 ### Added
 
+- **Field collapse on search** (Elasticsearch-style `collapse`). A search request
+  may include `"collapse": { "field": "<field>", "max_per_group": N }` to keep at
+  most `N` results per distinct value of a stored field (default `N = 1`),
+  preserving score order — e.g. one hit per `conversation_id` instead of many
+  from the same conversation. Hits missing the field are always kept. Applied
+  post-search, after `min_score`.
 - **Opt-in user isolation mode** (`[security] isolation`, off by default). An api
   key's `namespace` implicitly grants read+search on `<namespace>*` (never
   write/delete/admin) without a hand-written role, and every collection

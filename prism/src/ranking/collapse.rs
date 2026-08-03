@@ -5,15 +5,21 @@
 //! `conversation_id` instead of 50 from the same conversation).
 
 use crate::backends::SearchResult;
+use serde::Deserialize;
 use std::collections::HashMap;
 
 /// Configuration for field collapsing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CollapseConfig {
     /// Field whose value defines a group.
     pub field: String,
-    /// Maximum results to keep per group.
+    /// Maximum results to keep per group (default: 1, Elasticsearch-style).
+    #[serde(default = "default_max_per_group")]
     pub max_per_group: usize,
+}
+
+fn default_max_per_group() -> usize {
+    1
 }
 
 /// Collapse score-ordered `results` so each distinct value of `field` appears at
