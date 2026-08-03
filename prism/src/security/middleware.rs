@@ -205,9 +205,11 @@ mod tests {
                 key: "k".to_string(),
                 name: "u".to_string(),
                 roles: vec![role.to_string()],
+                namespace: None,
             }],
             roles,
             audit: Default::default(),
+            isolation: false,
         };
         PermissionChecker::new(&config)
     }
@@ -217,6 +219,7 @@ mod tests {
             name: "u".to_string(),
             roles: vec![role.to_string()],
             key_prefix: "k".to_string(),
+            namespace: None,
         }
     }
 

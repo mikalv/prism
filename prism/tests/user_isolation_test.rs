@@ -57,6 +57,7 @@ fn checker_granting(role: &str, pattern: &str, perms: &[&str]) -> Arc<Permission
         api_keys: vec![],
         roles,
         audit: Default::default(),
+        isolation: false,
     }))
 }
 
@@ -65,6 +66,7 @@ fn user_with_role(role: &str) -> AuthUser {
         name: role.to_string(),
         roles: vec![role.to_string()],
         key_prefix: String::new(),
+        namespace: None,
     }
 }
 
