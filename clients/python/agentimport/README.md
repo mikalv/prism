@@ -17,6 +17,7 @@ Import AI assistant conversations into [Prism](https://github.com/mikalv/prism) 
 | Kilo Code | `kilo` | Cline-family task JSON | `…/globalStorage/kilocode.kilo-code/tasks/` |
 | Cline | `cline` | Cline-family task JSON | `…/globalStorage/saoudrizwan.claude-dev/tasks/` |
 | Roo Code | `roo` | Cline-family task JSON | `…/globalStorage/rooveterinaryinc.roo-cline/tasks/` |
+| opencode | `opencode` | SQLite `opencode.db` or `storage/` JSON | `~/.local/share/opencode/` |
 
 The `Name(s)` column is what you pass to `--sources` (e.g. `--sources pi,cursor,kilo`).
 

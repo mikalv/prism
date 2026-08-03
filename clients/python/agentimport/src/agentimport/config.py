@@ -50,6 +50,7 @@ class Config:
             "copilot": SourceConfig(roots=[home / ".copilot"]),
             "chatgpt_export": SourceConfig(enabled=False, roots=[]),
             "antigravity": SourceConfig(roots=[home / ".gemini" / "antigravity" / "brain"]),
+            "opencode": SourceConfig(roots=[home / ".local" / "share" / "opencode"]),
         }
 
     def get_enabled_sources(self) -> list[str]:
