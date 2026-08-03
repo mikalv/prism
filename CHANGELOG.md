@@ -4,6 +4,16 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.12] - 2026-08-03
+
+Ships the work that was staged as 0.6.11 but never released (its tag was never
+pushed, so no binaries or Docker image were ever published): the embedded web
+UI, all-collections `/api/search`, and the ES-compat/security fixes below. Also
+makes full-feature builds the default — the release **Docker image and prod
+binaries now include Elasticsearch compatibility, clustering, the UI and
+tree-sitter** (ONNX is intentionally excluded; its prebuilt runtime requires
+AVX and crashes on older CPUs).
+
 ### Added
 
 - **Embedded web UI is now shippable to prod** — the `websearch-ui` React app is
@@ -16,6 +26,18 @@ All notable changes to Prism are documented in this file.
 
 ### Fixed
 
+- **`prismsearch-server` builds with the `cluster` feature again** — the
+  `federated_search` handler (gated behind `#[cfg(feature = "cluster")]`)
+  constructed `prism_cluster::RpcQuery` without the required `vector` field,
+  so any cluster-enabled build failed with `E0063`. The error was latent
+  because non-cluster builds never compiled that path. Now sets `vector: None`
+  (the route does text-only federated search).
+- **Docker image is now built with the full feature set** — the release image
+  built with `cargo build --workspace` (server default features = `ui` only),
+  so the published `ghcr.io/mikalv/prism` image shipped **without** Elasticsearch
+  compatibility, clustering or tree-sitter. The `Dockerfile` now defaults
+  `FEATURES` to the full onnx-free set, so `/_elastic/*` and the other features
+  work out of the box.
 - **`/api/search` with no collection now searches ALL collections** — the web
   UI's default "All" search (`simple_search`) fell back to the first registered
   collection when no collection was specified, so it silently searched one
