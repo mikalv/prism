@@ -435,8 +435,16 @@ async fn test_search_near_duplicate_collapse() {
     // One survivor from {a,b}, one from {c,d}.
     let cluster1 = ids.iter().filter(|id| **id == "a" || **id == "b").count();
     let cluster2 = ids.iter().filter(|id| **id == "c" || **id == "d").count();
-    assert_eq!(cluster1, 1, "exactly one of a/b should survive, got {:?}", ids);
-    assert_eq!(cluster2, 1, "exactly one of c/d should survive, got {:?}", ids);
+    assert_eq!(
+        cluster1, 1,
+        "exactly one of a/b should survive, got {:?}",
+        ids
+    );
+    assert_eq!(
+        cluster2, 1,
+        "exactly one of c/d should survive, got {:?}",
+        ids
+    );
 
     handle.abort();
 }

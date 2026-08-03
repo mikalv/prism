@@ -85,7 +85,10 @@ mod tests {
     }
 
     fn vecs(pairs: &[(&str, Vec<f32>)]) -> HashMap<String, Vec<f32>> {
-        pairs.iter().map(|(id, v)| (id.to_string(), v.clone())).collect()
+        pairs
+            .iter()
+            .map(|(id, v)| (id.to_string(), v.clone()))
+            .collect()
     }
 
     #[test]
