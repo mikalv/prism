@@ -413,6 +413,15 @@ impl SearchBackend for HybridSearchCoordinator {
         Ok(())
     }
 
+    async fn get_vectors(
+        &self,
+        collection: &str,
+        ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<f32>>> {
+        // Embeddings live in the vector backend.
+        self.vector_backend.get_vectors(collection, ids).await
+    }
+
     async fn stats(&self, collection: &str) -> Result<BackendStats> {
         // Combine stats conservatively (max document_count)
         let t = self.text_backend.stats(collection).await?;

@@ -741,6 +741,28 @@ impl SearchBackend for VectorBackend {
         }
     }
 
+    async fn get_vectors(
+        &self,
+        collection: &str,
+        ids: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        let indexes = self.indexes.read();
+        let sharded = match indexes.get(collection) {
+            Some(s) => s,
+            // Best-effort: no index for this collection → no vectors.
+            None => return Ok(HashMap::new()),
+        };
+
+        let mut out = HashMap::with_capacity(ids.len());
+        for id in ids {
+            let shard_id = shard_for_doc(id, sharded.num_shards) as usize;
+            if let Some(v) = sharded.shards[shard_id].get_vector(id) {
+                out.insert(id.clone(), v);
+            }
+        }
+        Ok(out)
+    }
+
     async fn delete(&self, collection: &str, ids: Vec<String>) -> Result<()> {
         let save_lock_opt = {
             let mut indexes = self.indexes.write();

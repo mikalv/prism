@@ -838,6 +838,22 @@ impl CollectionManager {
         &self.vector_backend
     }
 
+    /// Fetch stored embedding vectors for the given result ids of a collection,
+    /// resolved through the same backend that serves its searches. Best-effort:
+    /// returns an empty map when the collection has no vector-bearing backend.
+    /// Used by semantic near-duplicate collapse.
+    pub async fn vectors_for(
+        &self,
+        collection: &str,
+        ids: &[String],
+    ) -> std::collections::HashMap<String, Vec<f32>> {
+        let backend = self.per_collection_backends.read().get(collection).cloned();
+        match backend {
+            Some(b) => b.get_vectors(collection, ids).await.unwrap_or_default(),
+            None => std::collections::HashMap::new(),
+        }
+    }
+
     /// Get the graph backend for a collection, if one is configured.
     pub fn graph_backend(&self, collection: &str) -> Option<Arc<ShardedGraphBackend>> {
         self.per_collection_graphs.read().get(collection).cloned()

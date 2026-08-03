@@ -135,6 +135,19 @@ impl VectorShard {
         None
     }
 
+    /// Get the stored embedding vector for a document from any segment.
+    pub fn get_vector(&self, doc_id: &str) -> Option<Vec<f32>> {
+        if let Some(v) = self.active_segment.get_vector(doc_id) {
+            return Some(v);
+        }
+        for seg in &self.sealed_segments {
+            if let Some(v) = seg.get_vector(doc_id) {
+                return Some(v);
+            }
+        }
+        None
+    }
+
     /// Check if this shard contains the document.
     pub fn contains(&self, doc_id: &str) -> bool {
         if self.active_segment.contains(doc_id) {

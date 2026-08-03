@@ -146,6 +146,72 @@ async fn test_index_and_search() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_get_vectors_returns_stored_embeddings() {
+    use prism::backends::SearchBackend;
+    use std::collections::HashMap;
+
+    let temp_dir = TempDir::new().unwrap();
+    let backend = VectorBackend::new(temp_dir.path()).unwrap();
+
+    let schema = CollectionSchema {
+        collection: "gv".to_string(),
+        description: None,
+        backends: Backends {
+            text: None,
+            vector: Some(VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
+                embedding_field: "embedding".to_string(),
+                dimension: 4,
+                distance: VectorDistance::Cosine,
+                hnsw_m: 16,
+                hnsw_ef_construction: 200,
+                hnsw_ef_search: 100,
+                vector_weight: 0.5,
+                num_shards: 1,
+                shard_oversample: 2.5,
+                compaction: Default::default(),
+            }),
+            graph: None,
+        },
+        indexing: Default::default(),
+        quota: Default::default(),
+        embedding_generation: None,
+        facets: None,
+        boosting: None,
+        storage: Default::default(),
+        system_fields: Default::default(),
+        hybrid: None,
+        replication: None,
+        reranking: None,
+        ilm_policy: None,
+    };
+    backend.initialize("gv", &schema).await.unwrap();
+
+    let docs: Vec<Document> = [("d1", [1.0, 0.0, 0.0, 0.0]), ("d2", [0.0, 1.0, 0.0, 0.0])]
+        .into_iter()
+        .map(|(id, v)| {
+            let mut f = HashMap::new();
+            f.insert("embedding".to_string(), serde_json::json!(v));
+            Document {
+                id: id.to_string(),
+                fields: f,
+            }
+        })
+        .collect();
+    SearchBackend::index(&backend, "gv", docs).await.unwrap();
+
+    let ids = vec!["d1".to_string(), "d2".to_string(), "missing".to_string()];
+    let vectors = SearchBackend::get_vectors(&backend, "gv", &ids)
+        .await
+        .unwrap();
+
+    assert_eq!(vectors.len(), 2, "only stored ids should be returned");
+    assert_eq!(vectors.get("d1").unwrap(), &vec![1.0, 0.0, 0.0, 0.0]);
+    assert_eq!(vectors.get("d2").unwrap(), &vec![0.0, 1.0, 0.0, 0.0]);
+    assert!(vectors.get("missing").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_offset_paginates() {
     use prism::backends::SearchBackend;
     use std::collections::HashMap;
