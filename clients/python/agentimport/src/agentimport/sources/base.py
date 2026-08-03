@@ -46,6 +46,7 @@ def get_all_sources() -> list[Source]:
     from agentimport.sources.copilot import CopilotSource
     from agentimport.sources.cursor import CursorSource
     from agentimport.sources.gemini import GeminiSource
+    from agentimport.sources.opencode import OpencodeSource
     from agentimport.sources.pi import PiSource
 
     return [
@@ -60,6 +61,7 @@ def get_all_sources() -> list[Source]:
         KiloSource(),
         ClineSource(),
         RooSource(),
+        OpencodeSource(),
     ]
 
 
