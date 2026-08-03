@@ -69,6 +69,21 @@ impl PermissionChecker {
         })
     }
 
+    /// Return the subset of `all` collections the user may act on with the given
+    /// permission. This is the single resolver used by every enumeration and
+    /// fan-out surface (collection listing, multi-search, ES-compat `_cat`, etc.)
+    /// so isolation is enforced consistently and no surface is missed.
+    pub fn visible_collections(
+        &self,
+        user: &AuthUser,
+        all: Vec<String>,
+        permission: Permission,
+    ) -> Vec<String> {
+        all.into_iter()
+            .filter(|c| self.check_permission(user, c, permission))
+            .collect()
+    }
+
     pub fn check_permission(
         &self,
         user: &AuthUser,
@@ -99,5 +114,58 @@ fn glob_match(pattern: &str, value: &str) -> bool {
         value.starts_with(prefix)
     } else {
         pattern == value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{RoleConfig, SecurityConfig};
+
+    fn checker_with_role(role: &str, pattern: &str, perms: &[&str]) -> PermissionChecker {
+        let mut roles = HashMap::new();
+        roles.insert(
+            role.to_string(),
+            RoleConfig {
+                collections: HashMap::from([(
+                    pattern.to_string(),
+                    perms.iter().map(|p| p.to_string()).collect(),
+                )]),
+            },
+        );
+        let config = SecurityConfig {
+            enabled: true,
+            api_keys: vec![],
+            roles,
+            audit: Default::default(),
+        };
+        PermissionChecker::new(&config)
+    }
+
+    fn user_with_roles(roles: &[&str]) -> AuthUser {
+        AuthUser {
+            name: "u".into(),
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            key_prefix: String::new(),
+        }
+    }
+
+    #[test]
+    fn visible_collections_returns_only_permitted() {
+        let checker = checker_with_role("mikalv", "ws_mikalv_*", &["search"]);
+        let user = user_with_roles(&["mikalv"]);
+        let all = vec![
+            "ws_mikalv_code_a".to_string(),
+            "ws_mikalv_docs_b".to_string(),
+            "ws_eyrmedical_code_c".to_string(),
+            "mail".to_string(),
+        ];
+
+        let visible = checker.visible_collections(&user, all, Permission::Search);
+
+        assert_eq!(
+            visible,
+            vec!["ws_mikalv_code_a".to_string(), "ws_mikalv_docs_b".to_string()]
+        );
     }
 }
