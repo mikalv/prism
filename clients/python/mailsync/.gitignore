@@ -1,0 +1,13 @@
+# Secrets and local state — never commit these
+.env
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
+.pytest_cache/
