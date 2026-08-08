@@ -39,6 +39,7 @@ impl QueryTranslator {
 
         let query = Query {
             query_string,
+            vector: None,
             fields: default_fields.to_vec(),
             limit: request.size.unwrap_or(10).min(MAX_SEARCH_LIMIT),
             offset: request.from.unwrap_or(0),

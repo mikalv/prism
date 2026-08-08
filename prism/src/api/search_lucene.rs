@@ -169,6 +169,7 @@ pub async fn search_lucene(
 
     // 2. Execute search with merge strategy parameters
     let query = crate::backends::Query {
+        vector: None,
         query_string: req.query.clone(),
         fields: vec![],
         limit: req.limit.min(MAX_SEARCH_LIMIT),

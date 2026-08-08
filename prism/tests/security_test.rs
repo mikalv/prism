@@ -47,20 +47,24 @@ fn test_config() -> SecurityConfig {
                 key: "prism_ak_admin".to_string(),
                 name: "admin".to_string(),
                 roles: vec!["admin".to_string()],
+                namespace: None,
             },
             ApiKeyConfig {
                 key: "prism_ak_analyst".to_string(),
                 name: "analyst".to_string(),
                 roles: vec!["analyst".to_string()],
+                namespace: None,
             },
             ApiKeyConfig {
                 key: "prism_ak_writer".to_string(),
                 name: "writer".to_string(),
                 roles: vec!["writer".to_string()],
+                namespace: None,
             },
         ],
         roles,
         audit: Default::default(),
+        isolation: false,
     }
 }
 

@@ -117,6 +117,7 @@ backends:
 
 fn make_query(query_string: &str, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: query_string.to_string(),
         fields: vec![],
         limit,
@@ -137,6 +138,7 @@ fn make_query(query_string: &str, limit: usize) -> Query {
 
 fn make_query_with_fields(query_string: &str, fields: Vec<&str>, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: query_string.to_string(),
         fields: fields.into_iter().map(String::from).collect(),
         limit,
@@ -157,6 +159,7 @@ fn make_query_with_fields(query_string: &str, fields: Vec<&str>, limit: usize) -
 
 fn make_query_with_offset(query_string: &str, limit: usize, offset: usize) -> Query {
     Query {
+        vector: None,
         query_string: query_string.to_string(),
         fields: vec![],
         limit,
@@ -331,7 +334,7 @@ async fn setup_logs_only() -> (TempDir, Arc<CollectionManager>) {
 // BASIC INDEX + SEARCH
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_index_and_search_basic() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(100, "basic");
@@ -344,7 +347,7 @@ async fn test_logs_index_and_search_basic() {
     assert!(results.total > 0, "should find docs matching 'connection'");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_index_500_docs() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(500, "bulk");
@@ -358,7 +361,7 @@ async fn test_logs_index_500_docs() {
 // SEARCH BY TEXT FIELD (line)
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_search_by_log_message() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(200, "msg");
@@ -405,7 +408,7 @@ async fn test_logs_search_by_log_message() {
 // GET BY ID
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_get_by_id() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(50, "getid");
@@ -442,7 +445,7 @@ async fn test_logs_get_by_id() {
 // FIELD VALUE INTEGRITY
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_field_values_roundtrip() {
     let (_temp, mgr) = setup_logs_only().await;
 
@@ -500,7 +503,7 @@ async fn test_logs_field_values_roundtrip() {
 // DELETE + SEARCH CONSISTENCY
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_delete_and_verify() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(100, "del");
@@ -546,7 +549,7 @@ async fn test_logs_delete_and_verify() {
 // PAGINATION
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_pagination() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs: Vec<Document> = (0..100)
@@ -606,7 +609,7 @@ async fn test_logs_pagination() {
 // MULTIPLE BATCHES — incremental indexing
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_incremental_batches() {
     let (_temp, mgr) = setup_logs_only().await;
 
@@ -638,7 +641,7 @@ async fn test_logs_incremental_batches() {
 // CONCURRENT INDEX + SEARCH
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_concurrent_index_and_search() {
     let (_temp, mgr) = setup_logs_only().await;
 
@@ -690,7 +693,7 @@ async fn test_logs_concurrent_index_and_search() {
 // MULTI-COLLECTION — both collections simultaneously
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multi_collection_simultaneous() {
     let (_temp, mgr) = setup_environment().await;
 
@@ -733,7 +736,7 @@ async fn test_multi_collection_simultaneous() {
 // ALL FIELD TYPES — metrics collection with i64/u64/f64/bool/date
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_all_field_types_index_and_retrieve() {
     let (_temp, mgr) = setup_environment().await;
 
@@ -800,7 +803,7 @@ async fn test_all_field_types_index_and_retrieve() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_all_field_types_bulk() {
     let (_temp, mgr) = setup_environment().await;
     let metrics = generate_metric_docs(500);
@@ -854,7 +857,7 @@ async fn test_all_field_types_bulk() {
 // DOCUMENT UPDATE (re-index with same ID)
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_document_update() {
     let (_temp, mgr) = setup_logs_only().await;
 
@@ -939,7 +942,7 @@ async fn test_logs_document_update() {
 // COLLECTION LIFECYCLE via add_collection (API-created)
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_collection_created_at_runtime() {
     let temp = TempDir::new().unwrap();
     let schemas_dir = temp.path().join("schemas");
@@ -1007,7 +1010,7 @@ async fn test_collection_created_at_runtime() {
 // STRESS TEST — large volume
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_stress_1000_docs() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(1000, "stress");
@@ -1043,7 +1046,7 @@ async fn test_logs_stress_1000_docs() {
 // DELETE + RE-INDEX CYCLE
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_delete_reindex_cycle() {
     let (_temp, mgr) = setup_logs_only().await;
 
@@ -1080,7 +1083,7 @@ async fn test_logs_delete_reindex_cycle() {
 // MULTI-COLLECTION CONCURRENT
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multi_collection_concurrent_operations() {
     let (_temp, mgr) = setup_environment().await;
 
@@ -1144,7 +1147,7 @@ async fn test_multi_collection_concurrent_operations() {
 // SEARCH BY STRING FIELDS (exact match)
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_search_string_fields() {
     let (_temp, mgr) = setup_logs_only().await;
     let docs = generate_log_docs(200, "sf");
@@ -1179,7 +1182,7 @@ async fn test_logs_search_string_fields() {
 // EMPTY COLLECTION OPERATIONS
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_logs_empty_collection() {
     let (_temp, mgr) = setup_logs_only().await;
 
@@ -1200,7 +1203,7 @@ async fn test_logs_empty_collection() {
 // COLLECTION NOT FOUND
 // ============================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_nonexistent_collection_errors() {
     let (_temp, mgr) = setup_logs_only().await;
 

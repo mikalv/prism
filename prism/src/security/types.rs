@@ -3,6 +3,8 @@ pub struct AuthUser {
     pub name: String,
     pub roles: Vec<String>,
     pub key_prefix: String,
+    /// Collection namespace from the api key (used by isolation mode).
+    pub namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

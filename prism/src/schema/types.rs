@@ -161,6 +161,36 @@ pub struct VectorBackendConfig {
     /// Segment compaction configuration
     #[serde(default)]
     pub compaction: VectorCompactionConfig,
+    /// Write-Ahead Log (WAL) configuration
+    #[serde(default)]
+    pub wal: WalConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalConfig {
+    /// Number of writes before forcing an fsync (0 = disabled/immediate)
+    #[serde(default = "default_wal_batch_size")]
+    pub batch_size: usize,
+    /// Maximum time in milliseconds before forcing an fsync (0 = disabled/immediate)
+    #[serde(default = "default_wal_sync_interval_ms")]
+    pub sync_interval_ms: u64,
+}
+
+impl Default for WalConfig {
+    fn default() -> Self {
+        Self {
+            batch_size: default_wal_batch_size(),
+            sync_interval_ms: default_wal_sync_interval_ms(),
+        }
+    }
+}
+
+fn default_wal_batch_size() -> usize {
+    100
+}
+
+fn default_wal_sync_interval_ms() -> u64 {
+    1000
 }
 
 fn default_vector_weight() -> f32 {
@@ -184,6 +214,9 @@ pub struct VectorCompactionConfig {
     /// Delete ratio threshold to trigger compaction (default: 0.2)
     #[serde(default = "default_delete_ratio")]
     pub delete_ratio_threshold: f32,
+    /// Max size of active segment before sealing it (default: 10000)
+    #[serde(default = "default_max_active_segment_size")]
+    pub max_active_segment_size: usize,
 }
 
 impl Default for VectorCompactionConfig {
@@ -191,8 +224,13 @@ impl Default for VectorCompactionConfig {
         Self {
             min_segments: default_min_segments(),
             delete_ratio_threshold: default_delete_ratio(),
+            max_active_segment_size: default_max_active_segment_size(),
         }
     }
+}
+
+fn default_max_active_segment_size() -> usize {
+    10000
 }
 
 fn default_min_segments() -> usize {
@@ -503,6 +541,12 @@ pub struct GraphBackendConfig {
     /// Edge scoping (default: shard)
     #[serde(default)]
     pub scope: GraphScope,
+    /// Whether to build the graph index during indexing (default: false)
+    #[serde(default)]
+    pub index_on_write: bool,
+    /// Write-Ahead Log (WAL) configuration
+    #[serde(default)]
+    pub wal: WalConfig,
 }
 
 fn default_graph_num_shards() -> usize {

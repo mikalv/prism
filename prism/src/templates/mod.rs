@@ -189,6 +189,7 @@ impl TemplateManager {
             .vector
             .as_ref()
             .map(|v| VectorBackendConfig {
+                wal: Default::default(),
                 embedding_field: v.embedding_field.clone(),
                 dimension: v.dimension,
                 distance: match v.distance {
@@ -266,6 +267,7 @@ impl TemplateManager {
         if schema.backends.vector.is_none() {
             if let Some(ref v) = template.schema.vector {
                 schema.backends.vector = Some(VectorBackendConfig {
+                    wal: Default::default(),
                     embedding_field: v.embedding_field.clone(),
                     dimension: v.dimension,
                     distance: match v.distance {

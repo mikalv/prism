@@ -7,7 +7,7 @@
 
 use prism::embedding::{Embedder, ModelConfig};
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_real_embedding_single() {
     // Initialize tracing for debugging
     let _ = tracing_subscriber::fmt::try_init();
@@ -46,7 +46,7 @@ async fn test_real_embedding_single() {
     println!("✓ Single embedding test passed!");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_real_embedding_batch() {
     let _ = tracing_subscriber::fmt::try_init();
 
@@ -98,7 +98,7 @@ async fn test_real_embedding_batch() {
     println!("✓ Batch embedding test passed!");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_embedding_determinism() {
     let _ = tracing_subscriber::fmt::try_init();
 

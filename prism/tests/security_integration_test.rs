@@ -61,11 +61,13 @@ fn security_config() -> SecurityConfig {
                 key: "test_admin_key".to_string(),
                 name: "admin".to_string(),
                 roles: vec!["admin".to_string()],
+                namespace: None,
             },
             ApiKeyConfig {
                 key: "test_reader_key".to_string(),
                 name: "reader".to_string(),
                 roles: vec!["reader".to_string()],
+                namespace: None,
             },
         ],
         roles,
@@ -73,17 +75,18 @@ fn security_config() -> SecurityConfig {
             enabled: false,
             index_to_collection: false,
         },
+        isolation: false,
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_health_no_auth_required() {
     let (_temp, url) = setup_server(security_config()).await;
     let resp = reqwest::get(format!("{}/health", url)).await.unwrap();
     assert_eq!(resp.status(), 200);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_missing_api_key_returns_401() {
     let (_temp, url) = setup_server(security_config()).await;
     let client = reqwest::Client::new();
@@ -95,7 +98,7 @@ async fn test_missing_api_key_returns_401() {
     assert_eq!(resp.status(), 401);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_invalid_api_key_returns_401() {
     let (_temp, url) = setup_server(security_config()).await;
     let client = reqwest::Client::new();
@@ -108,7 +111,7 @@ async fn test_invalid_api_key_returns_401() {
     assert_eq!(resp.status(), 401);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_valid_admin_key_returns_200() {
     let (_temp, url) = setup_server(security_config()).await;
     let client = reqwest::Client::new();
@@ -121,7 +124,7 @@ async fn test_valid_admin_key_returns_200() {
     assert_eq!(resp.status(), 200);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_reader_cannot_access_admin() {
     let (_temp, url) = setup_server(security_config()).await;
     let client = reqwest::Client::new();
@@ -134,7 +137,7 @@ async fn test_reader_cannot_access_admin() {
     assert_eq!(resp.status(), 403);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_security_disabled_allows_all() {
     let disabled = SecurityConfig {
         enabled: false,

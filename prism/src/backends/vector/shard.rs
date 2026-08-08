@@ -78,10 +78,16 @@ impl VectorShard {
         doc_id: &str,
         vector: &[f32],
         fields: HashMap<String, serde_json::Value>,
+        max_active_segment_size: usize,
     ) -> Result<()> {
         // If doc already exists anywhere in this shard, tombstone the old copy
         self.delete_if_exists(doc_id);
-        self.active_segment.add(doc_id, vector, fields)
+        self.active_segment.add(doc_id, vector, fields)?;
+
+        if self.active_segment.total_count() >= max_active_segment_size as u64 {
+            self.seal_active()?;
+        }
+        Ok(())
     }
 
     /// Search all segments (active + sealed) and merge results by score.
@@ -124,6 +130,19 @@ impl VectorShard {
         for seg in &self.sealed_segments {
             if let Some(fields) = seg.get(doc_id) {
                 return Some(fields.clone());
+            }
+        }
+        None
+    }
+
+    /// Get the stored embedding vector for a document from any segment.
+    pub fn get_vector(&self, doc_id: &str) -> Option<Vec<f32>> {
+        if let Some(v) = self.active_segment.get_vector(doc_id) {
+            return Some(v);
+        }
+        for seg in &self.sealed_segments {
+            if let Some(v) = seg.get_vector(doc_id) {
+                return Some(v);
             }
         }
         None
@@ -266,9 +285,9 @@ impl VectorShard {
 
 /// Compute shard assignment for a document ID.
 pub fn shard_for_doc(doc_id: &str, num_shards: usize) -> u32 {
-    use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
+    use twox_hash::XxHash64;
+    let mut hasher = XxHash64::with_seed(0);
     doc_id.hash(&mut hasher);
     (hasher.finish() % num_shards as u64) as u32
 }
@@ -296,9 +315,11 @@ mod tests {
         let mut shard = make_shard();
         let fields = HashMap::new();
         shard
-            .index("doc1", &[1.0, 0.0, 0.0, 0.0], fields.clone())
+            .index("doc1", &[1.0, 0.0, 0.0, 0.0], fields.clone(), 10000)
             .unwrap();
-        shard.index("doc2", &[0.0, 1.0, 0.0, 0.0], fields).unwrap();
+        shard
+            .index("doc2", &[0.0, 1.0, 0.0, 0.0], fields, 10000)
+            .unwrap();
 
         let results = shard.search(&[1.0, 0.0, 0.0, 0.0], 2).unwrap();
         assert!(!results.is_empty());
@@ -309,7 +330,7 @@ mod tests {
     fn test_delete() {
         let mut shard = make_shard();
         shard
-            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new())
+            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
         assert!(shard.contains("doc1"));
 
@@ -321,11 +342,11 @@ mod tests {
     fn test_seal_and_search_across_segments() {
         let mut shard = make_shard();
         shard
-            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new())
+            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
         shard.seal_active().unwrap();
         shard
-            .index("doc2", &[0.0, 1.0, 0.0, 0.0], HashMap::new())
+            .index("doc2", &[0.0, 1.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
 
         assert_eq!(shard.sealed_segments.len(), 1);
@@ -353,11 +374,11 @@ mod tests {
     fn test_shard_persistence_roundtrip() {
         let mut shard = make_shard();
         shard
-            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new())
+            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
         shard.seal_active().unwrap();
         shard
-            .index("doc2", &[0.0, 1.0, 0.0, 0.0], HashMap::new())
+            .index("doc2", &[0.0, 1.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
 
         let persisted = shard.to_persisted().unwrap();
@@ -373,11 +394,11 @@ mod tests {
     fn test_reindex_replaces_old_doc() {
         let mut shard = make_shard();
         shard
-            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new())
+            .index("doc1", &[1.0, 0.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
         // Re-index same doc with different vector
         shard
-            .index("doc1", &[0.0, 1.0, 0.0, 0.0], HashMap::new())
+            .index("doc1", &[0.0, 1.0, 0.0, 0.0], HashMap::new(), 10000)
             .unwrap();
 
         assert_eq!(shard.live_count(), 1);

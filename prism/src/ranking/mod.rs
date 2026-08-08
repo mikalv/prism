@@ -5,8 +5,10 @@
 //! - Recency decay: boost newer documents over older ones
 //! - Popularity boost: multiply scores by document-level boost values
 
+pub mod collapse;
 pub mod cross_encoder;
 pub mod decay;
+pub mod near_dup;
 pub mod reranker;
 pub mod score_function;
 

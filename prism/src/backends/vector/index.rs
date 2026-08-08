@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Distance metric for vector similarity
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum Metric {
     Cosine,
     Euclidean,
@@ -92,6 +92,7 @@ impl IDPoint for PointVec {
 /// On-disk header for the v2 graph format.
 /// Magic "PRH2" + bincode-serialized metadata + HnswMap (includes full graph structure).
 const MAGIC_V2: &[u8; 4] = b"PRH2";
+const MAGIC_V3: &[u8; 4] = b"PRH3";
 
 /// Metadata header serialized before the HnswMap
 #[cfg(feature = "vector-instant")]
@@ -102,6 +103,18 @@ struct GraphMeta {
     m: usize,
     ef_construction: usize,
     rebuild_threshold: usize,
+}
+
+#[cfg(feature = "vector-instant")]
+#[derive(Serialize, Deserialize)]
+struct GraphMetaV3 {
+    dimensions: usize,
+    metric: Metric,
+    m: usize,
+    ef_construction: usize,
+    rebuild_threshold: usize,
+    unbuilt_keys: Vec<u32>,
+    unbuilt_points: Vec<PointVec>,
 }
 
 #[cfg(feature = "vector-instant")]
@@ -139,6 +152,22 @@ impl InstantDistanceAdapter {
         // reset searcher capacity
         self.searcher = Mutex::new(Search::default());
         Ok(())
+    }
+
+    pub fn extract_all_points(&self) -> std::collections::HashMap<u32, Vec<f32>> {
+        let mut map = std::collections::HashMap::new();
+        for (i, key) in self.keys.iter().enumerate() {
+            map.insert(*key, self.points[i].v.clone());
+        }
+        map
+    }
+
+    /// Return the stored vector for a single key, if present.
+    pub fn get_point(&self, key: u32) -> Option<Vec<f32>> {
+        self.keys
+            .iter()
+            .position(|k| *k == key)
+            .map(|i| self.points[i].v.clone())
     }
 }
 
@@ -221,25 +250,29 @@ impl HnswIndex for InstantDistanceAdapter {
     }
 
     fn save(&self, path: &Path) -> Result<()> {
-        // V2 format: "PRH2" magic + bincode(GraphMeta) + bincode(HnswMap)
-        // This serializes the full HNSW graph structure so load is O(n) not O(n log n).
+        // V3 format: "PRH3" magic + bincode(GraphMetaV3) + bincode(HnswMap)
+        // This serializes the full HNSW graph structure and any unbuilt points.
         if let Some(ref hnsw) = self.hnsw {
-            let meta = GraphMeta {
+            let unbuilt_keys = self.keys[self.built_size..].to_vec();
+            let unbuilt_points = self.points[self.built_size..].to_vec();
+            let meta = GraphMetaV3 {
                 dimensions: self.dimensions,
                 metric: self.metric,
                 m: self.m,
                 ef_construction: self.ef_construction,
                 rebuild_threshold: self.rebuild_threshold,
+                unbuilt_keys,
+                unbuilt_points,
             };
             let meta_bytes = bincode::serialize(&meta).map_err(|e| {
-                crate::error::Error::Backend(format!("bincode serialize meta: {}", e))
+                crate::error::Error::Backend(format!("bincode serialize meta v3: {}", e))
             })?;
             let hnsw_bytes = bincode::serialize(hnsw).map_err(|e| {
                 crate::error::Error::Backend(format!("bincode serialize hnsw: {}", e))
             })?;
             let meta_len = meta_bytes.len() as u32;
             let mut buf = Vec::with_capacity(4 + 4 + meta_bytes.len() + hnsw_bytes.len());
-            buf.extend_from_slice(MAGIC_V2);
+            buf.extend_from_slice(MAGIC_V3);
             buf.extend_from_slice(&meta_len.to_le_bytes());
             buf.extend_from_slice(&meta_bytes);
             buf.extend_from_slice(&hnsw_bytes);
@@ -253,6 +286,11 @@ impl HnswIndex for InstantDistanceAdapter {
 
     fn load(path: &Path) -> Result<Self> {
         let data = std::fs::read(path)?;
+
+        // V3 graph format (starts with "PRH3")
+        if data.len() >= 4 && &data[0..4] == MAGIC_V3 {
+            return Self::load_v3(&data[4..]);
+        }
 
         // V2 graph format (starts with "PRH2")
         if data.len() >= 4 && &data[0..4] == MAGIC_V2 {
@@ -309,13 +347,94 @@ impl InstantDistanceAdapter {
             metric: meta.metric,
             m: meta.m,
             ef_construction: meta.ef_construction,
-            points,
             keys,
+            points,
             hnsw: Some(hnsw),
             searcher: Mutex::new(Search::default()),
             rebuild_threshold: meta.rebuild_threshold,
             built_size,
         })
+    }
+
+    /// Load v3 format: bincode-serialized GraphMetaV3 + HnswMap. Includes unbuilt points.
+    fn load_v3(data: &[u8]) -> Result<Self> {
+        if data.len() < 4 {
+            return Err(crate::error::Error::Backend("V3 index too short".into()));
+        }
+        let meta_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+        if data.len() < 4 + meta_len {
+            return Err(crate::error::Error::Backend(
+                "V3 index meta truncated".into(),
+            ));
+        }
+        let meta: GraphMetaV3 = bincode::deserialize(&data[4..4 + meta_len]).map_err(|e| {
+            crate::error::Error::Backend(format!("bincode deserialize meta: {}", e))
+        })?;
+        let hnsw: HnswMap<PointVec, u32> =
+            bincode::deserialize(&data[4 + meta_len..]).map_err(|e| {
+                crate::error::Error::Backend(format!("bincode deserialize hnsw: {}", e))
+            })?;
+
+        let mut points = Vec::new();
+        let mut keys = Vec::new();
+        let values = hnsw.values.clone();
+        for (i, p) in hnsw.iter().enumerate() {
+            points.push(p.1.clone());
+            keys.push(values[i]);
+        }
+
+        let built_size = keys.len();
+
+        // Append unbuilt points from meta
+        keys.extend(meta.unbuilt_keys);
+        points.extend(meta.unbuilt_points);
+
+        Ok(Self {
+            dimensions: meta.dimensions,
+            metric: meta.metric,
+            m: meta.m,
+            ef_construction: meta.ef_construction,
+            keys,
+            points,
+            hnsw: Some(hnsw),
+            searcher: Mutex::new(Search::default()),
+            rebuild_threshold: meta.rebuild_threshold,
+            built_size,
+        })
+    }
+
+    /// Load legacy JSON format
+    fn load_json(data: &[u8]) -> Result<Self> {
+        let data: serde_json::Value = serde_json::from_slice(data)?;
+        let dimensions = data["dimensions"].as_u64().unwrap() as usize;
+        let keys: Vec<u32> = serde_json::from_value(data["keys"].clone())?;
+        let points_data: Vec<Vec<f32>> = serde_json::from_value(data["points"].clone())?;
+        let points: Vec<PointVec> = points_data
+            .into_iter()
+            .map(|v| PointVec {
+                v,
+                metric: Metric::Cosine,
+            })
+            .collect();
+        let rebuild_threshold = data
+            .get("rebuild_threshold")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(32);
+        let mut adapter = Self {
+            dimensions,
+            metric: Metric::Cosine,
+            m: 16,
+            ef_construction: 200,
+            points,
+            keys,
+            hnsw: None,
+            searcher: Mutex::new(Search::default()),
+            rebuild_threshold,
+            built_size: 0,
+        };
+        adapter.rebuild()?;
+        Ok(adapter)
     }
 
     /// Save v1 binary format (points only, no graph — requires rebuild on load)
@@ -406,39 +525,6 @@ impl InstantDistanceAdapter {
             metric,
             m,
             ef_construction,
-            points,
-            keys,
-            hnsw: None,
-            searcher: Mutex::new(Search::default()),
-            rebuild_threshold,
-            built_size: 0,
-        };
-        adapter.rebuild()?;
-        Ok(adapter)
-    }
-
-    fn load_json(data: &[u8]) -> Result<Self> {
-        let data: serde_json::Value = serde_json::from_slice(data)?;
-        let dimensions = data["dimensions"].as_u64().unwrap() as usize;
-        let keys: Vec<u32> = serde_json::from_value(data["keys"].clone())?;
-        let points_data: Vec<Vec<f32>> = serde_json::from_value(data["points"].clone())?;
-        let points: Vec<PointVec> = points_data
-            .into_iter()
-            .map(|v| PointVec {
-                v,
-                metric: Metric::Cosine,
-            })
-            .collect();
-        let rebuild_threshold = data
-            .get("rebuild_threshold")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
-            .unwrap_or(32);
-        let mut adapter = Self {
-            dimensions,
-            metric: Metric::Cosine,
-            m: 16,
-            ef_construction: 200,
             points,
             keys,
             hnsw: None,

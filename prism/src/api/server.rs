@@ -57,6 +57,53 @@ async fn metrics_middleware(
     response
 }
 
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DlqEntry {
+    pub timestamp: String,
+    pub collection: String,
+    pub doc_count: usize,
+    pub error: String,
+}
+
+#[derive(Clone)]
+pub struct DiskDlq {
+    pub path: PathBuf,
+}
+
+impl DiskDlq {
+    pub async fn append(&self, entry: &DlqEntry) -> crate::Result<()> {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .await?;
+        let json = serde_json::to_string(entry)?;
+        file.write_all(json.as_bytes()).await?;
+        file.write_all(b"\n").await?;
+        Ok(())
+    }
+
+    pub async fn read_all(&self) -> crate::Result<Vec<DlqEntry>> {
+        let data = match tokio::fs::read_to_string(&self.path).await {
+            Ok(data) => data,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+        let mut entries = Vec::new();
+        for line in data.lines() {
+            if let Ok(entry) = serde_json::from_str(line) {
+                entries.push(entry);
+            }
+        }
+        Ok(entries)
+    }
+}
+
 /// A job submitted to the background indexing queue.
 pub struct IndexJob {
     pub collection: String,
@@ -73,6 +120,7 @@ pub struct AppState {
     pub security_config: Arc<RwLock<SecurityConfig>>,
     pub ilm_manager: Option<Arc<crate::ilm::IlmManager>>,
     pub index_queue_tx: mpsc::Sender<IndexJob>,
+    pub dlq: Option<DiskDlq>,
 }
 
 /// Handle for reloading server configuration at runtime (via SIGHUP)
@@ -481,7 +529,17 @@ impl ApiServer {
         // Background indexing queue (capacity 1000 jobs)
         let (index_queue_tx, mut index_queue_rx) = mpsc::channel::<IndexJob>(1000);
 
+        let dlq = self.data_dir.as_ref().map(|d| DiskDlq {
+            path: d.join("dlq.jsonl"),
+        });
+        if let Some(ref d) = dlq {
+            if let Some(parent) = d.path.parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
+        }
+
         let worker_manager = self.manager.clone();
+        let worker_dlq = dlq.clone();
         tokio::spawn(async move {
             while let Some(job) = index_queue_rx.recv().await {
                 let doc_count = job.documents.len();
@@ -492,12 +550,25 @@ impl ApiServer {
                         doc_count,
                         "Async index complete"
                     ),
-                    Err(e) => tracing::error!(
-                        collection = %collection,
-                        doc_count,
-                        error = %e,
-                        "Async index failed"
-                    ),
+                    Err(e) => {
+                        tracing::error!(
+                            collection = %collection,
+                            doc_count,
+                            error = %e,
+                            "Async index failed"
+                        );
+                        if let Some(ref d) = worker_dlq {
+                            let entry = DlqEntry {
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                                collection: collection.clone(),
+                                doc_count,
+                                error: e.to_string(),
+                            };
+                            if let Err(write_err) = d.append(&entry).await {
+                                tracing::error!("Failed to write to DLQ: {}", write_err);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -511,6 +582,7 @@ impl ApiServer {
             security_config: self.security_config.clone(),
             ilm_manager: self.ilm_manager.clone(),
             index_queue_tx,
+            dlq,
         };
 
         // ILM state for ILM routes
@@ -526,6 +598,7 @@ impl ApiServer {
                 post(crate::api::routes::index_documents),
             )
             .route("/admin/pipelines", get(crate::api::routes::list_pipelines))
+            .route("/admin/tasks", get(crate::api::routes::get_tasks))
             .route("/metrics", get(Self::metrics_handler))
             .with_state(app_state.clone());
 
@@ -575,7 +648,6 @@ impl ApiServer {
             .route("/stats/cache", get(crate::api::routes::get_cache_stats))
             .route("/stats/server", get(crate::api::routes::get_server_info))
             .route("/stats/load", get(crate::api::routes::get_load_stats))
-            .route("/admin/tasks", get(crate::api::routes::get_tasks))
             // Aggregations API (Issue #23)
             .route(
                 "/collections/:collection/aggregate",

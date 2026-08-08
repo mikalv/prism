@@ -49,7 +49,7 @@ async fn setup_server(pipelines_yaml: &[(&str, &str)]) -> (TempDir, String) {
     (temp, url)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_list_pipelines_empty() {
     let (_temp, url) = setup_server(&[]).await;
     let client = reqwest::Client::new();
@@ -63,7 +63,7 @@ async fn test_list_pipelines_empty() {
     assert_eq!(body["pipelines"].as_array().unwrap().len(), 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_list_pipelines_with_one() {
     let yaml = r#"
 name: normalize
@@ -87,7 +87,7 @@ processors:
     assert_eq!(pipelines[0]["processor_count"], 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_unknown_pipeline_returns_400() {
     let (_temp, url) = setup_server(&[]).await;
     let client = reqwest::Client::new();

@@ -14,7 +14,7 @@ use tokio::time::{sleep, Duration};
 /// 4. Start new engraph-core server
 /// 5. Import data via HTTP API
 /// 6. Verify data is searchable in new system
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_full_migration_flow() {
     // Setup directories
     let temp_dir = TempDir::new().unwrap();

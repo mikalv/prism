@@ -120,7 +120,7 @@ async fn index_docs(client: &Client, base_url: &str, collection: &str, docs: &Va
 // Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_health_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -135,15 +135,22 @@ async fn test_health_endpoint() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_root_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
 
     let resp = client.get(format!("{}/", base_url)).send().await.unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["name"], "prism");
     assert_eq!(body["status"], "ok");
     assert!(body["version"].is_string());
@@ -151,7 +158,7 @@ async fn test_root_endpoint() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_create_collection_and_list() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -165,9 +172,16 @@ async fn test_create_collection_and_list() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     let collections = body["collections"].as_array().unwrap();
     let names: Vec<&str> = collections.iter().filter_map(|v| v.as_str()).collect();
     assert!(
@@ -179,7 +193,7 @@ async fn test_create_collection_and_list() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_and_search() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -208,9 +222,16 @@ async fn test_index_and_search() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
     assert!(
         !results.is_empty(),
@@ -228,7 +249,207 @@ async fn test_index_and_search() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_search_collapse_by_field() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+    create_test_collection(&client, &base_url).await;
+
+    // Five docs sharing a common body term, in two categories:
+    // three in "cat-a", two in "cat-b".
+    let categories = ["cat-a", "cat-a", "cat-a", "cat-b", "cat-b"];
+    let docs: Vec<Value> = categories
+        .iter()
+        .enumerate()
+        .map(|(i, cat)| {
+            json!({
+                "id": format!("doc-{}", i),
+                "fields": {
+                    "title": format!("Document number {}", i),
+                    "body": "shared searchable content",
+                    "category": cat,
+                    "count": i
+                }
+            })
+        })
+        .collect();
+    index_docs(&client, &base_url, "test-e2e", &json!(docs)).await;
+
+    // Without collapse: all five docs match "content".
+    let resp = client
+        .post(format!("{}/collections/test-e2e/search", base_url))
+        .json(&json!({ "query": "content", "limit": 10 }))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    assert_eq!(
+        body["results"].as_array().unwrap().len(),
+        5,
+        "sanity: all five docs should match without collapse"
+    );
+
+    // With collapse on `category`, max 1 per group → one hit per category.
+    let resp = client
+        .post(format!("{}/collections/test-e2e/search", base_url))
+        .json(&json!({
+            "query": "content",
+            "limit": 10,
+            "collapse": { "field": "category", "max_per_group": 1 }
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    let results = body["results"].as_array().unwrap();
+
+    assert_eq!(
+        results.len(),
+        2,
+        "collapse max_per_group=1 over two categories should yield 2 hits, got {:?}",
+        results
+    );
+    let cats: Vec<&str> = results
+        .iter()
+        .filter_map(|r| r["fields"]["category"].as_str())
+        .collect();
+    let mut sorted = cats.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(
+        sorted.len(),
+        cats.len(),
+        "each returned hit should have a distinct category, got {:?}",
+        cats
+    );
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_search_near_duplicate_collapse() {
+    let (_temp, base_url, handle) = start_server().await;
+    let client = Client::new();
+
+    // A hybrid (text + vector) collection with 4-dim embeddings. Hybrid is used
+    // because the /search route feeds the query vector via `query.vector`, which
+    // the hybrid coordinator honours (the raw vector backend expects it inline).
+    let resp = client
+        .put(format!("{}/collections/vec-e2e", base_url))
+        .json(&json!({
+            "collection": "vec-e2e",
+            "backends": {
+                "text": {
+                    "fields": [
+                        {"name": "body", "type": "text", "stored": true, "indexed": true}
+                    ]
+                },
+                "vector": { "embedding_field": "embedding", "dimension": 4 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        matches!(resp.status().as_u16(), 200 | 201),
+        "creating hybrid collection failed: {}",
+        resp.status()
+    );
+
+    // Two near-duplicate clusters: {a,b} ~ [1,0,0,0] and {c,d} ~ [0,1,0,0].
+    // All share a text term so a hybrid query returns every doc.
+    let docs = json!([
+        { "id": "a", "fields": { "body": "shared content", "embedding": [1.0, 0.0, 0.0, 0.0] } },
+        { "id": "b", "fields": { "body": "shared content", "embedding": [0.999, 0.001, 0.0, 0.0] } },
+        { "id": "c", "fields": { "body": "shared content", "embedding": [0.0, 1.0, 0.0, 0.0] } },
+        { "id": "d", "fields": { "body": "shared content", "embedding": [0.001, 0.999, 0.0, 0.0] } },
+    ]);
+    index_docs(&client, &base_url, "vec-e2e", &docs).await;
+
+    // Sanity: a hybrid query returns all four without near-dup collapse.
+    let resp = client
+        .post(format!("{}/collections/vec-e2e/search", base_url))
+        .json(&json!({ "query": "content", "vector": [1.0, 1.0, 0.0, 0.0], "limit": 10 }))
+        .send()
+        .await
+        .unwrap();
+    let sanity_status = resp.status().as_u16();
+    let sanity_bytes = resp.bytes().await.unwrap();
+    assert_eq!(
+        sanity_status,
+        200,
+        "sanity search failed: {}",
+        String::from_utf8_lossy(&sanity_bytes)
+    );
+    let body: Value = serde_json::from_slice(&sanity_bytes).unwrap();
+    assert_eq!(
+        body["results"].as_array().unwrap().len(),
+        4,
+        "sanity: all four docs should be returned without near-dup collapse"
+    );
+
+    // With near-dup collapse, each cluster reduces to one hit → two results.
+    let resp = client
+        .post(format!("{}/collections/vec-e2e/search", base_url))
+        .json(&json!({
+            "query": "content",
+            "vector": [1.0, 1.0, 0.0, 0.0],
+            "limit": 10,
+            "near_dup": { "threshold": 0.95 }
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    let ids: Vec<&str> = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["id"].as_str())
+        .collect();
+
+    assert_eq!(
+        ids.len(),
+        2,
+        "near-dup collapse should keep one hit per cluster, got {:?}",
+        ids
+    );
+    // One survivor from {a,b}, one from {c,d}.
+    let cluster1 = ids.iter().filter(|id| **id == "a" || **id == "b").count();
+    let cluster2 = ids.iter().filter(|id| **id == "c" || **id == "d").count();
+    assert_eq!(
+        cluster1, 1,
+        "exactly one of a/b should survive, got {:?}",
+        ids
+    );
+    assert_eq!(
+        cluster2, 1,
+        "exactly one of c/d should survive, got {:?}",
+        ids
+    );
+
+    handle.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_and_get_by_id() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -252,9 +473,16 @@ async fn test_index_and_get_by_id() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["id"], "doc-1");
     assert_eq!(body["fields"]["title"], "Hello World");
     assert_eq!(body["fields"]["category"], "greeting");
@@ -262,7 +490,7 @@ async fn test_index_and_get_by_id() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_collection_stats() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -289,9 +517,16 @@ async fn test_collection_stats() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["collection"], "test-e2e");
     assert_eq!(
         body["document_count"].as_u64().unwrap(),
@@ -303,7 +538,7 @@ async fn test_collection_stats() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_collection_schema_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -315,9 +550,16 @@ async fn test_collection_schema_endpoint() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["collection"], "test-e2e");
 
     let fields = body["fields"].as_array().unwrap();
@@ -346,7 +588,7 @@ async fn test_collection_schema_endpoint() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_empty_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -359,9 +601,16 @@ async fn test_search_empty_collection() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
     assert!(
         results.is_empty(),
@@ -372,7 +621,7 @@ async fn test_search_empty_collection() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -396,7 +645,7 @@ async fn test_search_nonexistent_collection() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_with_all_field_types() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -439,9 +688,16 @@ async fn test_index_with_all_field_types() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["id"], "all-fields-doc");
 
     let fields = &body["fields"];
@@ -483,7 +739,7 @@ async fn test_index_with_all_field_types() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_document_upsert_via_api() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -555,7 +811,7 @@ async fn test_document_upsert_via_api() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -598,7 +854,7 @@ async fn test_delete_collection() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_large_batch_index() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -636,7 +892,7 @@ async fn test_large_batch_index() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_pagination() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -700,7 +956,7 @@ async fn test_search_pagination() {
 // Aggregations API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_aggregate_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -756,7 +1012,7 @@ async fn test_aggregate_endpoint() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_aggregate_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -785,7 +1041,7 @@ async fn test_aggregate_nonexistent_collection() {
 // Top Terms / Index Inspection API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_top_terms() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -815,16 +1071,23 @@ async fn test_get_top_terms() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["field"], "title");
     assert!(body["terms"].is_array());
 
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_top_terms_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -843,7 +1106,7 @@ async fn test_get_top_terms_nonexistent_collection() {
 // Segments API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_segments() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -868,9 +1131,16 @@ async fn test_get_segments() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     // Should have segment information
     assert!(
         body.is_object(),
@@ -880,7 +1150,7 @@ async fn test_get_segments() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_segments_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -899,7 +1169,7 @@ async fn test_get_segments_nonexistent_collection() {
 // Suggest / Autocomplete API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_suggest_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -932,15 +1202,22 @@ async fn test_suggest_endpoint() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["suggestions"].is_array());
 
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_suggest_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -963,7 +1240,7 @@ async fn test_suggest_nonexistent_collection() {
 // More Like This API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_more_like_this_by_text() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1002,15 +1279,22 @@ async fn test_more_like_this_by_text() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
 
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_more_like_this_missing_params() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1035,7 +1319,7 @@ async fn test_more_like_this_missing_params() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_more_like_this_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1058,7 +1342,7 @@ async fn test_more_like_this_nonexistent_collection() {
 // Multi-Search API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multi_search_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1113,16 +1397,23 @@ async fn test_multi_search_endpoint() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
     assert!(body["total"].is_number());
 
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_multi_index_search_comma_separated() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1142,9 +1433,16 @@ async fn test_multi_index_search_comma_separated() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
 
     handle.abort();
@@ -1154,7 +1452,7 @@ async fn test_multi_index_search_comma_separated() {
 // Delete Collection (extended)
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_nonexistent_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1178,7 +1476,7 @@ async fn test_delete_nonexistent_collection() {
 // Search with highlight and score_function
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_with_highlight() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1207,9 +1505,16 @@ async fn test_search_with_highlight() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
     // Might or might not get results depending on tokenization, but the endpoint should succeed
     assert!(body["total"].is_number());
@@ -1218,7 +1523,7 @@ async fn test_search_with_highlight() {
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_search_with_min_score() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1248,9 +1553,16 @@ async fn test_search_with_min_score() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     let results = body["results"].as_array().unwrap();
     assert!(
         results.is_empty(),
@@ -1264,7 +1576,7 @@ async fn test_search_with_min_score() {
 // Document get - missing document
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_document_not_found() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1293,7 +1605,7 @@ async fn test_get_document_not_found() {
 // Server info
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_server_info_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1303,9 +1615,16 @@ async fn test_server_info_endpoint() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["version"].is_string());
     assert!(body["prism_version"].is_string());
 
@@ -1316,7 +1635,7 @@ async fn test_server_info_endpoint() {
 // Lint schemas
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_lint_schemas_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1342,7 +1661,7 @@ async fn test_lint_schemas_endpoint() {
 // Create collection - duplicate
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_create_duplicate_collection() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1370,7 +1689,7 @@ async fn test_create_duplicate_collection() {
 // Create collection - invalid name
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_create_collection_invalid_name() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1406,7 +1725,7 @@ async fn test_create_collection_invalid_name() {
 // Pipelines listing
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_list_pipelines_endpoint() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1416,9 +1735,16 @@ async fn test_list_pipelines_endpoint() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["pipelines"].is_array());
 
     handle.abort();
@@ -1428,7 +1754,7 @@ async fn test_list_pipelines_endpoint() {
 // Simple search API
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_simple_search_api() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();
@@ -1446,16 +1772,23 @@ async fn test_simple_search_api() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 200);
-
-    let body: Value = resp.json().await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.unwrap();
+    if status != 200 {
+        panic!(
+            "Status was {}, body: {}",
+            status,
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(body["results"].is_array());
     assert!(body["total"].is_number());
 
     handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_concurrent_requests() {
     let (_temp, base_url, handle) = start_server().await;
     let client = Client::new();

@@ -217,6 +217,7 @@ pub async fn count_handler(
 
     let query = PrismQuery {
         query_string: "*".to_string(),
+        vector: None,
         fields: vec![],
         offset: 0,
         limit: 0,

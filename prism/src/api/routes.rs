@@ -74,6 +74,15 @@ pub struct SearchRequest {
     /// Ad-hoc score expression (e.g., "_score * 2")
     #[serde(default)]
     pub score_function: Option<String>,
+    /// Optional field collapse: keep at most K results per distinct field value
+    /// (Elasticsearch-style `collapse`). Applied post-search.
+    #[serde(default)]
+    pub collapse: Option<crate::ranking::collapse::CollapseConfig>,
+    /// Optional semantic near-duplicate collapse: drop results whose embedding
+    /// is too similar to a higher-scoring result. Applied post-search, after
+    /// `collapse`. Requires a collection with a vector backend.
+    #[serde(default)]
+    pub near_dup: Option<crate::ranking::near_dup::NearDupConfig>,
 }
 
 fn default_limit() -> usize {
@@ -145,26 +154,95 @@ fn result_to_simple(result: SearchResult) -> SimpleSearchResult {
     extract_simple(result.id, result.score, &result.fields)
 }
 
+async fn resolve_vector(
+    manager: &Arc<CollectionManager>,
+    collections: &[&str],
+    request_vector: Option<Vec<f32>>,
+    query_text: Option<&String>,
+) -> Option<Vec<f32>> {
+    if request_vector.is_some() {
+        return request_vector;
+    }
+    let text = match query_text {
+        Some(t) if !t.is_empty() => t,
+        _ => return None,
+    };
+
+    let is_hybrid = collections.iter().any(|&col| manager.is_hybrid(col));
+
+    if is_hybrid {
+        if let Some(&first_col) = collections.first() {
+            if let Ok(v) = manager.embed_query(first_col, text).await {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// Authorize access to a single named collection.
+///
+/// With no auth context (security disabled) this is a no-op. When the caller
+/// lacks the permission, returns `404 Not Found` under isolation mode (so
+/// collection names don't leak via status codes) or `403 Forbidden` otherwise.
+fn authorize_collection(
+    user_ext: &Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: &Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
+    collection: &str,
+    permission: crate::security::types::Permission,
+) -> Result<(), StatusCode> {
+    if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) =
+        (user_ext, checker_ext)
+    {
+        if !checker.check_permission(user, collection, permission) {
+            return Err(if checker.is_isolation() {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::FORBIDDEN
+            });
+        }
+    }
+    Ok(())
+}
+
 #[tracing::instrument(
     name = "search",
-    skip(manager, request),
+    skip(manager, request, user_ext, checker_ext),
     fields(collection = %collection, search_type = "text")
 )]
 pub async fn search(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<SearchResults>, (StatusCode, String)> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Search,
+    )
+    .map_err(|c| (c, "forbidden".to_string()))?;
+
     let start = std::time::Instant::now();
 
-    let qstr = if let Some(vec) = request.vector.clone() {
-        serde_json::to_string(&vec).unwrap_or_default()
-    } else {
-        request.query.clone().unwrap_or_default()
-    };
+    let has_vector = request.vector.is_some();
+    let vec_override = resolve_vector(
+        &manager,
+        &[&collection],
+        request.vector,
+        request.query.as_ref(),
+    )
+    .await;
 
     let query = Query {
-        query_string: qstr,
+        query_string: request.query.clone().unwrap_or_default(),
+        vector: vec_override,
         fields: request.fields,
         limit: request.limit,
         offset: request.offset,
@@ -215,23 +293,63 @@ pub async fn search(
                 results.total = results.results.len();
             }
 
+            // Apply field collapse (keep at most K hits per distinct field value)
+            if let Some(ref collapse) = request.collapse {
+                results.results = crate::ranking::collapse::collapse_results(
+                    std::mem::take(&mut results.results),
+                    &collapse.field,
+                    collapse.max_per_group,
+                );
+                results.total = results.results.len();
+            }
+
+            // Apply semantic near-duplicate collapse (drop hits too similar to a
+            // higher-scoring one). Vectors are fetched from the collection's
+            // vector backend for the surviving result ids.
+            if let Some(ref near_dup) = request.near_dup {
+                let ids: Vec<String> = results.results.iter().map(|r| r.id.clone()).collect();
+                let vectors = manager.vectors_for(&collection, &ids).await;
+                results.results = crate::ranking::near_dup::collapse_near_duplicates(
+                    std::mem::take(&mut results.results),
+                    &vectors,
+                    near_dup.threshold,
+                );
+                results.total = results.results.len();
+            }
+
+            let search_type = if request.query.is_some() && has_vector {
+                "hybrid"
+            } else if has_vector {
+                "vector"
+            } else {
+                "text"
+            };
+
             metrics::histogram!("prism_search_duration_seconds",
                 "collection" => collection.clone(),
-                "search_type" => "text",
+                "search_type" => search_type,
             )
             .record(duration);
             metrics::counter!("prism_search_total",
                 "collection" => collection,
-                "search_type" => "text",
+                "search_type" => search_type,
                 "status" => "ok",
             )
             .increment(1);
             Ok(Json(results))
         }
         Err(e) => {
+            let search_type = if request.query.is_some() && has_vector {
+                "hybrid"
+            } else if has_vector {
+                "vector"
+            } else {
+                "text"
+            };
+
             metrics::counter!("prism_search_total",
                 "collection" => collection,
-                "search_type" => "text",
+                "search_type" => search_type,
                 "status" => "error",
             )
             .increment(1);
@@ -243,9 +361,27 @@ pub async fn search(
 
 pub async fn simple_search(
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(request): Json<SimpleSearchRequest>,
 ) -> Result<Json<SimpleSearchResponse>, StatusCode> {
-    let collections = manager.list_collections();
+    let all_collections = manager.list_collections();
+
+    let collections: Vec<String> =
+        if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) =
+            (&user_ext, &checker_ext)
+        {
+            all_collections
+                .into_iter()
+                .filter(|c| {
+                    checker.check_permission(user, c, crate::security::types::Permission::Search)
+                })
+                .collect()
+        } else {
+            all_collections
+        };
 
     if collections.is_empty() {
         return Ok(Json(SimpleSearchResponse {
@@ -257,6 +393,7 @@ pub async fn simple_search(
     let target_collection = request.collection.clone();
 
     let query = Query {
+        vector: None,
         query_string: request.query,
         fields: vec![],
         limit: request.limit,
@@ -279,6 +416,17 @@ pub async fn simple_search(
         Some(name) => {
             if !manager.collection_exists(&name) {
                 return Err(StatusCode::NOT_FOUND);
+            }
+            if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) =
+                (&user_ext, &checker_ext)
+            {
+                if !checker.check_permission(
+                    user,
+                    &name,
+                    crate::security::types::Permission::Search,
+                ) {
+                    return Err(StatusCode::FORBIDDEN);
+                }
             }
             let results = manager.search(&name, query, None).await.map_err(|e| {
                 tracing::error!("Simple search error: {:?}", e);
@@ -527,7 +675,17 @@ pub async fn list_pipelines(State(state): State<AppState>) -> Json<PipelineListR
 pub async fn get_document(
     Path((collection, id)): Path<(String, String)>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Result<Json<Option<Document>>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Read,
+    )?;
     manager
         .get(&collection, &id)
         .await
@@ -563,7 +721,18 @@ pub async fn list_documents(
     Path(collection): Path<String>,
     axum::extract::Query(query): axum::extract::Query<ScrollQuery>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Result<Json<ScrollResponse>, (StatusCode, String)> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Read,
+    )
+    .map_err(|c| (c, "forbidden".to_string()))?;
     let stats = manager.stats(&collection).await.map_err(|e| {
         (
             StatusCode::NOT_FOUND,
@@ -585,6 +754,7 @@ pub async fn list_documents(
     }
 
     let search_query = Query {
+        vector: None,
         query_string: "*".to_string(),
         fields: vec![],
         limit: query.limit,
@@ -633,8 +803,21 @@ use crate::schema::CollectionSchema;
 
 pub async fn list_collections(
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Json<CollectionsList> {
-    let collections = manager.list_collections();
+    let all = manager.list_collections();
+    // When security is enabled, restrict the listing to collections the caller
+    // may search — the same enforcement point used by simple_search. Without an
+    // auth context (security disabled) the full list is returned unchanged.
+    let collections = match (user_ext, checker_ext) {
+        (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) => {
+            checker.visible_collections(&user, all, crate::security::types::Permission::Search)
+        }
+        _ => all,
+    };
     Json(CollectionsList { collections })
 }
 
@@ -985,7 +1168,17 @@ pub struct CollectionSchemaResponse {
 pub async fn get_collection_schema(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Result<Json<CollectionSchemaResponse>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Read,
+    )?;
     let schema = manager
         .get_schema(&collection)
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -1034,7 +1227,17 @@ pub async fn get_collection_schema(
 pub async fn get_collection_schema_raw(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Result<Json<CollectionSchema>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Read,
+    )?;
     let schema = manager
         .get_schema(&collection)
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -1053,7 +1256,17 @@ pub struct CollectionStatsResponse {
 pub async fn get_collection_stats(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Result<Json<CollectionStatsResponse>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Read,
+    )?;
     // Check if collection exists
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
@@ -1131,13 +1344,8 @@ pub struct LoadStatsResponse {
 }
 
 /// GET /stats/load
-pub async fn get_load_stats() -> Json<LoadStatsResponse> {
-    // Mock data for load stats until we implement system metric fetching
-    Json(LoadStatsResponse {
-        cpu_usage_percent: 12.5,
-        memory_used_mb: 256,
-        memory_total_mb: 4096,
-    })
+pub async fn get_load_stats() -> Result<Json<LoadStatsResponse>, StatusCode> {
+    Err(StatusCode::NOT_IMPLEMENTED)
 }
 
 /// Task info
@@ -1153,27 +1361,23 @@ pub struct TaskInfo {
 #[derive(Serialize)]
 pub struct TasksResponse {
     pub active_tasks: Vec<TaskInfo>,
+    pub failed_jobs: Vec<crate::api::server::DlqEntry>,
 }
 
 /// GET /admin/tasks
-pub async fn get_tasks() -> Json<TasksResponse> {
-    // Mock data for active tasks
-    Json(TasksResponse {
-        active_tasks: vec![
-            TaskInfo {
-                id: "job-1029".to_string(),
-                name: "Index compaction".to_string(),
-                status: "Running".to_string(),
-                progress_percent: 45,
-            },
-            TaskInfo {
-                id: "job-1030".to_string(),
-                name: "Document ingestion".to_string(),
-                status: "Pending".to_string(),
-                progress_percent: 0,
-            },
-        ],
-    })
+pub async fn get_tasks(
+    State(state): State<crate::api::server::AppState>,
+) -> Result<Json<TasksResponse>, StatusCode> {
+    let failed_jobs = if let Some(dlq) = &state.dlq {
+        dlq.read_all().await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    Ok(Json(TasksResponse {
+        active_tasks: vec![],
+        failed_jobs,
+    }))
 }
 
 // ============================================================================
@@ -1211,8 +1415,18 @@ pub struct AggregateResponse {
 pub async fn aggregate(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(request): Json<AggregateRequest>,
 ) -> Result<Json<AggregateResponse>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Search,
+    )?;
     let start = std::time::Instant::now();
 
     // Check if collection exists
@@ -1223,6 +1437,7 @@ pub async fn aggregate(
     // Build search query
     let query_string = request.query.unwrap_or_else(|| "*".to_string());
     let query = Query {
+        vector: None,
         query_string,
         fields: vec![],
         limit: request.scan_limit,
@@ -1309,7 +1524,17 @@ pub async fn get_top_terms(
 pub async fn get_segments(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
 ) -> Result<Json<SegmentsInfo>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Read,
+    )?;
     // Check if collection exists
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
@@ -1423,8 +1648,18 @@ pub struct SuggestResponse {
 pub async fn suggest(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(req): Json<SuggestRequest>,
 ) -> Result<Json<SuggestResponse>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Search,
+    )?;
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -1537,8 +1772,18 @@ pub struct MltRequest {
 pub async fn more_like_this(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(req): Json<MltRequest>,
 ) -> Result<Json<SearchResults>, StatusCode> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Search,
+    )?;
     if manager.get_schema(&collection).is_none() {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -1603,23 +1848,41 @@ pub struct MultiSearchRequest {
 /// POST /_msearch - Multi-collection search
 #[tracing::instrument(
     name = "msearch",
-    skip(manager, request),
+    skip(manager, user_ext, checker_ext, request),
     fields(collections = ?request.collections)
 )]
 pub async fn multi_search(
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(request): Json<MultiSearchRequest>,
 ) -> Result<Json<MultiSearchResults>, StatusCode> {
+    if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) =
+        (user_ext, checker_ext)
+    {
+        for c in &request.collections {
+            if !checker.check_permission(&user, c, crate::security::types::Permission::Search) {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     let start = std::time::Instant::now();
 
-    let qstr = if let Some(vec) = request.vector.clone() {
-        serde_json::to_string(&vec).unwrap_or_default()
-    } else {
-        request.query.clone().unwrap_or_default()
-    };
+    let collection_refs: Vec<&str> = request.collections.iter().map(|s| s.as_str()).collect();
+    let vec_override = resolve_vector(
+        &manager,
+        &collection_refs,
+        request.vector,
+        request.query.as_ref(),
+    )
+    .await;
 
     let query = Query {
-        query_string: qstr,
+        query_string: request.query.clone().unwrap_or_default(),
+        vector: vec_override,
         fields: request.fields,
         limit: request.limit,
         offset: request.offset,
@@ -1666,12 +1929,16 @@ pub async fn multi_search(
 /// Supports: /products,articles/_search or /logs-2026-*/_search
 #[tracing::instrument(
     name = "multi_index_search",
-    skip(manager, request),
+    skip(manager, user_ext, checker_ext, request),
     fields(collections = %collections)
 )]
 pub async fn multi_index_search(
     Path(collections): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<MultiSearchResults>, StatusCode> {
     let start = std::time::Instant::now();
@@ -1687,14 +1954,28 @@ pub async fn multi_index_search(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let qstr = if let Some(vec) = request.vector.clone() {
-        serde_json::to_string(&vec).unwrap_or_default()
-    } else {
-        request.query.clone().unwrap_or_default()
-    };
+    if let (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) =
+        (user_ext, checker_ext)
+    {
+        for c in &collection_list {
+            if !checker.check_permission(&user, c, crate::security::types::Permission::Search) {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
+    let collection_refs: Vec<&str> = collection_list.iter().map(|s| s.as_str()).collect();
+    let vec_override = resolve_vector(
+        &manager,
+        &collection_refs,
+        request.vector,
+        request.query.as_ref(),
+    )
+    .await;
 
     let query = Query {
-        query_string: qstr,
+        query_string: request.query.clone().unwrap_or_default(),
+        vector: vec_override,
         fields: request.fields,
         limit: request.limit,
         offset: request.offset,
@@ -2492,11 +2773,16 @@ pub async fn graph_bfs(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
     Json(request): Json<BfsRequest>,
-) -> Result<Json<BfsResponse>, StatusCode> {
-    let graph = manager
-        .graph_backend(&collection)
-        .ok_or(StatusCode::NOT_FOUND)?;
-    let nodes = graph.bfs(&request.start, &request.edge_type, request.max_depth);
+) -> Result<Json<BfsResponse>, (StatusCode, String)> {
+    let graph = manager.graph_backend(&collection).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("No graph backend for collection '{}'", collection),
+        )
+    })?;
+    let nodes = graph
+        .bfs(&request.start, &request.edge_type, request.max_depth)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let count = nodes.len();
     Ok(Json(BfsResponse { nodes, count }))
 }
@@ -2506,12 +2792,17 @@ pub async fn graph_shortest_path(
     Path(collection): Path<String>,
     State(manager): State<Arc<CollectionManager>>,
     Json(request): Json<ShortestPathRequest>,
-) -> Result<Json<ShortestPathResponse>, StatusCode> {
-    let graph = manager
-        .graph_backend(&collection)
-        .ok_or(StatusCode::NOT_FOUND)?;
+) -> Result<Json<ShortestPathResponse>, (StatusCode, String)> {
+    let graph = manager.graph_backend(&collection).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("No graph backend for collection '{}'", collection),
+        )
+    })?;
     let edge_types = request.edge_types.as_deref();
-    let path = graph.shortest_path(&request.start, &request.target, edge_types);
+    let path = graph
+        .shortest_path(&request.start, &request.target, edge_types)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let length = path.as_ref().map(|p| p.len().saturating_sub(1));
     Ok(Json(ShortestPathResponse { path, length }))
 }

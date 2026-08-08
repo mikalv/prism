@@ -4,13 +4,22 @@ Import AI assistant conversations into [Prism](https://github.com/mikalv/prism) 
 
 ## Supported Sources
 
-| Source | Format | Default Root |
-|--------|--------|-------------|
-| Claude Code | JSONL | `~/.claude/projects/` |
-| Codex CLI | JSON/JSONL | `~/.codex-cli/` |
-| Gemini CLI | JSON/JSONL | `~/.gemini/` |
-| GitHub Copilot | JSON | `~/.copilot/` + VS Code workspaceStorage |
-| ChatGPT Export | ZIP / `conversations.json` | (user-provided) |
+| Source | Name(s) | Format | Default Root |
+|--------|---------|--------|-------------|
+| Claude Code | `claude_code` | JSONL | `~/.claude/projects/` |
+| Codex CLI | `codex` | JSON/JSONL | `~/.codex-cli/` |
+| Gemini CLI | `gemini` | JSON/JSONL | `~/.gemini/` |
+| GitHub Copilot | `copilot` | JSON | `~/.copilot/` + VS Code workspaceStorage |
+| ChatGPT Export | `chatgpt` | ZIP / `conversations.json` | (user-provided) |
+| Antigravity | `antigravity` | JSON | Antigravity storage |
+| PI (pi.dev) | `pi` | JSONL event stream | `~/.pi/agent/sessions/` |
+| Cursor | `cursor` | SQLite `state.vscdb` (`cursorDiskKV`) | Cursor `globalStorage/` |
+| Kilo Code | `kilo` | Cline-family task JSON | `…/globalStorage/kilocode.kilo-code/tasks/` |
+| Cline | `cline` | Cline-family task JSON | `…/globalStorage/saoudrizwan.claude-dev/tasks/` |
+| Roo Code | `roo` | Cline-family task JSON | `…/globalStorage/rooveterinaryinc.roo-cline/tasks/` |
+| opencode | `opencode` | SQLite `opencode.db` or `storage/` JSON | `~/.local/share/opencode/` |
+
+The `Name(s)` column is what you pass to `--sources` (e.g. `--sources pi,cursor,kilo`).
 
 ## Install
 

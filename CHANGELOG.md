@@ -16,6 +16,44 @@ All notable changes to Prism are documented in this file.
   (XOAUTH2) auth, implicit SSL / STARTTLS, and an optional built-in SSH tunnel
   to the IMAP host. `uv`-managed with 50 unit tests; verified end-to-end
   (create → bulk → search → cleanup) against the live 0.6.10 server.
+- **Semantic near-duplicate collapse on search.** A search request may include
+  `"near_dup": { "threshold": 0.95 }` to drop results whose embedding cosine
+  similarity to a higher-scoring result is at/above `threshold` (default 0.95),
+  preserving score order — so a page isn't dominated by many rephrasings of the
+  same content. Comparison vectors are fetched from the collection's vector
+  backend for the returned hits (new `SearchBackend::get_vectors`); hits without
+  a vector are always kept. Requires a collection with a vector backend; applied
+  post-search, after field `collapse`.
+- **Field collapse on search** (Elasticsearch-style `collapse`). A search request
+  may include `"collapse": { "field": "<field>", "max_per_group": N }` to keep at
+  most `N` results per distinct value of a stored field (default `N = 1`),
+  preserving score order — e.g. one hit per `conversation_id` instead of many
+  from the same conversation. Hits missing the field are always kept. Applied
+  post-search, after `min_score`.
+- **Opt-in user isolation mode** (`[security] isolation`, off by default). An api
+  key's `namespace` implicitly grants read+search on `<namespace>*` (never
+  write/delete/admin) without a hand-written role, and every collection
+  enumeration/read/search surface restricts results to what the caller may see:
+  `GET /admin/collections`, per-collection `/search`, `get_document`,
+  `list_documents`, `stats`, `schema` (+ raw), `aggregate`, `_suggest`, `_mlt`,
+  and `segments`. Denied single-collection access returns `404` under isolation
+  (so names don't leak via status codes), else `403`. With security disabled the
+  behavior is unchanged. This also closes a direct-name ACL hole: per-collection
+  `/collections/:c/search` previously searched any named collection without a
+  permission check, bypassing the filtering `simple_search`/`_msearch` already do.
+
+## [0.6.12] - 2026-08-03
+
+Ships the work that was staged as 0.6.11 but never released (its tag was never
+pushed, so no binaries or Docker image were ever published): the embedded web
+UI, all-collections `/api/search`, and the ES-compat/security fixes below. Also
+makes full-feature builds the default — the release **Docker image and prod
+binaries now include Elasticsearch compatibility, clustering, the UI and
+tree-sitter** (ONNX is intentionally excluded; its prebuilt runtime requires
+AVX and crashes on older CPUs).
+
+### Added
+
 - **Embedded web UI is now shippable to prod** — the `websearch-ui` React app is
   compiled into the server binary (via `prism-ui`/`rust-embed`) and served at
   `/ui/`. It was previously dropped from prod builds because `build.rs` needs
@@ -26,6 +64,18 @@ All notable changes to Prism are documented in this file.
 
 ### Fixed
 
+- **`prismsearch-server` builds with the `cluster` feature again** — the
+  `federated_search` handler (gated behind `#[cfg(feature = "cluster")]`)
+  constructed `prism_cluster::RpcQuery` without the required `vector` field,
+  so any cluster-enabled build failed with `E0063`. The error was latent
+  because non-cluster builds never compiled that path. Now sets `vector: None`
+  (the route does text-only federated search).
+- **Docker image is now built with the full feature set** — the release image
+  built with `cargo build --workspace` (server default features = `ui` only),
+  so the published `ghcr.io/mikalv/prism` image shipped **without** Elasticsearch
+  compatibility, clustering or tree-sitter. The `Dockerfile` now defaults
+  `FEATURES` to the full onnx-free set, so `/_elastic/*` and the other features
+  work out of the box.
 - **`/api/search` with no collection now searches ALL collections** — the web
   UI's default "All" search (`simple_search`) fell back to the first registered
   collection when no collection was specified, so it silently searched one

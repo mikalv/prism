@@ -572,6 +572,7 @@ fn cluster_routes(
 
         let rpc_query = prism_cluster::RpcQuery {
             query_string,
+            vector: None,
             fields: vec![],
             limit,
             offset: 0,

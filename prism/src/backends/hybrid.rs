@@ -78,6 +78,7 @@ impl HybridSearchCoordinator {
             vector,
             1.0 - self.vector_weight,
             self.vector_weight,
+            0,
             limit,
             &self.normalization,
             self.distance_metric.as_ref(),
@@ -98,6 +99,7 @@ impl HybridSearchCoordinator {
             vector,
             text_weight,
             vector_weight,
+            0,
             limit,
             &ScoreNormalization::MaxNorm,
             None,
@@ -105,11 +107,13 @@ impl HybridSearchCoordinator {
     }
 
     /// Weighted merge with configurable normalization strategy.
+    #[allow(clippy::too_many_arguments)]
     pub fn merge_weighted_with_normalization(
         text: SearchResults,
         vector: SearchResults,
         text_weight: f32,
         vector_weight: f32,
+        offset: usize,
         limit: usize,
         normalization: &ScoreNormalization,
         distance_metric: Option<&VectorDistance>,
@@ -210,7 +214,7 @@ impl HybridSearchCoordinator {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         let total = out.len();
-        out.truncate(limit);
+        let out = out.into_iter().skip(offset).take(limit).collect();
 
         SearchResults {
             results: out,
@@ -225,6 +229,7 @@ impl HybridSearchCoordinator {
         text: SearchResults,
         vector: SearchResults,
         k: usize,
+        offset: usize,
         limit: usize,
     ) -> SearchResults {
         use std::collections::HashMap;
@@ -268,7 +273,7 @@ impl HybridSearchCoordinator {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         let total = out.len();
-        out.truncate(limit);
+        let out = out.into_iter().skip(offset).take(limit).collect();
 
         SearchResults {
             results: out,
@@ -288,16 +293,21 @@ impl SearchBackend for HybridSearchCoordinator {
     }
 
     async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
-        // Attempt to parse a vector from query_string; if present, run vector and text searches accordingly
-        let maybe_vec: Option<Vec<f32>> = serde_json::from_str(&query.query_string).ok();
+        // Look for explicit vector in the query struct. (Legacy fallback: parse query_string just in case)
+        let maybe_vec = query
+            .vector
+            .clone()
+            .or_else(|| serde_json::from_str(&query.query_string).ok());
 
         let (tres, vres) = if let Some(vec) = maybe_vec {
-            // If query_string is a vector, run vector search and run a text search with the provided fields but empty string
+            // Run vector search and text search in parallel
+            let fetch_limit = query.limit.saturating_add(query.offset);
             let vec_q = Query {
-                query_string: serde_json::to_string(&vec).unwrap(),
+                vector: None,
+                query_string: serde_json::to_string(&vec).unwrap_or_default(),
                 fields: vec![],
-                limit: query.limit,
-                offset: query.offset,
+                limit: fetch_limit,
+                offset: 0,
                 merge_strategy: None,
                 text_weight: None,
                 vector_weight: None,
@@ -311,10 +321,11 @@ impl SearchBackend for HybridSearchCoordinator {
                 not_exists_fields: Vec::new(),
             };
             let text_q = Query {
-                query_string: "".to_string(),
+                vector: None,
+                query_string: query.query_string.clone(),
                 fields: query.fields.clone(),
-                limit: query.limit,
-                offset: query.offset,
+                limit: fetch_limit,
+                offset: 0,
                 merge_strategy: None,
                 text_weight: None,
                 vector_weight: None,
@@ -333,6 +344,7 @@ impl SearchBackend for HybridSearchCoordinator {
         } else {
             // No vector provided: run only text search
             let text_q = Query {
+                vector: None,
                 query_string: query.query_string.clone(),
                 fields: query.fields.clone(),
                 limit: query.limit,
@@ -371,6 +383,7 @@ impl SearchBackend for HybridSearchCoordinator {
                     vres,
                     text_w,
                     vector_w,
+                    query.offset,
                     query.limit,
                     &self.normalization,
                     self.distance_metric.as_ref(),
@@ -379,7 +392,7 @@ impl SearchBackend for HybridSearchCoordinator {
             _ => {
                 // RRF: per-query rrf_k > schema default
                 let k = query.rrf_k.unwrap_or(self.rrf_k);
-                Self::merge_rrf_public(tres, vres, k, query.limit)
+                Self::merge_rrf_public(tres, vres, k, query.offset, query.limit)
             }
         };
 
@@ -398,6 +411,15 @@ impl SearchBackend for HybridSearchCoordinator {
         self.text_backend.delete(collection, ids.clone()).await?;
         self.vector_backend.delete(collection, ids).await?;
         Ok(())
+    }
+
+    async fn get_vectors(
+        &self,
+        collection: &str,
+        ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<f32>>> {
+        // Embeddings live in the vector backend.
+        self.vector_backend.get_vectors(collection, ids).await
     }
 
     async fn stats(&self, collection: &str) -> Result<BackendStats> {
@@ -504,6 +526,7 @@ mod tests {
 
     fn text_query() -> Query {
         Query {
+            vector: None,
             query_string: "hello".to_string(),
             fields: vec![],
             limit: 10,

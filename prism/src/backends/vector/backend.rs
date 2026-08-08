@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tempfile::NamedTempFile;
 
@@ -41,11 +41,16 @@ struct ShardedVectorIndex {
     num_shards: usize,
     shard_oversample: f32,
     compaction_config: VectorCompactionConfig,
+    wal_config: crate::schema::types::WalConfig,
+    unflushed_inserts: AtomicUsize,
+    save_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// Persisted format for a sharded vector index.
 #[derive(Serialize, Deserialize)]
 struct PersistedShardedIndex {
+    #[serde(default)]
+    hash_version: u32,
     num_shards: usize,
     shard_oversample: f32,
     compaction_config: VectorCompactionConfig,
@@ -155,19 +160,31 @@ impl VectorBackend {
                 crate::error::Error::Schema("No vector backend configured".into())
             })?;
 
-        // Attempt to restore from persistence first
         if let Some(bytes) = self.load_index(collection).await? {
+            let metric = match vector_config.distance {
+                crate::schema::types::VectorDistance::Cosine => Metric::Cosine,
+                crate::schema::types::VectorDistance::Euclidean => Metric::Euclidean,
+                crate::schema::types::VectorDistance::Dot => Metric::DotProduct,
+            };
+
             // Try new sharded format first, then legacy format
-            match deserialize_sharded_index(&bytes) {
+            match deserialize_sharded_index(&bytes, vector_config) {
                 Ok(restored) => {
                     // Verify persisted dimensions match schema
                     let persisted_dims = restored.shards.first().map(|s| s.dimensions).unwrap_or(0);
-                    if persisted_dims != vector_config.dimension && persisted_dims > 0 {
+                    let persisted_metric = restored.shards.first().map(|s| s.metric);
+
+                    let dims_mismatch =
+                        persisted_dims != vector_config.dimension && persisted_dims > 0;
+                    let metric_mismatch = persisted_metric.is_some_and(|m| m != metric);
+
+                    if dims_mismatch || metric_mismatch {
                         tracing::warn!(
                             collection,
-                            persisted = persisted_dims,
-                            schema = vector_config.dimension,
-                            "Persisted vector index dimensions mismatch, rebuilding"
+                            persisted_dims = persisted_dims,
+                            schema_dims = vector_config.dimension,
+                            metric_mismatch = metric_mismatch,
+                            "Persisted vector index configuration mismatch, rebuilding"
                         );
                     } else {
                         let mut indexes = self.indexes.write();
@@ -231,12 +248,18 @@ impl VectorBackend {
             shards.push(shard);
         }
 
-        let sharded = ShardedVectorIndex {
+        let mut sharded = ShardedVectorIndex {
             shards,
             num_shards,
             shard_oversample: vector_config.shard_oversample,
             compaction_config: vector_config.compaction.clone(),
+            wal_config: vector_config.wal.clone(),
+            unflushed_inserts: AtomicUsize::new(0),
+            save_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
+
+        // Before putting into indexes, replay WAL if any
+        self.replay_wal(collection, &mut sharded).await?;
 
         let mut indexes = self.indexes.write();
         indexes.insert(collection.to_string(), sharded);
@@ -245,12 +268,15 @@ impl VectorBackend {
     }
 
     /// Embed a single text using the cached provider
-    #[allow(clippy::await_holding_lock)]
     #[tracing::instrument(name = "embed_text", skip(self, text))]
     pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
         let start = std::time::Instant::now();
-        let ep = self.embedding_provider.read();
-        if let Some(ref provider) = *ep {
+        let provider = {
+            let ep = self.embedding_provider.read();
+            ep.clone()
+        };
+
+        if let Some(provider) = provider {
             let result = provider
                 .embed(text)
                 .await
@@ -272,12 +298,15 @@ impl VectorBackend {
     }
 
     /// Embed multiple texts using the cached provider (uses batch API)
-    #[allow(clippy::await_holding_lock)]
-    #[tracing::instrument(name = "embed_texts", skip(self, texts), fields(text_count = texts.len()))]
+    #[tracing::instrument(name = "embed_texts", skip(self, texts))]
     pub async fn embed_texts(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         let start = std::time::Instant::now();
-        let ep = self.embedding_provider.read();
-        if let Some(ref provider) = *ep {
+        let provider = {
+            let ep = self.embedding_provider.read();
+            ep.clone()
+        };
+
+        if let Some(provider) = provider {
             let result = provider.embed_batch(texts).await.map_err(|e| {
                 crate::error::Error::Backend(format!("Batch embedding failed: {}", e))
             });
@@ -308,6 +337,7 @@ impl VectorBackend {
         let query_vector = self.embed_text(text).await?;
 
         let query = Query {
+            vector: None,
             query_string: serde_json::to_string(&query_vector)
                 .map_err(|e| crate::error::Error::Backend(format!("JSON error: {}", e)))?,
             fields: vec![],
@@ -339,6 +369,14 @@ impl VectorBackend {
         StoragePath::vector(collection, "default", "vector_index.json").unwrap()
     }
 
+    fn wal_prefix(collection: &str) -> StoragePath {
+        StoragePath::vector(collection, "default", "wal/").unwrap()
+    }
+
+    fn wal_file_path(collection: &str, file_name: &str) -> StoragePath {
+        StoragePath::vector(collection, "default", format!("wal/{}", file_name)).unwrap()
+    }
+
     async fn save_index(&self, collection: &str, data: &[u8]) -> Result<()> {
         let path = Self::index_path(collection);
         self.storage
@@ -363,6 +401,87 @@ impl VectorBackend {
             Err(prism_storage::StorageError::NotFound(_)) => Ok(None),
             Err(e) => Err(crate::error::Error::Storage(e.to_string())),
         }
+    }
+
+    async fn replay_wal(&self, collection: &str, sharded: &mut ShardedVectorIndex) -> Result<()> {
+        let prefix = Self::wal_prefix(collection);
+        let mut files = match self.storage.list(&prefix).await {
+            Ok(f) => f,
+            Err(prism_storage::StorageError::NotFound(_)) => return Ok(()),
+            Err(e) => return Err(crate::error::Error::Storage(e.to_string())),
+        };
+
+        if files.is_empty() {
+            return Ok(());
+        }
+
+        // Sort by path to replay in chronological order (since we use timestamp in filename)
+        files.sort_by_key(|f| f.path.to_string());
+
+        let mut replayed = 0;
+        let mut files_to_delete = Vec::new();
+
+        for file in files {
+            let data = self
+                .storage
+                .read(&file.path)
+                .await
+                .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+            let docs: Vec<Document> = match serde_json::from_slice(&data) {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!(error = %e, file = %file.path, "Failed to parse WAL file, skipping");
+                    continue;
+                }
+            };
+
+            let target_field = sharded
+                .shards
+                .first()
+                .map(|s| s.embedding_target_field.clone())
+                .unwrap_or_else(|| "embedding".to_string());
+            let dimensions = sharded.shards.first().map(|s| s.dimensions).unwrap_or(0);
+
+            for doc in docs {
+                if let Some(vector_value) = doc.fields.get(&target_field) {
+                    if let Ok(vector) = serde_json::from_value::<Vec<f32>>(vector_value.clone()) {
+                        if vector.len() == dimensions {
+                            let shard_id = shard_for_doc(&doc.id, sharded.num_shards) as usize;
+                            if let Err(e) = sharded.shards[shard_id].index(
+                                &doc.id,
+                                &vector,
+                                doc.fields.clone(),
+                                sharded.compaction_config.max_active_segment_size,
+                            ) {
+                                tracing::warn!(error = %e, "Failed to replay doc into shard");
+                            }
+                        }
+                    }
+                }
+            }
+            replayed += 1;
+            files_to_delete.push(file.path);
+        }
+
+        if replayed > 0 {
+            // Snapshot the state now that WAL is applied
+            let data = serialize_sharded_index(sharded)?;
+            self.save_index(collection, &data).await?;
+
+            // Clear the WAL files
+            for path in files_to_delete {
+                if let Err(e) = self.storage.delete(&path).await {
+                    tracing::warn!(error = %e, path = %path, "Failed to delete WAL file");
+                }
+            }
+
+            tracing::info!(
+                collection,
+                replayed,
+                "Replayed vector WAL files and snapshotted"
+            );
+        }
+        Ok(())
     }
 }
 
@@ -437,8 +556,25 @@ impl SearchBackend for VectorBackend {
             }
         }
 
+        // Write WAL first for durability
+        let wal_data =
+            serde_json::to_vec(&docs).map_err(|e| crate::error::Error::Schema(e.to_string()))?;
+        let wal_filename = format!(
+            "{}_{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            uuid::Uuid::new_v4()
+        );
+        let wal_path = Self::wal_file_path(collection, &wal_filename);
+        self.storage
+            .write_bytes(&wal_path, &wal_data)
+            .await
+            .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+
         // Index documents with embeddings, routing to shards by doc ID hash
-        let data = {
+        let (needs_flush, save_lock_opt) = {
             let mut indexes = self.indexes.write();
             let sharded = indexes
                 .get_mut(collection)
@@ -451,6 +587,7 @@ impl SearchBackend for VectorBackend {
                 .unwrap_or_else(|| "embedding".to_string());
 
             let dimensions = sharded.shards.first().map(|s| s.dimensions).unwrap_or(0);
+            let docs_len = docs.len();
 
             for doc in docs {
                 let vector_value = doc.fields.get(&target_field).ok_or_else(|| {
@@ -469,13 +606,54 @@ impl SearchBackend for VectorBackend {
                 }
 
                 let shard_id = shard_for_doc(&doc.id, sharded.num_shards) as usize;
-                sharded.shards[shard_id].index(&doc.id, &vector, doc.fields)?;
+                sharded.shards[shard_id].index(
+                    &doc.id,
+                    &vector,
+                    doc.fields,
+                    sharded.compaction_config.max_active_segment_size,
+                )?;
             }
 
-            serialize_sharded_index(sharded)?
+            let current_unflushed = sharded
+                .unflushed_inserts
+                .fetch_add(docs_len, Ordering::SeqCst)
+                + docs_len;
+            let batch_size = sharded.wal_config.batch_size;
+
+            if batch_size > 0 && current_unflushed >= batch_size {
+                sharded.unflushed_inserts.store(0, Ordering::SeqCst);
+                (true, Some(sharded.save_lock.clone()))
+            } else {
+                (false, None)
+            }
         };
 
-        self.save_index(collection, &data).await
+        if needs_flush {
+            if let Some(save_lock) = save_lock_opt {
+                let _guard = save_lock.lock().await;
+
+                // Now read the latest state under the save lock
+                let data = {
+                    let indexes = self.indexes.read();
+                    if let Some(sharded) = indexes.get(collection) {
+                        serialize_sharded_index(sharded)?
+                    } else {
+                        return Ok(());
+                    }
+                };
+
+                self.save_index(collection, &data).await?;
+                // Clear the WAL now that a snapshot is saved
+                let prefix = Self::wal_prefix(collection);
+                if let Ok(files) = self.storage.list(&prefix).await {
+                    for f in files {
+                        let _ = self.storage.delete(&f.path).await;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn search(&self, collection: &str, query: Query) -> Result<SearchResults> {
@@ -563,8 +741,30 @@ impl SearchBackend for VectorBackend {
         }
     }
 
+    async fn get_vectors(
+        &self,
+        collection: &str,
+        ids: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        let indexes = self.indexes.read();
+        let sharded = match indexes.get(collection) {
+            Some(s) => s,
+            // Best-effort: no index for this collection → no vectors.
+            None => return Ok(HashMap::new()),
+        };
+
+        let mut out = HashMap::with_capacity(ids.len());
+        for id in ids {
+            let shard_id = shard_for_doc(id, sharded.num_shards) as usize;
+            if let Some(v) = sharded.shards[shard_id].get_vector(id) {
+                out.insert(id.clone(), v);
+            }
+        }
+        Ok(out)
+    }
+
     async fn delete(&self, collection: &str, ids: Vec<String>) -> Result<()> {
-        let data = {
+        let save_lock_opt = {
             let mut indexes = self.indexes.write();
             let sharded = indexes
                 .get_mut(collection)
@@ -581,7 +781,18 @@ impl SearchBackend for VectorBackend {
                 let _ = compact_shard(shard, &config);
             }
 
-            serialize_sharded_index(sharded)?
+            sharded.save_lock.clone()
+        };
+
+        let _guard = save_lock_opt.lock().await;
+
+        let data = {
+            let indexes = self.indexes.read();
+            if let Some(sharded) = indexes.get(collection) {
+                serialize_sharded_index(sharded)?
+            } else {
+                return Ok(());
+            }
         };
 
         self.save_index(collection, &data).await
@@ -631,6 +842,7 @@ fn serialize_sharded_index(index: &ShardedVectorIndex) -> Result<Vec<u8>> {
     }
 
     let persisted = PersistedShardedIndex {
+        hash_version: 1,
         num_shards: index.num_shards,
         shard_oversample: index.shard_oversample,
         compaction_config: index.compaction_config.clone(),
@@ -640,8 +852,80 @@ fn serialize_sharded_index(index: &ShardedVectorIndex) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec(&persisted)?)
 }
 
-fn deserialize_sharded_index(bytes: &[u8]) -> Result<ShardedVectorIndex> {
+fn deserialize_sharded_index(
+    bytes: &[u8],
+    vector_config: &crate::schema::types::VectorBackendConfig,
+) -> Result<ShardedVectorIndex> {
     let persisted: PersistedShardedIndex = serde_json::from_slice(bytes)?;
+
+    if persisted.hash_version == 0 && persisted.num_shards > 1 {
+        tracing::info!("Migrating sharded index to format version 1 (stable hashing)");
+
+        let mut old_shards = Vec::new();
+        for shard_p in persisted.shards {
+            old_shards.push(VectorShard::from_persisted(shard_p)?);
+        }
+
+        let mut new_shards = Vec::new();
+        if !old_shards.is_empty() {
+            let dimensions = old_shards[0].dimensions;
+            let metric = old_shards[0].metric;
+            let source_field = old_shards[0].embedding_source_field.clone();
+            let target_field = old_shards[0].embedding_target_field.clone();
+
+            for i in 0..persisted.num_shards {
+                new_shards.push(VectorShard::new(
+                    i as u32,
+                    dimensions,
+                    metric,
+                    vector_config.hnsw_m,
+                    vector_config.hnsw_ef_construction,
+                    vector_config.hnsw_ef_search,
+                    source_field.clone(),
+                    target_field.clone(),
+                )?);
+            }
+
+            for old_shard in old_shards {
+                for seg in &old_shard.sealed_segments {
+                    for (id, vec, fields) in seg.extract_all() {
+                        let new_shard_idx = crate::backends::vector::shard::shard_for_doc(
+                            &id,
+                            persisted.num_shards,
+                        ) as usize;
+                        new_shards[new_shard_idx].index(
+                            &id,
+                            &vec,
+                            fields,
+                            persisted.compaction_config.max_active_segment_size,
+                        )?;
+                    }
+                }
+                for (id, vec, fields) in old_shard.active_segment.extract_all() {
+                    let new_shard_idx =
+                        crate::backends::vector::shard::shard_for_doc(&id, persisted.num_shards)
+                            as usize;
+                    new_shards[new_shard_idx].index(
+                        &id,
+                        &vec,
+                        fields,
+                        persisted.compaction_config.max_active_segment_size,
+                    )?;
+                }
+            }
+        }
+
+        return Ok(ShardedVectorIndex {
+            shards: new_shards,
+            num_shards: persisted.num_shards,
+            shard_oversample: persisted.shard_oversample,
+            compaction_config: persisted.compaction_config,
+            wal_config: vector_config.wal.clone(),
+            unflushed_inserts: AtomicUsize::new(0),
+            save_lock: Arc::new(tokio::sync::Mutex::new(())),
+        });
+    }
+
     let mut shards = Vec::new();
     for shard_p in persisted.shards {
         shards.push(VectorShard::from_persisted(shard_p)?);
@@ -651,6 +935,9 @@ fn deserialize_sharded_index(bytes: &[u8]) -> Result<ShardedVectorIndex> {
         num_shards: persisted.num_shards,
         shard_oversample: persisted.shard_oversample,
         compaction_config: persisted.compaction_config,
+        wal_config: vector_config.wal.clone(),
+        unflushed_inserts: AtomicUsize::new(0),
+        save_lock: Arc::new(tokio::sync::Mutex::new(())),
     })
 }
 
@@ -698,6 +985,9 @@ fn deserialize_legacy_index(
         num_shards: 1,
         shard_oversample: vector_config.shard_oversample,
         compaction_config: vector_config.compaction.clone(),
+        wal_config: vector_config.wal.clone(),
+        unflushed_inserts: AtomicUsize::new(0),
+        save_lock: Arc::new(tokio::sync::Mutex::new(())),
     })
 }
 
@@ -792,6 +1082,7 @@ mod tests {
 
         // Search
         let query = Query {
+            vector: None,
             query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap(),
             fields: vec![],
             limit: 10,
@@ -881,6 +1172,7 @@ mod tests {
         backend.index("test", docs).await.unwrap();
 
         let query = Query {
+            vector: None,
             query_string: serde_json::to_string(&vec![1.0f32, 0.0, 0.0, 0.0]).unwrap(),
             fields: vec![],
             limit: 10,
@@ -972,6 +1264,7 @@ mod tests {
                     num_shards,
                     shard_oversample: 2.5,
                     compaction: VectorCompactionConfig::default(),
+                    wal: WalConfig::default(),
                 }),
                 graph: None,
             },

@@ -12,6 +12,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcQuery {
     pub query_string: String,
+    pub vector: Option<Vec<f32>>,
     pub fields: Vec<String>,
     pub limit: usize,
     pub offset: usize,
@@ -39,6 +40,7 @@ impl From<prism::backends::Query> for RpcQuery {
     fn from(q: prism::backends::Query) -> Self {
         Self {
             query_string: q.query_string,
+            vector: q.vector,
             fields: q.fields,
             limit: q.limit,
             offset: q.offset,
@@ -61,6 +63,7 @@ impl From<RpcQuery> for prism::backends::Query {
     fn from(q: RpcQuery) -> Self {
         Self {
             query_string: q.query_string,
+            vector: q.vector,
             fields: q.fields,
             limit: q.limit,
             offset: q.offset,
@@ -597,6 +600,7 @@ mod tests {
     #[test]
     fn test_rpc_query_roundtrip() {
         let query = prism::backends::Query {
+            vector: None,
             query_string: "test search".into(),
             fields: vec!["title".into(), "body".into()],
             limit: 10,
@@ -640,6 +644,7 @@ mod tests {
     #[test]
     fn test_rpc_query_no_highlight() {
         let query = prism::backends::Query {
+            vector: None,
             query_string: "simple".into(),
             fields: vec![],
             limit: 10,
@@ -793,6 +798,7 @@ mod tests {
         let req = DeleteByQueryRequest {
             collection: "products".into(),
             query: RpcQuery {
+                vector: None,
                 query_string: "obsolete:true".into(),
                 fields: vec![],
                 limit: 100,
@@ -839,6 +845,7 @@ mod tests {
             source_collection: "old_index".into(),
             target_collection: "new_index".into(),
             query: RpcQuery {
+                vector: None,
                 query_string: "*".into(),
                 fields: vec![],
                 limit: 1000,

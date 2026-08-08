@@ -45,6 +45,7 @@ fn make_doc(id: &str, title: &str, body: &str, category: &str) -> Document {
 
 fn make_query(query_string: &str, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: query_string.to_string(),
         fields: vec![],
         limit,
@@ -81,7 +82,7 @@ async fn setup_text_backend() -> (TempDir, Arc<TextBackend>) {
 }
 
 /// Basic: index documents and immediately search
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_index_then_search() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -108,7 +109,7 @@ async fn test_index_then_search() {
 
 /// Multiple small commits followed by search — the scenario that triggered
 /// background merges and "Path not found" errors.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_many_small_commits_then_search() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -138,7 +139,7 @@ async fn test_many_small_commits_then_search() {
 }
 
 /// Rapid interleaved index + search operations — stress test for concurrent access.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_interleaved_index_and_search() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -191,7 +192,7 @@ async fn test_interleaved_index_and_search() {
 
 /// Concurrent search tasks while indexing runs — the exact production pattern
 /// that triggered "Path not found" on .store/.term/.fieldnorm files.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_concurrent_search_during_indexing() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -248,7 +249,7 @@ async fn test_concurrent_search_during_indexing() {
 }
 
 /// Delete + re-index cycle — ensures deleted segments don't cause crashes.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_and_reindex() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -295,7 +296,7 @@ async fn test_delete_and_reindex() {
 }
 
 /// Bulk indexing — large batch in one commit.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_bulk_index() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -326,7 +327,7 @@ async fn test_bulk_index() {
 /// Verify documents are immediately searchable and retrievable after each commit.
 /// This catches the bug where watch() no-op + OnCommitWithDelay meant readers
 /// never reloaded, and also verifies GC doesn't delete freshly committed segments.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_documents_visible_after_commit() {
     let (_temp, backend) = setup_text_backend().await;
 
@@ -377,7 +378,7 @@ async fn test_documents_visible_after_commit() {
 }
 
 /// Get by ID after multiple commits.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_get_after_multiple_commits() {
     let (_temp, backend) = setup_text_backend().await;
 

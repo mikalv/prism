@@ -41,9 +41,13 @@ def get_all_sources() -> list[Source]:
     from agentimport.sources.antigravity import AntigravitySource
     from agentimport.sources.chatgpt_export import ChatGPTExportSource
     from agentimport.sources.claude_code import ClaudeCodeSource
+    from agentimport.sources.cline_family import ClineSource, KiloSource, RooSource
     from agentimport.sources.codex import CodexSource
     from agentimport.sources.copilot import CopilotSource
+    from agentimport.sources.cursor import CursorSource
     from agentimport.sources.gemini import GeminiSource
+    from agentimport.sources.opencode import OpencodeSource
+    from agentimport.sources.pi import PiSource
 
     return [
         ClaudeCodeSource(),
@@ -52,6 +56,12 @@ def get_all_sources() -> list[Source]:
         CopilotSource(),
         ChatGPTExportSource(),
         AntigravitySource(),
+        PiSource(),
+        CursorSource(),
+        KiloSource(),
+        ClineSource(),
+        RooSource(),
+        OpencodeSource(),
     ]
 
 

@@ -67,8 +67,13 @@ RUN touch prism/src/lib.rs prism-server/src/main.rs prism-cli/src/main.rs \
     prism-importer/src/main.rs prism-es-compat/src/lib.rs prism-ui/src/lib.rs \
     prism-treesitter/src/lib.rs xtask/src/main.rs
 
-# Build arg: enable extra features for prism-server
-ARG FEATURES=""
+# Build arg: features for prism-server. Defaults to the full onnx-free set so
+# the published image always includes Elasticsearch compatibility, clustering,
+# the UI, tree-sitter tokenizer, vector search, Ollama/OpenAI embedding
+# providers and encrypted/compressed storage. ONNX is intentionally excluded
+# (its prebuilt runtime requires AVX and SIGILLs on older CPUs). Override with
+# --build-arg FEATURES=... (empty string builds the workspace defaults).
+ARG FEATURES="ui,cluster,es-compat,tokenizer-treesitter,prism/vector-instant,prism/provider-ollama,prism/provider-openai,prism/cache-redis,prism/storage-encryption,prism/storage-compression"
 
 # Build release binaries (with optional features)
 RUN if [ -n "$FEATURES" ]; then \

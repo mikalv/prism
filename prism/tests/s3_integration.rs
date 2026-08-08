@@ -34,7 +34,7 @@ fn create_s3_storage() -> Arc<dyn SegmentStorage> {
 // SegmentStorage S3 Tests
 // =============================================================================
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_roundtrip() {
     let storage = create_s3_storage();
@@ -54,7 +54,7 @@ async fn test_s3_segment_storage_roundtrip() {
     storage.delete(&path).await.expect("Failed to delete");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_not_found() {
     let storage = create_s3_storage();
@@ -66,7 +66,7 @@ async fn test_s3_segment_storage_not_found() {
     assert!(result.is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_overwrite() {
     let storage = create_s3_storage();
@@ -91,7 +91,7 @@ async fn test_s3_segment_storage_overwrite() {
     storage.delete(&path).await.ok();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_delete() {
     let storage = create_s3_storage();
@@ -115,7 +115,7 @@ async fn test_s3_segment_storage_delete() {
     assert!(result.is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_large_data() {
     let storage = create_s3_storage();
@@ -140,7 +140,7 @@ async fn test_s3_segment_storage_large_data() {
     storage.delete(&path).await.ok();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_list() {
     let storage = create_s3_storage();
@@ -169,7 +169,7 @@ async fn test_s3_segment_storage_list() {
     storage.delete(&path2).await.ok();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_text_backend_path() {
     let storage = create_s3_storage();
@@ -193,7 +193,7 @@ async fn test_s3_segment_storage_text_backend_path() {
     storage.delete(&path).await.ok();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn test_s3_segment_storage_graph_backend_path() {
     let storage = create_s3_storage();

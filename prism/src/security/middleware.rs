@@ -10,13 +10,7 @@ use super::types::Permission;
 /// without an API key, because the UI has to render before it can authenticate
 /// its own API calls. The UI's data requests (`/api/*`, `/collections/*`) still
 /// go through auth normally.
-const AUTH_WHITELIST: &[&str] = &[
-    "/health",
-    "/stats/server",
-    "/stats/load",
-    "/admin/tasks",
-    "/ui",
-];
+const AUTH_WHITELIST: &[&str] = &["/health", "/stats/server", "/ui"];
 
 /// Whether a path is publicly reachable without authentication.
 ///
@@ -78,10 +72,10 @@ fn required_permission(method: &axum::http::Method, path: &str) -> Permission {
     match *method {
         axum::http::Method::GET => Permission::Read,
         axum::http::Method::POST => {
-            if path.contains("/search")
-                || path.contains("/_suggest")
-                || path.contains("/_mlt")
-                || path.contains("/aggregate")
+            if path.ends_with("/search")
+                || path.ends_with("/_suggest")
+                || path.ends_with("/_mlt")
+                || path.ends_with("/aggregate")
             {
                 Permission::Search
             } else {
@@ -130,9 +124,10 @@ pub async fn auth_middleware(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Store AuthUser in request extensions for handlers
+    // Store AuthUser and PermissionChecker in request extensions for handlers
     let mut request = request;
     request.extensions_mut().insert(user);
+    request.extensions_mut().insert(checker);
 
     Ok(next.run(request).await)
 }
@@ -175,9 +170,10 @@ pub async fn auth_middleware_dynamic(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Store AuthUser in request extensions for handlers
+    // Store AuthUser and PermissionChecker in request extensions for handlers
     let mut request = request;
     request.extensions_mut().insert(user);
+    request.extensions_mut().insert(Arc::new(checker));
 
     Ok(next.run(request).await)
 }
@@ -205,9 +201,11 @@ mod tests {
                 key: "k".to_string(),
                 name: "u".to_string(),
                 roles: vec![role.to_string()],
+                namespace: None,
             }],
             roles,
             audit: Default::default(),
+            isolation: false,
         };
         PermissionChecker::new(&config)
     }
@@ -217,6 +215,7 @@ mod tests {
             name: "u".to_string(),
             roles: vec![role.to_string()],
             key_prefix: "k".to_string(),
+            namespace: None,
         }
     }
 

@@ -22,6 +22,7 @@ fn make_schema(name: &str, num_shards: usize, dimension: usize) -> CollectionSch
         backends: Backends {
             text: None,
             vector: Some(VectorBackendConfig {
+                wal: prism::schema::types::WalConfig::default(),
                 embedding_field: "embedding".to_string(),
                 dimension,
                 distance: VectorDistance::Cosine,
@@ -60,6 +61,7 @@ fn make_doc(id: &str, vec: Vec<f32>) -> Document {
 
 fn make_query(vec: Vec<f32>, limit: usize) -> Query {
     Query {
+        vector: None,
         query_string: serde_json::to_string(&vec).unwrap(),
         fields: vec![],
         limit,
@@ -80,7 +82,7 @@ fn make_query(vec: Vec<f32>, limit: usize) -> Query {
 
 // ── 3-shard: basic distribution, get, delete ────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_3_shards_index_get_delete() {
     let dir = TempDir::new().unwrap();
     let backend = VectorBackend::new(dir.path()).unwrap();
@@ -156,7 +158,7 @@ async fn test_3_shards_index_get_delete() {
 
 // ── 4-shard: search recall versus single-shard ──────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_4_shards_search_recall() {
     let dir1 = TempDir::new().unwrap();
     let dir4 = TempDir::new().unwrap();
@@ -227,7 +229,7 @@ async fn test_4_shards_search_recall() {
 
 // ── 8-shard: 1000 docs, persistence roundtrip ───────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_8_shards_1000_docs_persistence() {
     let dir = TempDir::new().unwrap();
 
@@ -291,7 +293,7 @@ async fn test_8_shards_1000_docs_persistence() {
 
 // ── 3-shard: re-index (upsert) across shards ───────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_3_shards_upsert() {
     let dir = TempDir::new().unwrap();
     let backend = VectorBackend::new(dir.path()).unwrap();
@@ -323,7 +325,7 @@ async fn test_3_shards_upsert() {
 
 // ── 5-shard: interleaved index + delete + search ────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_5_shards_interleaved_operations() {
     let dir = TempDir::new().unwrap();
     let backend = VectorBackend::new(dir.path()).unwrap();
