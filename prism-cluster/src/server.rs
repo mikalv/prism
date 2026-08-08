@@ -10,6 +10,7 @@ use crate::metrics::{
 };
 use crate::placement::{ClusterState, PlacementStrategy, ShardAssignment, ShardState};
 use crate::rebalance::{RebalanceEngine, RebalanceTrigger};
+use crate::replication::{ReplicationManager, ReplicationOp};
 use crate::service::PrismCluster;
 use crate::transport::make_server_endpoint;
 use crate::types::*;
@@ -29,6 +30,7 @@ pub struct ClusterServer {
     start_time: Instant,
     cluster_state: Arc<ClusterState>,
     rebalance_engine: Arc<RebalanceEngine>,
+    replication: Option<Arc<ReplicationManager>>,
 }
 
 impl ClusterServer {
@@ -48,6 +50,7 @@ impl ClusterServer {
             start_time: Instant::now(),
             cluster_state,
             rebalance_engine,
+            replication: None,
         }
     }
 
@@ -70,7 +73,14 @@ impl ClusterServer {
             start_time: Instant::now(),
             cluster_state,
             rebalance_engine,
+            replication: None,
         }
+    }
+
+    /// Set the replication manager for primary→replica write fan-out
+    pub fn with_replication(mut self, replication: Arc<ReplicationManager>) -> Self {
+        self.replication = Some(replication);
+        self
     }
 
     /// Get a reference to the cluster state
@@ -180,6 +190,14 @@ impl PrismCluster for ClusterHandler {
         let server = self.server.read().await;
         let doc_count = docs.len();
         info!("RPC index: collection={}, docs={}", collection, doc_count);
+
+        // Keep a copy of RpcDocuments for replication before converting
+        let rpc_docs_for_replication = if server.replication.is_some() {
+            Some(docs.clone())
+        } else {
+            None
+        };
+
         let docs: Vec<prism::backends::Document> = docs.into_iter().map(Into::into).collect();
         match server.manager.index(&collection, docs).await {
             Ok(()) => {
@@ -188,6 +206,26 @@ impl PrismCluster for ClusterHandler {
                     collection, doc_count
                 );
                 timer.success();
+
+                // Replicate to secondaries (async, non-blocking).
+                // Group docs by the shard that owns them, since one collection
+                // can have many shards and a write must reach the replica set
+                // of the *owning* shard — not an arbitrary one.
+                if let Some(ref replication) = server.replication {
+                    for (shard_id, shard_docs) in replication.group_docs_by_shards(
+                        &collection,
+                        rpc_docs_for_replication.unwrap_or_default(),
+                    ) {
+                        replication.replicate_write(
+                            &shard_id,
+                            ReplicationOp::Index {
+                                collection: collection.clone(),
+                                docs: shard_docs,
+                            },
+                        );
+                    }
+                }
+
                 Ok(())
             }
             Err(e) => {
@@ -261,9 +299,32 @@ impl PrismCluster for ClusterHandler {
     ) -> Result<(), ClusterError> {
         let timer = RpcHandlerTimer::new("delete");
         let server = self.server.read().await;
+        let ids_for_replication = if server.replication.is_some() {
+            Some(ids.clone())
+        } else {
+            None
+        };
         match server.manager.delete(&collection, ids).await {
             Ok(()) => {
                 timer.success();
+
+                // Replicate deletes to secondaries (async, non-blocking).
+                // Group ids by owning shard so each delete reaches the right
+                // replica set.
+                if let Some(ref replication) = server.replication {
+                    for (shard_id, shard_ids) in replication
+                        .group_ids_by_shards(&collection, ids_for_replication.unwrap_or_default())
+                    {
+                        replication.replicate_write(
+                            &shard_id,
+                            ReplicationOp::Delete {
+                                collection: collection.clone(),
+                                ids: shard_ids,
+                            },
+                        );
+                    }
+                }
+
                 Ok(())
             }
             Err(e) => {
@@ -348,6 +409,25 @@ impl PrismCluster for ClusterHandler {
                 let err = ClusterError::from(e);
                 timer.error(err.error_type());
                 return Err(err);
+            }
+        }
+
+        // Replicate deletes to secondaries (async, non-blocking).
+        // Group the ids to delete by owning shard so each reaches its own
+        // replica set, matching the index path's behaviour.
+        if !request.dry_run && !ids_to_delete.is_empty() {
+            if let Some(ref replication) = server.replication {
+                for (shard_id, shard_ids) in
+                    replication.group_ids_by_shards(&request.collection, ids_to_delete.clone())
+                {
+                    replication.replicate_write(
+                        &shard_id,
+                        ReplicationOp::Delete {
+                            collection: request.collection.clone(),
+                            ids: shard_ids,
+                        },
+                    );
+                }
             }
         }
 

@@ -203,8 +203,12 @@ impl QueryRouter {
         self.route_by_id(collection, routing_key)
     }
 
-    /// Hash a string to a shard index
-    fn hash_to_shard(key: &str, shard_count: usize) -> usize {
+    /// Hash a string to a shard index.
+    ///
+    /// Uses the same stable `DefaultHasher`-based scheme everywhere document
+    /// placement is decided, so callers (router, replication) agree on which
+    /// shard owns a given document ID.
+    pub fn hash_to_shard(key: &str, shard_count: usize) -> usize {
         if shard_count == 0 {
             return 0;
         }

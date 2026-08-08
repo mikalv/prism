@@ -462,7 +462,7 @@ async fn main() -> Result<()> {
 
         // 6. Create FederatedSearch
         let federation = Arc::new(prism_cluster::FederatedSearch::new(
-            cluster_client,
+            Arc::clone(&cluster_client),
             Arc::clone(&cluster_state),
             prism_cluster::FederationConfig::default(),
         ));
@@ -471,7 +471,20 @@ async fn main() -> Result<()> {
         extension_router =
             extension_router.merge(cluster_routes(federation, Arc::clone(&cluster_state)));
 
-        // 8. Start ClusterServer with shared state
+        // 8. Create ReplicationManager for primary→replica write fan-out
+        let replication = Arc::new(prism_cluster::ReplicationManager::new(
+            Arc::clone(&cluster_client),
+            Arc::clone(&cluster_state),
+            cluster_config.replication.clone(),
+            cluster_config.node_id.clone(),
+        ));
+
+        tracing::info!(
+            "Replication manager initialized (enabled: {})",
+            cluster_config.replication.enabled
+        );
+
+        // 9. Start ClusterServer with shared state and replication
         let cluster_manager = server.manager();
         tracing::info!(
             "Starting cluster RPC server on {} (node_id: {})",
@@ -484,7 +497,8 @@ async fn main() -> Result<()> {
                 cluster_config,
                 cluster_manager,
                 cluster_state,
-            );
+            )
+            .with_replication(replication);
             if let Err(e) = cluster_server.serve().await {
                 tracing::error!("Cluster server error: {}", e);
             }
