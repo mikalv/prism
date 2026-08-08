@@ -63,11 +63,11 @@ pub use placement::{
     BalanceFactor, ClusterState, ClusterStateSnapshot, NodeInfo, NodeState, PlacementDecision,
     PlacementError, PlacementStrategy, ReplicaRole, ShardAssignment, ShardState, SpreadLevel,
 };
-pub use replication::{ReplicationManager, ReplicationMetrics, ReplicationOp};
 pub use rebalance::{
     OperationStatus, RebalanceEngine, RebalanceOperation, RebalanceOperationStatus, RebalancePhase,
     RebalancePlan, RebalanceStatus, RebalanceTrigger,
 };
+pub use replication::{ReplicationManager, ReplicationMetrics, ReplicationOp};
 pub use schema::{
     ChangeType, PropagationConfig, PropagationStatus, PropagationStrategy, SchemaChange,
     SchemaOperationResult, SchemaPropagator, SchemaRegistry, SchemaRegistrySnapshot, SchemaVersion,

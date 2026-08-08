@@ -207,14 +207,20 @@ impl PrismCluster for ClusterHandler {
                 );
                 timer.success();
 
-                // Replicate to secondaries (async, non-blocking)
+                // Replicate to secondaries (async, non-blocking).
+                // Group docs by the shard that owns them, since one collection
+                // can have many shards and a write must reach the replica set
+                // of the *owning* shard — not an arbitrary one.
                 if let Some(ref replication) = server.replication {
-                    if let Some(shard_id) = replication.primary_shard_for_collection(&collection) {
+                    for (shard_id, shard_docs) in replication.group_docs_by_shards(
+                        &collection,
+                        rpc_docs_for_replication.unwrap_or_default(),
+                    ) {
                         replication.replicate_write(
                             &shard_id,
                             ReplicationOp::Index {
                                 collection: collection.clone(),
-                                docs: rpc_docs_for_replication.unwrap_or_default(),
+                                docs: shard_docs,
                             },
                         );
                     }
@@ -302,14 +308,18 @@ impl PrismCluster for ClusterHandler {
             Ok(()) => {
                 timer.success();
 
-                // Replicate to secondaries (async, non-blocking)
+                // Replicate deletes to secondaries (async, non-blocking).
+                // Group ids by owning shard so each delete reaches the right
+                // replica set.
                 if let Some(ref replication) = server.replication {
-                    if let Some(shard_id) = replication.primary_shard_for_collection(&collection) {
+                    for (shard_id, shard_ids) in replication
+                        .group_ids_by_shards(&collection, ids_for_replication.unwrap_or_default())
+                    {
                         replication.replicate_write(
                             &shard_id,
                             ReplicationOp::Delete {
                                 collection: collection.clone(),
-                                ids: ids_for_replication.unwrap_or_default(),
+                                ids: shard_ids,
                             },
                         );
                     }
@@ -402,17 +412,19 @@ impl PrismCluster for ClusterHandler {
             }
         }
 
-        // Replicate deletes to secondaries (async, non-blocking)
+        // Replicate deletes to secondaries (async, non-blocking).
+        // Group the ids to delete by owning shard so each reaches its own
+        // replica set, matching the index path's behaviour.
         if !request.dry_run && !ids_to_delete.is_empty() {
             if let Some(ref replication) = server.replication {
-                if let Some(shard_id) =
-                    replication.primary_shard_for_collection(&request.collection)
+                for (shard_id, shard_ids) in
+                    replication.group_ids_by_shards(&request.collection, ids_to_delete.clone())
                 {
                     replication.replicate_write(
                         &shard_id,
                         ReplicationOp::Delete {
                             collection: request.collection.clone(),
-                            ids: ids_to_delete.clone(),
+                            ids: shard_ids,
                         },
                     );
                 }
