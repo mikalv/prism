@@ -145,35 +145,23 @@ curl -X POST http://localhost:3080/_elastic/articles/_bulk \
 
 ## Supported Query DSL
 
-The ES compatibility layer translates a subset of the Elasticsearch query DSL:
+See the [Feature matrix](#feature-matrix) below for the full list. The layer
+translates a subset of the ES Query DSL to Prism's query string and structured
+filters. Two behaviors are worth calling out explicitly:
 
-- `match` — Full-text search on a field. Multi-word values are analyzed into
-  terms combined with OR by default; `{"match": {"f": {"query": "a b",
-  "operator": "and"}}}` requires every term.
-- `match_phrase` — Exact adjacent-phrase match
-- `match_all` — Match all documents
-- `term` / `terms` — Exact value matching
-- `multi_match` — Search one query across several fields (best_fields: a match
-  in any field matches)
-- `bool` — Compound queries. `must`/`filter` are required, `must_not` excludes,
+- **`bool` occur semantics.** `must`/`filter` are required, `must_not` excludes,
   and `should` is optional when a `must`/`filter` is present (otherwise at least
   one `should` must match, per ES's default `minimum_should_match`). A bool with
-  only `must_not` correctly returns all documents except the excluded ones.
-- `query_string` / `simple_query_string` — Lucene-style query strings
-- `range` — Numeric and date range queries
-- `wildcard` / `prefix` — Pattern matching
-- `ids` — Look up documents by `_id`
+  only `must_not` correctly returns all documents except the excluded ones. This
+  means `must` + `must_not` combinations (the standard Kibana
+  filter-with-exclusion) behave as in Elasticsearch.
+- **`exists` requires a fast field.** Standalone, or inside a `bool`'s
+  `must`/`filter` (required) and `must_not` (forbidden). Collections created in
+  this version mark numeric, date, bool, and string/keyword fields fast. Existing
+  collections must be recreated to enable `exists` on their fields (otherwise a
+  clear error is returned). `exists` inside a `bool`'s `should` is not yet
+  supported.
 
-- `exists` — field-existence filter (standalone, or inside a `bool`'s
-  `must`/`filter` = required and `must_not` = forbidden). Requires the field to
-  be a fast field: collections created in this version mark numeric, date, bool,
-  and string/keyword fields fast. Existing collections must be recreated to
-  enable `exists` on their fields (otherwise a clear error is returned). `exists`
-  inside a `bool`'s `should` is not yet supported.
-
-> **Note:** `bool` occur semantics (`+`/`-`) are translated directly to the
-> underlying engine, so `must` + `must_not` combinations (the standard Kibana
-> filter-with-exclusion) behave as in Elasticsearch.
 
 ## Client Libraries
 
@@ -199,33 +187,153 @@ PrismEx.index("articles", %{id: "1", title: "Hello"})
 PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 ```
 
-## Limitations
+## Feature matrix
 
-- `_version` is always `1` (Prism does not track document versions)
-- Scroll API is not supported (use `from`/`size` pagination)
-- Only a subset of ES query DSL is translated
-- Index creation must be done via Prism's native API or schema files
-- Aggregations in ES format are partially supported
-- `exists` requires the target field to be a fast field (see the query DSL
-  section); on collections predating this version it returns a clear error until
-  the collection is recreated
-- On hybrid (text + vector) collections, ES `_search` returns text-search hits;
-  aggregations are computed over the text backend. Pass a query vector via the
-  native `/collections/{name}/search` endpoint for RRF/weighted hybrid ranking.
-- `sort` sorts over the first `index.max_result_window` (10,000) matching
-  documents — exact when the match count is within that window, matching ES's
-  own deep-sort limit. Missing values sort last. A single-key sort on a fast
-  numeric/date/bool field (the common "last N by timestamp" case) is done at the
-  collector level with no window cap and much lower cost.
-- `hits.total` is accurate up to the 10,000 result window: within it the count
-  is exact (`relation: "eq"`); beyond it `hits.total` reports
-  `{"value": 10000, "relation": "gte"}`. `track_total_hits: <n>` lowers the
-  tracking limit (exact tracking beyond 10,000 is not yet supported).
-- `_source` filtering is applied: `_source: false` omits the source, a field
-  list (`_source: ["a","b"]`) or `{"includes": [...], "excludes": [...]}` selects
-  fields. Include/exclude patterns support `*` wildcards (e.g. `"*"`, `"user.*"`,
-  `"_*"`, `"*_id"`); dotted names match flat field names literally, since Prism
+A quick reference for what the `/_elastic` compatibility layer supports, what
+is partially supported, and what is not supported. Verified against
+`prism-es-compat/src/router.rs`, `query/types.rs`, and `query/translator.rs`.
+
+### REST endpoints
+
+| ES endpoint | Prism `/_elastic` | Notes |
+|---|:---:|---|
+| `GET /` (cluster info) | ✅ | Version, name |
+| `GET /_cluster/health` | ✅ | |
+| `GET /_cat/indices` | ✅ | |
+| `GET|POST /{index}/_search` | ✅ | ES query DSL or `?q=` |
+| `POST /_search` (all indices) | ✅ | |
+| `POST /_msearch` | ✅ | Multi-search |
+| `GET /{index}/_count` | ✅ | |
+| `HEAD /{index}` | ✅ | Index exists |
+| `HEAD /{index}/_doc/{id}` | ✅ | Document exists |
+| `GET /{index}/_doc/{id}` | ✅ | |
+| `POST /{index}/_doc` | ✅ | Auto-ID |
+| `PUT /{index}/_doc/{id}` | ✅ | Explicit ID |
+| `DELETE /{index}/_doc/{id}` | ✅ | |
+| `POST /{index}/_bulk` | ✅ | NDJSON, `index`/`delete` actions |
+| `POST /_bulk` | ✅ | Default-index form |
+| `GET /{index}/_mapping` | ✅ | Read-only |
+| `PUT /{index}` (create index) | ❌ | Use Prism native API or schema files |
+| `DELETE /{index}` | ❌ | Use Prism native API |
+| `PUT /{index}/_mapping` | ❌ | Schema set at creation only |
+| `POST /_search/scroll` (scroll API) | ❌ | Use `from`/`size` |
+| `POST /_refresh`, `_flush` | ❌ | No-op (Prism is near-real-time by design) |
+
+### Query DSL
+
+| Query type | Support | Notes |
+|---|:---:|---|
+| `match` | ✅ | `operator` (`and`/`or`), `fuzziness`, `boost` parsed |
+| `match_phrase` | ✅ | `slop`, `boost` |
+| `match_all` | ✅ | `boost` |
+| `multi_match` | ✅ | `best_fields` style; `operator` |
+| `term` | ✅ | Not analyzed |
+| `terms` | ✅ | Multiple exact values |
+| `range` | ✅ | `gte`/`gt`/`lte`/`lt`, `format`, `time_zone`, `boost` |
+| `bool` | ✅ | `must`/`should`/`must_not`/`filter`, `minimum_should_match` |
+| `exists` | ⚠️ | Requires the field to be a fast field; not inside `should` |
+| `query_string` | ✅ | Lucene syntax, `default_field`, `analyze_wildcard` |
+| `simple_query_string` | ✅ | |
+| `wildcard` | ✅ | `case_insensitive`, `boost` |
+| `prefix` | ✅ | `boost` |
+| `ids` | ✅ | |
+| `nested` | ❌ | Fields are stored flat |
+| `constant_score` | ❌ | |
+| `dis_max` | ❌ | |
+| `fuzzy` | ⚠️ | Accepted on `match`; no standalone `fuzzy` query |
+| `regexp` | ❌ | |
+| `more_like_this` | ❌ | Use native `/collections/{c}/_mlt` |
+| `geo_*` | ❌ | No geo type |
+| `script` | ❌ | No scripting engine |
+
+### Aggregations
+
+| Aggregation | Support | Notes |
+|---|:---:|---|
+| `avg` | ✅ | `missing` |
+| `sum` | ✅ | `missing` |
+| `min` | ✅ | `missing` |
+| `max` | ✅ | `missing` |
+| `stats` | ✅ | `missing` |
+| `value_count` | ✅ | |
+| `cardinality` | ✅ | |
+| `percentiles` | ✅ | `percents` |
+| `terms` | ✅ | `size`, `order`, `min_doc_count` |
+| `histogram` | ✅ | `interval`, `min_doc_count`, `extended_bounds` |
+| `date_histogram` | ✅ | `calendar_interval`/`fixed_interval`, `format`, `time_zone` |
+| `range` | ✅ | named buckets |
+| `date_range` | ✅ | `format` |
+| `filter` | ✅ | single sub-query |
+| `filters` | ✅ | named/anonymous buckets |
+| `global` | ✅ | |
+| nested sub-`aggs` | ✅ | bucket aggregations can nest |
+| `composite` | ❌ | |
+| `auto_date_histogram` | ❌ | |
+| `significant_terms` | ❌ | |
+| `geohash_grid` / `geo_*` | ❌ | No geo type |
+| `top_hits` | ❌ | |
+
+### Search request body fields
+
+| Field | Support | Notes |
+|---|:---:|---|
+| `query` | ✅ | See Query DSL above |
+| `from` / `size` | ✅ | Deep pagination only (no scroll) |
+| `_source` | ✅ | bool / field list / `{includes, excludes}` with `*` globs |
+| `aggs` (aggregations) | ✅ | See Aggregations above |
+| `sort` | ✅ | Over the first 10k window; single fast-field sort is un-capped |
+| `highlight` | ✅ | fields, pre/post tags, fragment size/count |
+| `track_total_hits` | ✅ | Exact up to 10k; `gte` beyond |
+| `stored_fields` | ❌ | Use `_source` |
+| `script_fields` | ❌ | No scripting |
+| `collapse` | ❌ | Use native `collapse` on `/collections/{c}/search` |
+| `search_after` | ❌ | |
+| `suggest` | ❌ | Use native `/collections/{c}/_suggest` |
+
+### Bulk actions
+
+| Action | Support | Notes |
+|---|:---:|---|
+| `index` | ✅ | with `_id` or auto-ID |
+| `delete` | ✅ | |
+| `create` | ✅ | Treated like `index` (does not error on existing `_id`) |
+| `update` | ❌ | Prism has no partial update |
+
+### Response fidelity
+
+| ES behavior | Prism | Notes |
+|---|:---:|---|
+| `X-Elastic-Product` header | ✅ | Stamped on every response, including errors |
+| `_index` / `_id` / `_source` | ✅ | ES 7+ shape |
+| `_version` | ⚠️ | Always `1` (no version tracking) |
+| `_shards` | ✅ | Echoed as `{total:1, successful:1, failed:0}` |
+| `hits.total.relation` | ✅ | `eq` under 10k, `gte` beyond |
+| `result: "created"\|"updated"\|"deleted"` | ✅ | |
+| Result `_score` on hybrid collections | ⚠️ | Text-backend score; use native API for hybrid |
+
+## Limitations & nuances
+
+The matrix above is the quick reference. A few behaviors deserve prose:
+
+- **Hybrid collections.** On text + vector collections, ES `_search` returns
+  text-search hits and computes aggregations over the text backend. Pass a query
+  vector via the native `/collections/{name}/search` endpoint for RRF/weighted
+  hybrid ranking.
+- **`sort` windowing.** Sorting considers the first 10 000 matching documents
+  — exact when the match count is within that window, matching ES's own
+  deep-sort limit. Missing values sort last. A single-key sort on a fast
+  numeric/date/bool field (the common "last N by timestamp" case) is done at
+  the collector level with no window cap and much lower cost.
+- **`_source` wildcards.** `_source: false` omits the source; a field list
+  (`_source: ["a","b"]`) or `{"includes":[...], "excludes":[...]}` selects
+  fields. Include/exclude patterns support `*` globs (e.g. `"*"`, `"user.*"`,
+  `"_*"`, `"*_id"`). Dotted names match flat field names literally, since Prism
   stores fields flat (no nested objects).
+- **`exists` requires a fast field** (see Query DSL above). On collections
+  predating fast-field support it returns a clear error until recreated.
+- **`hits.total`** is exact up to 10 000 (`relation: "eq"`) and reports
+  `{"value": 10000, "relation": "gte"}` beyond it. `track_total_hits: <n>`
+  lowers the tracking limit (exact tracking beyond 10 000 is not yet supported).
 
 ## See Also
 

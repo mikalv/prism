@@ -76,6 +76,7 @@ graph TD
 - [Suggestions](guides/suggestions.md) — Autocomplete
 - [More Like This](guides/more-like-this.md) — Similar documents
 - [Ranking](guides/ranking.md) — Boosting, field weights, signals
+- [Personalization & Multi-Tenant Ranking](guides/personalization.md) — User-level personalization layered on Prism's user-agnostic core
 - [Web UI](guides/web-ui.md) — Embedded search interface
 - [Encryption](guides/encryption.md) — AES-256-GCM encryption at rest
 - [Export/Import](guides/export-import.md) — Backup and restore
