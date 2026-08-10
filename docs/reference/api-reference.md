@@ -56,7 +56,8 @@ Full-featured search endpoint.
     "post_tag": "</b>",
     "fragment_size": 150,
     "number_of_fragments": 3
-  }
+  },
+  "explain": false
 }
 ```
 
@@ -71,6 +72,7 @@ Full-featured search endpoint.
 | `text_weight` | float | 0.5 | No |
 | `vector_weight` | float | 0.5 | No |
 | `highlight` | object | null | No |
+| `explain` | boolean | false | No |
 
 **Response:** `200 OK`
 

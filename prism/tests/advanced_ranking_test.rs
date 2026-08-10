@@ -21,6 +21,7 @@ fn make_results(items: Vec<(&str, f32)>) -> SearchResults {
             score,
             fields: HashMap::new(),
             highlight: None,
+            score_explanation: None,
         })
         .collect();
     let total = results.len();
@@ -41,6 +42,7 @@ fn make_results_with_fields(
             score,
             fields,
             highlight: None,
+            score_explanation: None,
         })
         .collect();
     let total = results.len();

@@ -83,6 +83,10 @@ pub struct SearchRequest {
     /// `collapse`. Requires a collection with a vector backend.
     #[serde(default)]
     pub near_dup: Option<crate::ranking::near_dup::NearDupConfig>,
+    /// Return per-result score breakdowns (per-stage: base, recency, boost,
+    /// signals, rerank). Off by default; adds `score_explanation` to each hit.
+    #[serde(default)]
+    pub explain: bool,
 }
 
 fn default_limit() -> usize {
@@ -257,6 +261,7 @@ pub async fn search(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: request.explain,
     };
 
     let rerank_override = request.rerank.as_ref().map(|r| RerankOptions {
@@ -409,8 +414,8 @@ pub async fn simple_search(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     match target_collection {
         // Explicit collection: search just that one (404 if unknown).
         Some(name) => {
@@ -770,8 +775,8 @@ pub async fn list_documents(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let results = manager
         .search(&collection, search_query, None)
         .await
@@ -1453,8 +1458,8 @@ pub async fn aggregate(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     // Use search_with_aggs to run aggregations in the text backend
     let agg_results = manager
         .search_with_aggs(&collection, &query, request.aggregations)
@@ -1843,6 +1848,9 @@ pub struct MultiSearchRequest {
     /// Optional highlight configuration
     #[serde(default)]
     pub highlight: Option<HighlightConfig>,
+    /// Return per-result score breakdowns. Off by default.
+    #[serde(default)]
+    pub explain: bool,
 }
 
 /// POST /_msearch - Multi-collection search
@@ -1897,8 +1905,8 @@ pub async fn multi_search(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let result = manager
         .multi_search(&request.collections, query, request.rrf_k)
         .await;
@@ -1990,8 +1998,8 @@ pub async fn multi_index_search(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: request.explain,
     };
-
     let result = manager.multi_search(&collection_list, query, None).await;
 
     let duration = start.elapsed().as_secs_f64();

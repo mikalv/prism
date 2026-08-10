@@ -61,6 +61,7 @@ fn make_query(query_string: &str, limit: usize) -> Query {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     }
 }
 

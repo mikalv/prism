@@ -124,6 +124,7 @@ impl VectorSegment {
                         score,
                         fields: fields.clone(),
                         highlight: None,
+                        score_explanation: None,
                     });
                     if results.len() >= k {
                         break;

@@ -305,12 +305,14 @@ mod tests {
                 score: 1.0,
                 fields: HashMap::from([("title".to_string(), serde_json::json!("first doc"))]),
                 highlight: None,
+                score_explanation: None,
             },
             SearchResult {
                 id: "2".to_string(),
                 score: 0.5,
                 fields: HashMap::from([("title".to_string(), serde_json::json!("second doc"))]),
                 highlight: None,
+                score_explanation: None,
             },
         ];
         let scores = reranker

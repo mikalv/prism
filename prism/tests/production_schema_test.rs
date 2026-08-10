@@ -133,6 +133,7 @@ fn make_query(query_string: &str, limit: usize) -> Query {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     }
 }
 
@@ -154,6 +155,7 @@ fn make_query_with_fields(query_string: &str, fields: Vec<&str>, limit: usize) -
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     }
 }
 
@@ -175,6 +177,7 @@ fn make_query_with_offset(query_string: &str, limit: usize, offset: usize) -> Qu
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     }
 }
 

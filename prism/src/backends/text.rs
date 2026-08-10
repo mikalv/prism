@@ -279,6 +279,7 @@ fn materialize_hit(
         score,
         fields,
         highlight: None,
+        score_explanation: None,
     })
 }
 
@@ -981,6 +982,7 @@ impl SearchBackend for TextBackend {
                 score: *score,
                 fields,
                 highlight: None,
+                score_explanation: None,
             });
         }
 
@@ -1060,7 +1062,7 @@ impl SearchBackend for TextBackend {
                 .collect();
 
             // Apply ranking adjustments (recency decay, popularity boost)
-            apply_ranking_adjustments(&mut rankable, &ranking_config, now);
+            apply_ranking_adjustments(&mut rankable, &ranking_config, now, query.explain);
 
             // Convert back to SearchResult, restoring highlights
             rankable
@@ -1072,6 +1074,7 @@ impl SearchBackend for TextBackend {
                         score: r.adjusted_score,
                         fields: r.fields,
                         highlight: hl,
+                        score_explanation: r.explanation,
                     }
                 })
                 .collect()
@@ -1304,6 +1307,7 @@ impl SearchBackend for TextBackend {
                 score: *score,
                 fields,
                 highlight: None,
+                score_explanation: None,
             });
         }
 
@@ -2513,6 +2517,7 @@ impl TextBackend {
                 score: *score,
                 fields: fields_map,
                 highlight: None,
+                score_explanation: None,
             });
 
             if results.len() >= size {
@@ -2812,6 +2817,7 @@ mod tests {
                 .map(|(k, v)| (k.to_string(), v.clone()))
                 .collect(),
             highlight: None,
+            score_explanation: None,
         }
     }
 

@@ -107,6 +107,7 @@ boosting:
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let results = manager
@@ -195,6 +196,7 @@ boosting:
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let results = manager
@@ -296,6 +298,7 @@ boosting:
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let results = manager
@@ -390,6 +393,7 @@ boosting:
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let results = manager
@@ -454,6 +458,7 @@ backends:
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let results = manager

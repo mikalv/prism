@@ -389,3 +389,95 @@ Query → Phase 1: Retrieve `candidates` docs (BM25/vector)
 3. Phase 2 scores each candidate with the re-ranker
 4. Results are re-sorted by the new scores and truncated to the original `limit`
 5. If re-ranking fails, original results are returned (graceful degradation)
+
+## Score explanation (`explain`)
+
+Prism's ranking pipeline computes a final score for each result through a
+sequence of stages. Normally only the final score is returned. Setting
+`"explain": true` on a search request asks Prism to also return a per-result
+breakdown of *how* that score was produced — every stage's operation and
+intermediate value.
+
+This is intended for debugging relevance, tuning boosting configuration, and
+building "why did this rank here?" views. It is **off by default**; the only
+runtime cost is a per-stage branch when enabled, so it is safe to expose behind
+a debug flag in production.
+
+### Requesting an explanation
+
+Add `"explain": true` to any search request body (`POST /collections/:c/search`,
+`POST /api/search`, or `POST /_msearch`):
+
+```bash
+curl -s localhost:8080/collections/articles/search \
+  -H 'content-type: application/json' \
+  -d '{"query": "tokamak", "explain": true, "limit": 1}' | jq
+```
+
+### Response shape
+
+Each hit gains a `score_explanation` object listing the pipeline stages in
+order. The `final_score` equals the hit's top-level `score`.
+
+```json
+{
+  "id": "doc-123",
+  "score": 7.30,
+  "fields": { "title": "…", "_boost": 1.5, "view_count": 200 },
+  "score_explanation": {
+    "final_score": 7.30,
+    "components": [
+      { "name": "base", "type": "base", "raw": 5.0 },
+      { "name": "recency_decay", "type": "multiply", "factor": 0.7071, "result": 3.5355,
+        "note": "Exponential, scale=604800s" },
+      { "name": "doc_boost", "type": "multiply", "factor": 1.5, "result": 5.3033 },
+      { "name": "signal:view_count", "type": "add", "delta": 2.0, "result": 7.3033,
+        "note": "view_count=200 × weight=0.01" }
+    ]
+  }
+}
+```
+
+When no boosting or reranking is configured for the collection, the explanation
+contains a single `base` component whose `raw` equals the backend score.
+
+### Component operations
+
+Each component records what it did to the running score:
+
+| `type` | Meaning | Fields |
+|---|---|---|
+| `base` | Starting point (exactly one per explanation) | `raw` |
+| `multiply` | Multiplied the running score by a factor | `factor`, `result` |
+| `add` | Added a delta to the running score | `delta`, `result` |
+| `replace` | Replaced the running score (Phase 2 re-ranker) | `value`, `previous` |
+
+To replay a breakdown, walk `components` top-to-bottom tracking the running
+score: start at `base.raw`, then for each subsequent component use its `result`
+(for `multiply`/`add`) or `value` (for `replace`). The final running value must
+equal `final_score`.
+
+### Stage names
+
+| `name` | When it appears |
+|---|---|
+| `base` | Always. The backend (BM25 / vector / hybrid) output score. |
+| `recency_decay` | When the collection has recency decay configured. |
+| `doc_boost` | When the document has a `_boost` field. |
+| `signal:<field>` | One per configured custom signal, e.g. `signal:view_count`. |
+| `rerank:<reranker>` | When a Phase 2 re-ranker ran, e.g. `rerank:cross_encoder` or `rerank:score_function`. |
+
+Skipped stages (e.g. recency decay on a document with no `_indexed_at`, or a
+signal on a document missing the field) still appear with a `note` explaining
+the skip and a no-op operation (`multiply` factor `1.0` or `add` delta `0.0`),
+so the breakdown always reads as a complete pipeline trace.
+
+### Notes
+
+- `explain` is orthogonal to `min_score`, `collapse`, `near_dup`, and `sort`.
+  It only annotates; it does not change ranking.
+- When a Phase 2 re-ranker runs, its component is a `replace` because the
+  re-ranker *replaces* the post-Phase-1 score rather than adjusting it.
+- Term-level TF/IDF details from the underlying BM25 backend are **not**
+  exposed; `base` is the opaque backend output. This keeps the explanation
+  stable across backend swaps.
