@@ -2483,7 +2483,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2544,7 +2544,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-cli"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2563,7 +2563,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-cluster"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2589,7 +2589,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-es-compat"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -2610,7 +2610,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-importer"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-server"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2658,7 +2658,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-storage"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "async-recursion",
@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-treesitter"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "tantivy",
  "tree-sitter",
@@ -2707,7 +2707,7 @@ dependencies = [
 
 [[package]]
 name = "prismsearch-ui"
-version = "0.6.12"
+version = "0.7.0"
 dependencies = [
  "axum",
  "mime_guess",

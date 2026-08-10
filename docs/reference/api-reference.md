@@ -190,6 +190,78 @@ Advanced Lucene-style query DSL with facets, boosting, and context.
 
 ---
 
+## Pagination
+
+All search endpoints (`POST /collections/:collection/search`,
+`POST /api/search`, `POST /_msearch`, `POST /search/lucene`) support
+**stateless offset/limit pagination** via the `offset` and `limit` request
+fields. There is no cursor or scroll token for search — every page is a fresh
+query, which keeps the server stateless and makes pages linkable/cacheable.
+
+| field    | type   | default | meaning                                    |
+| -------- | ------ | ------- | ------------------------------------------ |
+| `limit`  | usize  | `10`    | Max hits to return in this page.           |
+| `offset` | usize  | `0`     | Number of top-ranked hits to skip (0-based). |
+
+The response carries `total` (total matching hits the engine found), so the
+client can compute how many pages remain: `pages = ceil(total / limit)`.
+
+### Getting results 20–40
+
+`offset` is 0-indexed and measured from the top of the ranked list, so hits
+21–40 are requested with `offset: 20, limit: 20`:
+
+```bash
+curl -s localhost:8080/collections/pages/search \
+  -H 'content-type: application/json' \
+  -d '{"query": "marketplace", "offset": 20, "limit": 20}' | jq '.total, .results | length'
+```
+
+If you prefer 1-indexed page numbers, convert:
+`offset = (page - 1) * limit`. Page 2 with page size 20 → `offset: 20`.
+
+### How the engine paginates
+
+Prism uses two strategies depending on whether the request sorts:
+
+- **Default (score-ranked, no `sort`):** the engine fetches only
+  `offset + limit` top candidate docs from the inverted index, then skips
+  `offset` and returns `limit`. This is efficient — the deeper the page, the
+  more candidates it must pull, but only by the page depth, not the whole
+  index.
+- **With explicit `sort`:** all matching candidates are materialised, sorted,
+  then skipped/sliced. Use `sort` only when you need a non-score ordering
+  (e.g. by a date field), since it disables the cheap top-N path.
+
+### Deep paging guidance
+
+Because pagination is stateless and recomputes the query each call, **deep
+paging** (e.g. `offset: 10000`) re-fetches `offset + limit` candidates on
+every request. For typical UI pagination (first ~10 pages) this is
+negligible. For bulk export or exhaustive walks of *all* matching documents,
+prefer one of:
+
+- **`POST /collections/:collection/aggregate`** — get grouped counts rather
+  than every doc.
+- **`GET /collections/:collection/documents`** — list/scroll all documents in
+  a collection (not a search) using `offset`/`limit` with a `has_more` flag,
+  well-suited to exhaustive collection walks:
+  ```bash
+  curl -s 'localhost:8080/collections/pages/documents?offset=0&limit=100' | jq '.has_more'
+  ```
+- **`POST /_msearch`** across collections if you want one shot at broad
+  recall instead of many deep pages.
+
+### Consistency between pages
+
+Since each page is an independent query, the underlying index can change
+between page fetches (new docs indexed, deletes). This means a hit could
+shift across a page boundary or appear/disappear across pages. For a stable
+snapshot view, ensure no writes occur during the walk, or accept small drift.
+The ranked order itself is deterministic for a fixed index state.
+
+---
+
 ## Documents
 
 ### POST /collections/:collection/documents
