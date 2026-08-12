@@ -110,6 +110,54 @@ fn owned_value_to_json(
     }
 }
 
+/// Rewrite field references in a Tantivy query string that do not
+/// correspond to configured schema fields so they resolve against the
+/// `_dynamic` JSON catch-all field instead (e.g. `foo:bar` ->
+/// `_dynamic.foo:bar`). This is what gives an ES-style `dynamic: true`
+/// collection query-level parity with its indexing-level dynamic mapping:/// unknown fields indexed into `_dynamic` become queryable by their name.
+///
+/// Quote-delimited value literals are skipped so colons inside values are
+/// not mistaken for field references.
+fn rewrite_unknown_fields_to_dynamic(qs: &str, field_map: &HashMap<String, Field>) -> String {
+    use regex::Regex;
+    // Match a field reference: an identifier (letters/digits/_/./-) followed
+    // by ':', preceded by start-of-string or a non-identifier character.
+    let re = match Regex::new(r"(^|[^A-Za-z0-9_.\-])([A-Za-z_][A-Za-z0-9_.\-]*):") {
+        Ok(r) => r,
+        Err(_) => return qs.to_string(),
+    };
+
+    let mut out = String::with_capacity(qs.len());
+    let mut last = 0usize;
+    let mut in_quotes = false;
+
+    for caps in re.captures_iter(qs) {
+        let whole = caps.get(0).unwrap();
+        let field = caps.get(2).unwrap().as_str();
+
+        // Track quote state across the segment preceding this match so that
+        // colons inside "..." value literals are left untouched.
+        for ch in qs[last..whole.start()].chars() {
+            if ch == '"' {
+                in_quotes = !in_quotes;
+            }
+        }
+        out.push_str(&qs[last..whole.start()]);
+
+        if in_quotes || field == "_dynamic" || field_map.contains_key(field) {
+            out.push_str(&qs[whole.start()..whole.end()]);
+        } else {
+            out.push_str(caps.get(1).unwrap().as_str());
+            out.push_str("_dynamic.");
+            out.push_str(field);
+            out.push(':');
+        }
+        last = whole.end();
+    }
+    out.push_str(&qs[last..]);
+    out
+}
+
 /// Combine a parsed query with structured `exists` / `not_exists` field filters
 /// using Tantivy's fast-field [`ExistsQuery`]. Returns the parsed query unchanged
 /// when there are no exists clauses. Errors clearly if an exists field is unknown
@@ -577,6 +625,25 @@ impl TextBackend {
             field_map.insert(field_def.name.clone(), field);
         }
 
+        // Dynamic catch-all JSON field: document fields not present in the
+        // configured schema are routed here at indexing time, giving the
+        // collection ES-style `dynamic: true` behaviour without index rebuilds.
+        // Tantivy 0.26 supports range and exists queries over JSON subpaths when
+        // the field is configured fast, so Kibana queries like
+        // `typeMigrationVersion:[* TO 7.14.1}` resolve against `_dynamic.<field>`.
+        let dynamic_field = schema_builder.add_json_field(
+            "_dynamic",
+            JsonObjectOptions::default()
+                .set_stored()
+                .set_fast(None)
+                .set_indexing_options(
+                    tantivy::schema::TextFieldIndexing::default()
+                        .set_index_option(tantivy::schema::IndexRecordOption::WithFreqsAndPositions),
+                )
+                .set_expand_dots_enabled(),
+        );
+        field_map.insert("_dynamic".to_string(), dynamic_field);
+
         let tantivy_schema = schema_builder.build();
 
         // Create buffer directory for this collection
@@ -706,7 +773,11 @@ impl SearchBackend for TextBackend {
                 }
             }
 
-            // Add other fields
+            // Add other fields. Fields absent from the configured schema are
+            // routed to the `_dynamic` catch-all JSON field (see schema init) to
+            // provide ES-style dynamic mapping without index rebuilds.
+            let mut dynamic_fields: std::collections::BTreeMap<String, tantivy::schema::OwnedValue> =
+                std::collections::BTreeMap::new();
             for (field_name, value) in doc.fields {
                 if let Some(field) = coll.field_map.get(&field_name) {
                     let field_entry = coll.schema.get_field_entry(*field);
@@ -809,6 +880,15 @@ impl SearchBackend for TextBackend {
                             value
                         );
                     }
+                } else if field_name != "_dynamic" {
+                    // Unknown field: collect for the _dynamic JSON catch-all.
+                    dynamic_fields.insert(field_name, tantivy::schema::OwnedValue::from(value));
+                }
+            }
+
+            if !dynamic_fields.is_empty() {
+                if let Some(dynamic_field) = coll.field_map.get("_dynamic") {
+                    tantivy_doc.add_object(*dynamic_field, dynamic_fields);
                 }
             }
 
@@ -874,7 +954,8 @@ impl SearchBackend for TextBackend {
         // Tantivy's query parser can panic on certain inputs (e.g., bare `*`
         // triggers "Exist query without a field isn't allowed").  Catch panics
         // so malicious/malformed queries don't crash the server.
-        let query_string = query.query_string.clone();
+        let query_string =
+            rewrite_unknown_fields_to_dynamic(&query.query_string, &coll.field_map);
         let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             query_parser.parse_query(&query_string)
         })) {
@@ -1219,7 +1300,8 @@ impl SearchBackend for TextBackend {
         }
 
         let query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
-        let query_string = query.query_string.clone();
+        let query_string =
+            rewrite_unknown_fields_to_dynamic(&query.query_string, &coll.field_map);
         let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             query_parser.parse_query(&query_string)
         })) {

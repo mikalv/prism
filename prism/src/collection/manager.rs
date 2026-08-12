@@ -1546,6 +1546,99 @@ backends:
         Ok(())
     }
 
+    /// End-to-end check of the ES-style dynamic mapping: fields absent from
+    /// the configured schema are indexed into the `_dynamic` JSON catch-all
+    /// and become queryable by their original name (including nested/dotted
+    /// fields and range queries).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_dynamic_schema_indexes_and_queries_unknown_fields() -> Result<()> {
+        let temp = TempDir::new()?;
+        let schemas_dir = temp.path().join("schemas");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&schemas_dir)?;
+
+        fs::write(
+            schemas_dir.join("dynamic.yaml"),
+            r#"
+collection: dynamic
+backends:
+  text:
+    fields:
+      - name: title
+        type: text
+        indexed: true
+        stored: true
+"#,
+        )?;
+
+        let text_backend = Arc::new(TextBackend::new(&data_dir)?);
+        let vector_backend = Arc::new(VectorBackend::new(&data_dir)?);
+        let manager = CollectionManager::new(&schemas_dir, text_backend, vector_backend, None)?;
+        manager.initialize().await?;
+
+        // Index a doc with one known field plus unknown flat and nested fields
+        // (mirrors Kibana saved-object shapes like typeMigrationVersion and
+        // migrationVersion.<plugin>).
+        let doc = Document {
+            id: "doc1".to_string(),
+            fields: HashMap::from([
+                ("title".to_string(), json!("Config")),
+                ("typeMigrationVersion".to_string(), json!("7.14.1")),
+                ("migrationVersion".to_string(), json!({"core-usage-stats": "7.14.1"})),
+            ]),
+        };
+        manager.index("dynamic", vec![doc]).await?;
+
+        let mk = |qs: &str| Query {
+            vector: None,
+            query_string: qs.to_string(),
+            fields: vec!["title".to_string()],
+            limit: 10,
+            offset: 0,
+            merge_strategy: None,
+            text_weight: None,
+            vector_weight: None,
+            highlight: None,
+            rrf_k: None,
+            min_score: None,
+            score_function: None,
+            skip_ranking: false,
+            sort: Vec::new(),
+            exists_fields: Vec::new(),
+            not_exists_fields: Vec::new(),
+        };
+
+        // Term query on an unknown flat field resolves via _dynamic.
+        let r = manager
+            .search("dynamic", mk("typeMigrationVersion:7.14.1"), None)
+            .await?;
+        assert_eq!(
+            r.total, 1,
+            "unknown flat field should be queryable through _dynamic"
+        );
+
+        // Range query on an unknown field (Tantivy 0.26 fast-field JSON range).
+        let r = manager
+            .search("dynamic", mk("typeMigrationVersion:[* TO 8.0.0}"), None)
+            .await?;
+        assert_eq!(r.total, 1, "range on unknown field should match doc1");
+
+        // Dotted/nested unknown field (expand_dots on _dynamic).
+        let r = manager
+            .search(
+                "dynamic",
+                mk("migrationVersion.core-usage-stats:7.14.1"),
+                None,
+            )
+            .await?;
+        assert_eq!(
+            r.total, 1,
+            "nested unknown field should be queryable via _dynamic subpath"
+        );
+
+        Ok(())
+    }
+
     // ========================================================================
     // validate_collection_name tests
     // ========================================================================
