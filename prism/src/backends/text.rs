@@ -2977,4 +2977,71 @@ mod tests {
         // Backend should be created successfully
         assert!(backend.collections.read().unwrap().is_empty());
     }
+
+    /// Critical premise for the v0.7.0 dynamic-schema strategy: Tantivy 0.26
+    /// must support range queries over JSON subpaths in the query parser
+    /// (this was unsupported on 0.22). Without it, Kibana's saved-object
+    /// migration queries like `typeMigrationVersion:[* TO 7.14.1}` cannot be
+    /// served from a JSON catch-all field.
+    #[test]
+    fn test_tantivy26_json_field_supports_range_and_exists_queries() {
+        use std::collections::BTreeMap;
+        use tantivy::schema::{JsonObjectOptions, STORED, STRING};
+        use tantivy::{Index, TantivyDocument};
+
+        let mut builder = tantivy::schema::Schema::builder();
+        let id_field = builder.add_text_field("id", STRING | STORED);
+        let dynamic = builder.add_json_field(
+            "_dynamic",
+            JsonObjectOptions::default().set_stored().set_fast(None),
+        );
+        let schema = builder.build();
+
+        let dir = tempdir().unwrap();
+        let index = Index::create_in_dir(&dir, schema).unwrap();
+        let mut writer = index.writer(50_000_000).unwrap();
+
+        let mut mk = |id: &str, version: &str| {
+            let mut obj = BTreeMap::new();
+            obj.insert(
+                "typeMigrationVersion".to_string(),
+                tantivy::schema::OwnedValue::Str(version.to_string()),
+            );
+            let mut d = TantivyDocument::new();
+            d.add_text(id_field, id);
+            d.add_object(dynamic, obj);
+            d
+        };
+
+        writer.add_document(mk("doc1", "7.14.1")).unwrap();
+        writer.add_document(mk("doc2", "8.5.0")).unwrap();
+        writer.commit().unwrap();
+        drop(writer);
+
+        let reader = index.reader().unwrap();
+        reader.reload().unwrap();
+        let searcher = reader.searcher();
+        let qp = tantivy::query::QueryParser::for_index(&index, vec![dynamic]);
+
+        // 1. Range query on a JSON subpath: matches the outdated doc only.
+        let parsed = qp.parse_query("_dynamic.typeMigrationVersion:[* TO 8.0.0}");
+        assert!(
+            parsed.is_ok(),
+            "JSON range query must parse on Tantivy 0.26: {:?}",
+            parsed.err()
+        );
+        let q = parsed.unwrap();
+        let count = searcher.search(&q, &tantivy::collector::Count).unwrap();
+        assert_eq!(
+            count, 1,
+            "range [* TO 8.0.0}} should match doc1 (7.14.1), not doc2 (8.5.0)"
+        );
+
+        // 2. Exists query on a JSON subpath via ExistsQuery (Kibana filter pattern).
+        // Tantivy 0.24+ "Exist queries match subpath fields" (#2558).
+        let exists_q =
+            tantivy::query::ExistsQuery::new_exists_query("_dynamic.typeMigrationVersion".to_string());
+        let exists_count = searcher.search(&exists_q, &tantivy::collector::Count).unwrap();
+        assert_eq!(exists_count, 2, "both docs have the subpath");
+    }
 }
