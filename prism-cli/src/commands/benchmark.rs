@@ -123,7 +123,7 @@ pub fn run_benchmark(
         for _ in 0..warmup {
             for query_str in &queries {
                 if let Ok(query) = query_parser.parse_query(query_str) {
-                    let _ = searcher.search(&query, &TopDocs::with_limit(top_k));
+                    let _ = searcher.search(&query, &TopDocs::with_limit(top_k).order_by_score());
                 }
             }
         }
@@ -150,7 +150,7 @@ pub fn run_benchmark(
                 .with_context(|| format!("Failed to parse query: {}", query_str))?;
 
             let start = Instant::now();
-            let (_docs, count) = searcher.search(&query, &(TopDocs::with_limit(top_k), Count))?;
+            let (_docs, count) = searcher.search(&query, &(TopDocs::with_limit(top_k).order_by_score(), Count))?;
             let elapsed = start.elapsed();
 
             all_stats[i].times.push(elapsed);

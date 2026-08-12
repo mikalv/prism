@@ -59,8 +59,8 @@ parking_lot = "0.12"
 dirs = "6"
 
 # Search
-tantivy = "0.22"
-tantivy-common = "0.7"
+tantivy = "0.26"
+tantivy-common = "0.11"
 
 # Query parsing
 nom = "7.1"

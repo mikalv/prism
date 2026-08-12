@@ -151,23 +151,23 @@ pub fn run_inspect(data_dir: &Path, collection: &str, verbose: bool) -> Result<(
             std::collections::HashMap::new();
 
         for segment_space_usage in space_usage.segments() {
-            for (field, usage) in segment_space_usage.termdict().fields() {
-                let name = schema.get_field_name(*field).to_string();
+            for usage in segment_space_usage.termdict().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_totals.entry(name).or_insert((0, 0, 0, 0));
                 entry.0 += usage.total().get_bytes();
             }
-            for (field, usage) in segment_space_usage.fast_fields().fields() {
-                let name = schema.get_field_name(*field).to_string();
+            for usage in segment_space_usage.fast_fields().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_totals.entry(name).or_insert((0, 0, 0, 0));
                 entry.1 += usage.total().get_bytes();
             }
-            for (field, usage) in segment_space_usage.postings().fields() {
-                let name = schema.get_field_name(*field).to_string();
+            for usage in segment_space_usage.postings().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_totals.entry(name).or_insert((0, 0, 0, 0));
                 entry.2 += usage.total().get_bytes();
             }
-            for (field, usage) in segment_space_usage.positions().fields() {
-                let name = schema.get_field_name(*field).to_string();
+            for usage in segment_space_usage.positions().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_totals.entry(name).or_insert((0, 0, 0, 0));
                 entry.3 += usage.total().get_bytes();
             }
@@ -214,14 +214,13 @@ pub fn run_inspect(data_dir: &Path, collection: &str, verbose: bool) -> Result<(
     Ok(())
 }
 
-fn print_per_field_usage(title: &str, schema: &Schema, usage: &PerFieldSpaceUsage) {
+fn print_per_field_usage(title: &str, _schema: &Schema, usage: &PerFieldSpaceUsage) {
     println!("{}", title);
     println!("    Total: {}", format_bytes(usage.total()));
-    for (field, field_usage) in usage.fields() {
-        let field_name = schema.get_field_name(*field);
+    for field_usage in usage.fields() {
         println!(
             "    - {}: {}",
-            field_name,
+            field_usage.field_name(),
             format_bytes(field_usage.total())
         );
     }

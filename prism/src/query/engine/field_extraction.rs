@@ -6,7 +6,7 @@ use tantivy::{DateTime, TantivyDocument};
 
 /// Extract a string field value from a document
 pub fn extract_field_value(doc: &TantivyDocument, field: tantivy::schema::Field) -> Option<String> {
-    doc.get_first(field).and_then(|v| match v {
+    doc.get_first(field).and_then(|v| match &OwnedValue::from(v) {
         OwnedValue::Str(s) => Some(s.clone()),
         _ => None,
     })
@@ -14,7 +14,7 @@ pub fn extract_field_value(doc: &TantivyDocument, field: tantivy::schema::Field)
 
 /// Extract a timestamp field from a document
 pub fn extract_timestamp(doc: &TantivyDocument, field: tantivy::schema::Field) -> Option<DateTime> {
-    doc.get_first(field).and_then(|v| match v {
+    doc.get_first(field).and_then(|v| match &OwnedValue::from(v) {
         OwnedValue::Date(d) => Some(*d),
         OwnedValue::I64(ts) => Some(DateTime::from_timestamp_secs(*ts)),
         OwnedValue::U64(ts) => Some(DateTime::from_timestamp_secs(*ts as i64)),
@@ -32,7 +32,7 @@ pub fn convert_doc_to_map(
 
     for (field_name, field) in field_map {
         if let Some(value) = doc.get_first(*field) {
-            let json_value = match value {
+            let json_value = match &OwnedValue::from(value) {
                 OwnedValue::Str(s) => serde_json::Value::String(s.clone()),
                 OwnedValue::U64(n) => serde_json::Value::Number((*n).into()),
                 OwnedValue::I64(n) => serde_json::Value::Number((*n).into()),

@@ -139,7 +139,7 @@ impl QueryExecutor {
         let searcher = self.reader.searcher();
         let limit = options.limit + options.offset;
         let top_docs = searcher
-            .search(&query, &TopDocs::with_limit(limit))
+            .search(&query, &TopDocs::with_limit(limit).order_by_score())
             .map_err(|e| QueryError::TantivyError(e.to_string()))?;
 
         let total_matches = top_docs.len();

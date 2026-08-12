@@ -54,7 +54,7 @@ impl DataExporter {
                     let field_name = field_entry.name();
 
                     if let Some(value) = doc.get_first(_field) {
-                        let json_value = match value {
+                        let json_value = match &tantivy::schema::OwnedValue::from(value) {
                             tantivy::schema::OwnedValue::Str(s) => json!(s),
                             tantivy::schema::OwnedValue::U64(n) => json!(n),
                             tantivy::schema::OwnedValue::I64(n) => json!(n),

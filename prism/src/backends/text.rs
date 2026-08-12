@@ -76,17 +76,21 @@ impl CollectionIndex {
     }
 }
 
-/// Convert a Tantivy OwnedValue to a serde_json::Value.
+/// Convert a Tantivy value to a serde_json::Value.
+/// Accepts any value convertible into `OwnedValue` (e.g. `OwnedValue` itself or
+/// `CompactDocValue` returned by `TantivyDocument::get_first` in 0.24+).
 /// Handles all stored types: Str, U64, I64, F64, Bool, Date (→ ISO 8601), Bytes (→ base64).
-fn owned_value_to_json(value: &tantivy::schema::OwnedValue) -> Option<serde_json::Value> {
-    match value {
-        tantivy::schema::OwnedValue::Str(s) => Some(serde_json::Value::String(s.to_string())),
-        tantivy::schema::OwnedValue::U64(n) => Some(serde_json::Value::Number((*n).into())),
-        tantivy::schema::OwnedValue::I64(n) => Some(serde_json::Value::Number((*n).into())),
-        tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(*n)
+fn owned_value_to_json(
+    value: impl Into<tantivy::schema::OwnedValue>,
+) -> Option<serde_json::Value> {
+    match value.into() {
+        tantivy::schema::OwnedValue::Str(s) => Some(serde_json::Value::String(s)),
+        tantivy::schema::OwnedValue::U64(n) => Some(serde_json::Value::Number(n.into())),
+        tantivy::schema::OwnedValue::I64(n) => Some(serde_json::Value::Number(n.into())),
+        tantivy::schema::OwnedValue::F64(n) => serde_json::Number::from_f64(n)
             .map(serde_json::Value::Number)
             .or(Some(serde_json::Value::Null)),
-        tantivy::schema::OwnedValue::Bool(b) => Some(serde_json::Value::Bool(*b)),
+        tantivy::schema::OwnedValue::Bool(b) => Some(serde_json::Value::Bool(b)),
         tantivy::schema::OwnedValue::Date(dt) => {
             let micros = dt.into_timestamp_micros();
             let secs = micros / 1_000_000;
@@ -228,7 +232,7 @@ fn collector_sorted_addrs(
 
     macro_rules! run {
         ($t:ty) => {{
-            let (docs, total): (Vec<($t, tantivy::DocAddress)>, usize) = searcher.search(
+            let (docs, total): (Vec<(Option<$t>, tantivy::DocAddress)>, usize) = searcher.search(
                 query,
                 &(
                     TopDocs::with_limit(fetch).order_by_fast_field::<$t>(field_name, order.clone()),
@@ -936,7 +940,7 @@ impl SearchBackend for TextBackend {
         // matching documents rather than the truncated page size.
         let (top_docs, total_hits) = searcher.search(
             &parsed_query,
-            &(TopDocs::with_limit(fetch_limit), tantivy::collector::Count),
+            &(TopDocs::with_limit(fetch_limit).order_by_score(), tantivy::collector::Count),
         )?;
 
         let id_field = coll.field_map.get("id").unwrap();
@@ -1101,7 +1105,7 @@ impl SearchBackend for TextBackend {
 
         let term = Term::from_field_text(*id_field, id);
         let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
 
         if let Some((_score, doc_addr)) = top_docs.first() {
             let doc: TantivyDocument = searcher.doc(*doc_addr)?;
@@ -1267,7 +1271,7 @@ impl SearchBackend for TextBackend {
         // than SORT_SCAN_CAP lets callers distinguish "exactly SORT_SCAN_CAP
         // matches" from "more than SORT_SCAN_CAP" (so the ES layer can report
         // hits.total.relation accurately).
-        let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP + 1))?;
+        let all_docs = searcher.search(&parsed_query, &TopDocs::with_limit(SORT_SCAN_CAP + 1).order_by_score())?;
 
         // Build results. With an active sort, materialize every scanned doc and
         // paginate after sorting; otherwise page by score here.
@@ -1363,7 +1367,7 @@ fn collect_field_values(
     for doc_addr in doc_addrs {
         let doc: TantivyDocument = searcher.doc(*doc_addr)?;
         if let Some(value) = doc.get_first(field) {
-            match value {
+            match &OwnedValue::from(value) {
                 tantivy::schema::OwnedValue::U64(n) => numeric_values.push(*n as f64),
                 tantivy::schema::OwnedValue::I64(n) => numeric_values.push(*n as f64),
                 tantivy::schema::OwnedValue::F64(n) => numeric_values.push(*n),
@@ -1405,7 +1409,7 @@ fn collect_docs_per_bucket_terms(
     for &doc_addr in doc_addrs {
         let doc: TantivyDocument = searcher.doc(doc_addr)?;
         if let Some(value) = doc.get_first(field) {
-            let key = match value {
+            let key = match &OwnedValue::from(value) {
                 tantivy::schema::OwnedValue::Str(s) => s.to_string(),
                 tantivy::schema::OwnedValue::U64(n) => n.to_string(),
                 tantivy::schema::OwnedValue::I64(n) => n.to_string(),
@@ -1606,7 +1610,7 @@ fn execute_single_agg(
                 for &doc_addr in doc_addrs {
                     let doc: TantivyDocument = searcher.doc(doc_addr)?;
                     if let Some(value) = doc.get_first(f) {
-                        let v = match value {
+                        let v = match &OwnedValue::from(value) {
                             tantivy::schema::OwnedValue::U64(n) => Some(*n as f64),
                             tantivy::schema::OwnedValue::I64(n) => Some(*n as f64),
                             tantivy::schema::OwnedValue::F64(n) => Some(*n),
@@ -1679,8 +1683,8 @@ fn execute_single_agg(
                     std::collections::BTreeMap::new();
                 for &doc_addr in doc_addrs {
                     let doc: TantivyDocument = searcher.doc(doc_addr)?;
-                    if let Some(value) = doc.get_first(f) {
-                        if let Some(key) = date_value_to_bucket_key(value, &interval) {
+                        if let Some(value) = doc.get_first(f) {
+                        if let Some(key) = date_value_to_bucket_key(&value.into(), &interval) {
                             bucket_docs.entry(key).or_default().push(doc_addr);
                         }
                     }
@@ -1725,7 +1729,7 @@ fn execute_single_agg(
                 for &doc_addr in doc_addrs {
                     let doc: TantivyDocument = searcher.doc(doc_addr)?;
                     if let Some(value) = doc.get_first(f) {
-                        let v = match value {
+                        let v = match &OwnedValue::from(value) {
                             tantivy::schema::OwnedValue::U64(n) => Some(*n as f64),
                             tantivy::schema::OwnedValue::I64(n) => Some(*n as f64),
                             tantivy::schema::OwnedValue::F64(n) => Some(*n),
@@ -1943,7 +1947,7 @@ fn compute_date_histogram_buckets(
     for &doc_addr in doc_addrs {
         let doc: TantivyDocument = searcher.doc(doc_addr)?;
         if let Some(value) = doc.get_first(field) {
-            if let Some(key) = date_value_to_bucket_key(value, interval) {
+            if let Some(key) = date_value_to_bucket_key(&value.into(), interval) {
                 *counts.entry(key).or_insert(0) += 1;
             }
         }
@@ -2057,7 +2061,7 @@ fn resolve_filter_docs(
             }
         };
 
-    let results = searcher.search(&parsed, &TopDocs::with_limit(10000))?;
+    let results = searcher.search(&parsed, &TopDocs::with_limit(10000).order_by_score())?;
     let addrs: Vec<tantivy::DocAddress> = results.into_iter().map(|(_s, addr)| addr).collect();
 
     if let Some(parent) = parent_addrs {
@@ -2350,7 +2354,7 @@ impl TextBackend {
             let id_field = coll.field_map.get("id").unwrap();
             let term = Term::from_field_text(*id_field, id);
             let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
-            let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+            let top_docs = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
 
             if let Some((_score, doc_addr)) = top_docs.first() {
                 let doc: TantivyDocument = searcher.doc(*doc_addr)?;
@@ -2476,7 +2480,7 @@ impl TextBackend {
         let fetch_limit = if exclude_id.is_some() { size + 1 } else { size };
         let (top_docs, total_hits) = searcher.search(
             &parsed_query,
-            &(TopDocs::with_limit(fetch_limit), tantivy::collector::Count),
+            &(TopDocs::with_limit(fetch_limit).order_by_score(), tantivy::collector::Count),
         )?;
 
         let id_field = coll.field_map.get("id").unwrap();
@@ -2643,7 +2647,7 @@ impl TextBackend {
         // Find document by ID
         let term = Term::from_field_text(*id_field, id);
         let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
 
         let (_, doc_addr) = match top_docs.first() {
             Some(d) => d,
@@ -2751,23 +2755,23 @@ impl TextBackend {
         let mut field_map: HashMap<String, (u64, u64, u64, u64)> = HashMap::new();
 
         for seg in space.segments() {
-            for (field, usage) in seg.termdict().fields() {
-                let name = coll.schema.get_field_name(*field).to_string();
+            for usage in seg.termdict().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
                 entry.0 += usage.total().get_bytes();
             }
-            for (field, usage) in seg.postings().fields() {
-                let name = coll.schema.get_field_name(*field).to_string();
+            for usage in seg.postings().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
                 entry.1 += usage.total().get_bytes();
             }
-            for (field, usage) in seg.positions().fields() {
-                let name = coll.schema.get_field_name(*field).to_string();
+            for usage in seg.positions().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
                 entry.2 += usage.total().get_bytes();
             }
-            for (field, usage) in seg.fast_fields().fields() {
-                let name = coll.schema.get_field_name(*field).to_string();
+            for usage in seg.fast_fields().fields() {
+                let name = usage.field_name().to_string();
                 let entry = field_map.entry(name).or_insert((0, 0, 0, 0));
                 entry.3 += usage.total().get_bytes();
             }
