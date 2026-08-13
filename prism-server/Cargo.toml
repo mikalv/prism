@@ -13,7 +13,7 @@ name = "prism-server"
 path = "src/main.rs"
 
 [features]
-default = ["ui"]
+default = ["ui", "es-compat"]
 provider-onnx = ["prism/provider-onnx"]
 provider-onnx-real = ["prism/provider-onnx-real"]
 all-providers = ["prism/all-providers"]

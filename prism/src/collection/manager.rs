@@ -20,6 +20,10 @@ pub struct CollectionManager {
     vector_backend: Arc<VectorBackend>,
     graph_storage: Option<Arc<dyn SegmentStorage>>,
     schemas_dir: PathBuf,
+    /// ES-style index aliases: alias name -> concrete collection names.
+    /// Populated via the es-compat `POST /_aliases` endpoint and resolved
+    /// transparently by `expand_collection_patterns`.
+    aliases: RwLock<HashMap<String, Vec<String>>>,
 }
 
 impl CollectionManager {
@@ -75,6 +79,7 @@ impl CollectionManager {
             vector_backend: vector_backend.clone(),
             graph_storage,
             schemas_dir: schemas_dir_path,
+            aliases: RwLock::new(HashMap::new()),
         })
     }
 
@@ -366,6 +371,8 @@ impl CollectionManager {
     }
 
     pub async fn index(&self, collection: &str, docs: Vec<Document>) -> Result<()> {
+        let resolved = self.resolve_collection_name(collection);
+        let collection = resolved.as_str();
         let (has_backend, has_text) = {
             let schemas = self.schemas.read();
             let schema = schemas
@@ -529,6 +536,8 @@ impl CollectionManager {
     }
 
     pub async fn get(&self, collection: &str, id: &str) -> Result<Option<Document>> {
+        let resolved = self.resolve_collection_name(collection);
+        let collection = resolved.as_str();
         let (backend, has_text) = {
             let schemas = self.schemas.read();
             let schema = schemas
@@ -552,6 +561,8 @@ impl CollectionManager {
     }
 
     pub async fn delete(&self, collection: &str, ids: Vec<String>) -> Result<()> {
+        let resolved = self.resolve_collection_name(collection);
+        let collection = resolved.as_str();
         let (backend, has_text) = {
             let schemas = self.schemas.read();
             let schema = schemas
@@ -576,6 +587,8 @@ impl CollectionManager {
     }
 
     pub async fn stats(&self, collection: &str) -> Result<BackendStats> {
+        let resolved = self.resolve_collection_name(collection);
+        let collection = resolved.as_str();
         let (backend, has_text) = {
             let schemas = self.schemas.read();
             let schema = schemas
@@ -605,7 +618,8 @@ impl CollectionManager {
     }
 
     pub fn get_schema(&self, collection: &str) -> Option<CollectionSchema> {
-        self.schemas.read().get(collection).cloned()
+        let resolved = self.resolve_collection_name(collection);
+        self.schemas.read().get(resolved.as_str()).cloned()
     }
 
     /// Run schema linting at runtime and return map collection -> issues
@@ -1186,6 +1200,7 @@ impl CollectionManager {
     /// Supports wildcards like "logs-2026-*" or "products-*".
     pub fn expand_collection_patterns(&self, patterns: &[String]) -> Vec<String> {
         let schemas = self.schemas.read();
+        let aliases = self.aliases.read();
         let mut result = Vec::new();
         let all_collections: Vec<&String> = schemas.keys().collect();
 
@@ -1200,9 +1215,80 @@ impl CollectionManager {
             } else if schemas.contains_key(pattern) && !result.contains(pattern) {
                 result.push(pattern.clone());
             }
+            // Resolve ES-style aliases even when the alias name is also a
+            // literal (no-op when absent).
+            if let Some(targets) = aliases.get(pattern) {
+                for target in targets {
+                    if schemas.contains_key(target) && !result.contains(target) {
+                        result.push(target.clone());
+                    }
+                }
+            }
         }
 
         result
+    }
+
+    // ========================================================================
+    // Index Aliases (ES `_aliases` compatibility)
+    // ========================================================================
+
+    /// Resolve a (possibly aliased) index name to a concrete collection name.
+    ///
+    /// ES semantics: if `name` is itself a registered collection, return it
+    /// unchanged. Otherwise, if `name` is an alias, return its first
+    /// (primary/writable) target. Falls back to `name` unchanged so the
+    /// caller produces its usual `CollectionNotFound` when neither matches.
+    ///
+    /// This lets single-target document operations (`index`/`get`/`delete`/
+    /// `get_schema`/`stats`) transparently follow aliases like
+    /// `.kibana_task_manager` -> `.kibana_task_manager_9.5.0_001`. Multi-index
+    /// search/discovery still uses `expand_collection_patterns`.
+    fn resolve_collection_name(&self, name: &str) -> String {
+        {
+            let schemas = self.schemas.read();
+            if schemas.contains_key(name) {
+                return name.to_string();
+            }
+        }
+        let aliases = self.aliases.read();
+        if let Some(targets) = aliases.get(name) {
+            if let Some(first) = targets.first() {
+                return first.clone();
+            }
+        }
+        name.to_string()
+    }
+
+    /// Add one or more concrete collections to an alias.
+    pub fn add_alias(&self, alias: &str, indices: &[String]) {
+        let mut aliases = self.aliases.write();
+        let entry = aliases.entry(alias.to_string()).or_default();
+        for idx in indices {
+            if !entry.contains(idx) {
+                entry.push(idx.clone());
+            }
+        }
+    }
+
+    /// Remove one or more concrete collections from an alias.
+    pub fn remove_alias(&self, alias: &str, indices: &[String]) {
+        let mut aliases = self.aliases.write();
+        if let Some(entry) = aliases.get_mut(alias) {
+            entry.retain(|i| !indices.contains(i));
+            if entry.is_empty() {
+                aliases.remove(alias);
+            }
+        }
+    }
+
+    /// Snapshot of all aliases (alias name -> concrete collection names).
+    pub fn list_aliases(&self) -> Vec<(String, Vec<String>)> {
+        self.aliases
+            .read()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 
     /// Simple glob pattern matching supporting only '*' wildcard.

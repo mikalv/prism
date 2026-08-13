@@ -1,0 +1,1137 @@
+collection: .kibana_alerting_cases_9.5.0_001
+description: Auto-created from Elasticsearch create-index request
+backends:
+  text:
+    fields:
+    - name: accessControl.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.actionTypeId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action_task_params.apiKeyId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.apiKeyId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.end
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.initiator
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.initiatorId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.rule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ad_hoc_run_params.start
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.actions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.alertTypeId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.artifacts
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.consumer
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.createdBy
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.executionStatus
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.lastRun
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.legacyId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.mapped_params
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.monitoring
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.muteAll
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.mutedInstanceIds
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.notifyWhen
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.params
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.revision
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.running
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.schedule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.scheduledTaskId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.snoozeSchedule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.snoozedInstances
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.throttle
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.uiamApiKey
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.updatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alert.updatedBy
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_action_policy.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_action_policy.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_action_policy.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_action_policy.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_api_key_pending_invalidation.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule.kind
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule.metadata
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule.schedule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule_template.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule_template.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule_template.ruleTypeId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: alerting_rule_template.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: api_key_pending_invalidation.apiKeyId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: api_key_pending_invalidation.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: api_key_pending_invalidation.uiamApiKey
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.assignees
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.category
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.closed_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.closed_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.connector
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.created_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.customFields
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.duration
+      type: u64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.extended_fields
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.external_service
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.incremental_id
+      type: u64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.observables
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.settings
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.severity
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.status
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.template
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.title
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.total_alerts
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.total_comments
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.total_events
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.total_observables
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases.updated_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.attachmentId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.created_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.data
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.pushed_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-attachments.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.actions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.alertId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.comment
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.created_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.eventId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.externalReferenceAttachmentTypeId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.persistableStateAttachmentTypeId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.pushed_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-comments.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-configure.closure_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-configure.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-configure.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-connector-mappings.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-field-definition.definition
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-field-definition.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-field-definition.fieldDefinitionId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-field-definition.isGlobal
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-field-definition.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-field-definition.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-incrementing-id.@timestamp
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-incrementing-id.last_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-incrementing-id.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-rules.counter
+      type: u64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-rules.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-rules.rules
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-rules.updatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.author
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.definition
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.deletedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.fieldCount
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.fieldDefinitions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.fieldNames
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.isDefault
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.isEnabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.isLatest
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.lastUsedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.legacyKey
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.templateId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.templateVersion
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-templates.usageCount
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-user-actions.action
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-user-actions.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-user-actions.created_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-user-actions.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-user-actions.payload
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cases-user-actions.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: connector_token.connectorId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: connector_token.tokenType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: coreMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: gap_auto_fill_scheduler.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: gap_auto_fill_scheduler.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: gap_auto_fill_scheduler.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: gap_auto_fill_scheduler.ruleTypeConsumerPairs
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: gap_auto_fill_scheduler.updatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: maintenance-window.createdBy
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: maintenance-window.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: maintenance-window.events
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: maintenance-window.expirationDate
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: maintenance-window.title
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: maintenance-window.updatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespaces
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: oauth_state.connectorId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: oauth_state.expiresAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: oauth_state.state
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: originId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: rules-settings.flapping
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: scheduled_report.createdBy
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: scheduled_report.title
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: typeMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: uiam_api_keys_provisioning_status.@timestamp
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: uiam_api_keys_provisioning_status.entityId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: uiam_api_keys_provisioning_status.entityType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: uiam_api_keys_provisioning_status.errorCode
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: uiam_api_keys_provisioning_status.message
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: uiam_api_keys_provisioning_status.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: user_connector_token.connectorId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: user_connector_token.credentialType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: user_connector_token.profileUid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    bm25_k1: null
+    bm25_b: null
+indexing:
+  batch_size: 0
+  commit_interval_secs: 0
+  worker_threads: 0
+quota:
+  max_documents: null
+  max_size_mb: null
+embedding_generation: null
+facets: null
+boosting: null
+storage:
+  type: local
+  path: null
+system_fields:
+  indexed_at: true
+  document_boost: false
+hybrid: null
+replication: null
+reranking: null
+ilm_policy: null

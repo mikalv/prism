@@ -1,0 +1,1263 @@
+collection: .kibana_9.5.0_001
+description: Auto-created from Elasticsearch create-index request
+backends:
+  text:
+    fields:
+    - name: accessControl.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-custom-dashboards.dashboardSavedObjectId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-custom-dashboards.kuery
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-custom-dashboards.serviceEnvironmentFilterEnabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-custom-dashboards.serviceNameFilterEnabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-server-schema.schemaJson
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-service-group.color
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-service-group.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-service-group.groupName
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: apm-service-group.kuery
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: application_usage_daily.timestamp
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cloud-connect-api-key.apiKey
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cloud-connect-api-key.clusterId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: cloud-connect-api-key.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: cloud-connect-api-key.updatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: config.buildNum
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: config-global.buildNum
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: coreMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.data_stream_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.integration_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.job_info
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.metadata
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.result
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: data_stream-config.title
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.filter
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.identityFields
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.indexPatterns
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.metadata
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.metrics
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.staticFields
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-definition.version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-discovery-api-key.apiKey
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-descriptor-v2.error
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-descriptor-v2.logExtractionState
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-descriptor-v2.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-descriptor-v2.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-descriptor-v2.versionState
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: event_loop_delays_daily.lastUpdatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: favorites.favoriteIds
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: favorites.favoriteMetadata
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: favorites.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: favorites.userId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.FileKind
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.Meta
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.Status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.Updated
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.created
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.extension
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.hash
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.mime_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.size
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: file.user
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: file-upload-usage-collection-telemetry.file_upload
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fileShare.created
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fileShare.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fileShare.token
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fileShare.valid_until
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: infra-custom-dashboards.assetType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: infra-custom-dashboards.dashboardFilterAssetIdEnabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: infra-custom-dashboards.dashboardSavedObjectId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: infrastructure-monitoring-log-view.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.connector_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.created_by_profile_uid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.data_stream_count
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.integration_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.metadata
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: integration-config.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: intercept_trigger_record.firstRegisteredAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: intercept_trigger_record.installedOn
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: intercept_trigger_record.recurrent
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: intercept_trigger_record.triggerAfter
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: legacy-url-alias.disabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: legacy-url-alias.resolveCounter
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: legacy-url-alias.sourceId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: legacy-url-alias.targetId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: legacy-url-alias.targetNamespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: legacy-url-alias.targetType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-job.datafeed_id
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-job.job_id
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-job.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.datafeeds
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.defaultIndexPattern
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.id
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.jobs
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.logo
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.query
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.tags
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.title
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-module.type
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-trained-model.job
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ml-trained-model.model_id
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: monitoring-telemetry.reportedClusterUuids
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespaces
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: observability-onboarding-state.createdBy
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: observability-onboarding-state.progress
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: observability-onboarding-state.state
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: observability-onboarding-state.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: originId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.index_name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.inference_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.installation_status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.last_installation_date
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.product_name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.product_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: product-doc-install-status.resource_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: sample-data-telemetry.installCount
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: sample-data-telemetry.unInstallCount
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-ai-prompt.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-ai-prompt.model
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-ai-prompt.prompt
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-ai-prompt.promptGroupId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-ai-prompt.promptId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-ai-prompt.provider
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.budgetingMethod
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.indicator
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo.version
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.budgetingMethod
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.compositeMethod
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.createdAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.members
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo-composite.updatedAt
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo_template.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: slo_template.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: space.disabledFeatures
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: space.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: space.solution
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.alert
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.config_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.custom_heartbeat_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.hash
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.hosts
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.journey_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.locations
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.maintenance_windows
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.origin
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.project_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.schedule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.throttling
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.type
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor.urls
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.alert
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.config_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.custom_heartbeat_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.hash
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.hosts
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.journey_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.locations
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.maintenance_windows
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.origin
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.project_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.schedule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.throttling
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.type
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: synthetics-monitor-multi-space.urls
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: tag.color
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: tag.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: tag.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: typeMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ui-metric.count
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: upgrade-assistant-ml-upgrade-operation.snapshotId
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: upgrade-assistant-reindex-operation.indexName
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: upgrade-assistant-reindex-operation.status
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: uptime-synthetics-api-key.apiKey
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: url.accessDate
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: url.createDate
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: url.slug
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: usage-counters.domainId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: user-storage.userId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: user-storage-global.userId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    bm25_k1: null
+    bm25_b: null
+indexing:
+  batch_size: 0
+  commit_interval_secs: 0
+  worker_threads: 0
+quota:
+  max_documents: null
+  max_size_mb: null
+embedding_generation: null
+facets: null
+boosting: null
+storage:
+  type: local
+  path: null
+system_fields:
+  indexed_at: true
+  document_boost: false
+hybrid: null
+replication: null
+reranking: null
+ilm_policy: null

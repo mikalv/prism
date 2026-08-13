@@ -1,0 +1,1587 @@
+collection: .kibana_ingest_9.5.0_001
+description: Auto-created from Elasticsearch create-index request
+backends:
+  text:
+    fields:
+    - name: accessControl.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: coreMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.additional_spaces_installed_kibana
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.dependencies
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.es_index_patterns
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.experimental_data_stream_features
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.install_format_schema_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.install_source
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.install_started_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.install_status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.install_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.installed_as_dependency
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.installed_es
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.installed_kibana
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.installed_kibana_space_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.installed_kibana_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.internal
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.is_dependency_of
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.keep_policies_up_to_date
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.latest_executed_state
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.latest_install_failed_attempts
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.package_assets
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.pending_upgrade_review
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.previous_dependency_versions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.previous_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.verification_key_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.verification_status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages.version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.asset_path
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.data_base64
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.data_utf8
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.install_source
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.media_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.package_name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: epm-packages-assets.package_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.advanced_settings
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.agent_features
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.agentless
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.data_output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.download_source_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.fleet_server_host_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.global_data_tags
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.has_agent_version_conditions
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.inactivity_timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.is_default
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.is_default_fleet_server
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.is_managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.is_preconfigured
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.is_protected
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.is_verifier
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.keep_monitoring_alive
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.min_agent_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.monitoring_enabled
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.monitoring_output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.overrides
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.package_agent_version_conditions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.required_versions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.revision
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.schema_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.supports_agentless
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.unenroll_timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-agent-policies.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.accountType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.cloudProvider
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.packagePolicyCount
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.vars
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.verification_failed_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.verification_started_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-connector.verification_status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-cloud-onboarding-deployment.connectorId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-fleet-server-host.host_urls
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-fleet-server-host.is_default
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-fleet-server-host.is_internal
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-fleet-server-host.is_preconfigured
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-fleet-server-host.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-fleet-server-host.proxy_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.bump_agent_policy_revision
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.cloud_connector_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.elasticsearch
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.inputs
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.is_managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.latest_revision
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.overrides
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.package
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.package_agent_version_condition
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.policy_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.policy_ids
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.revision
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.secret_references
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.supports_agentless
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.supports_cloud_connector
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-package-policies.vars
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-preconfiguration-deletion-record.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.certificate
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.certificate_authorities
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.certificate_key
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.is_preconfigured
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.proxy_headers
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-proxy.url
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-setup-lock.started_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-setup-lock.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-setup-lock.uuid
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-uninstall-tokens.namespaces
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-uninstall-tokens.policy_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: fleet-uninstall-tokens.token_plain
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.advanced_settings
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.agent_features
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.agentless
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.data_output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.download_source_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.fleet_server_host_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.global_data_tags
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.has_agent_version_conditions
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.inactivity_timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.is_default
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.is_default_fleet_server
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.is_managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.is_preconfigured
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.is_protected
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.is_verifier
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.keep_monitoring_alive
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.min_agent_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.monitoring_diagnostics
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.monitoring_enabled
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.monitoring_http
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.monitoring_output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.monitoring_pprof_enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.overrides
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.package_agent_version_conditions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.required_versions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.revision
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.schema_version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.supports_agentless
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.unenroll_timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-agent-policies.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-download-sources.host
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-download-sources.is_default
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-download-sources.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-download-sources.proxy_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-download-sources.source_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.allow_edit
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.auth_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.broker_ack_reliability
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.broker_buffer_size
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.broker_timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.ca_sha256
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.ca_trusted_fingerprint
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.channel_buffer_size
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.client_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.compression
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.compression_level
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.config
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.config_yaml
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.connection_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.hash
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.headers
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.hosts
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.is_default
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.is_default_monitoring
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.is_internal
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.is_preconfigured
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.key
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.otel_disable_beatsauth
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.otel_exporter_config_yaml
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.partition
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.password
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.preset
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.proxy_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.random
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.required_acks
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.round_robin
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.sasl
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.secrets
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.service_token
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.shipper
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.ssl
+      type: bytes
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.topic
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.topics
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.username
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-outputs.version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.bump_agent_policy_revision
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.cloud_connector_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.elasticsearch
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.inputs
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.is_managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.latest_revision
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.output_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.overrides
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.package
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.package_agent_version_condition
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.policy_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.policy_ids
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.revision
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.secret_references
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.supports_agentless
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.supports_cloud_connector
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest-package-policies.vars
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.action_secret_storage_requirements_met
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.delete_unenrolled_agents
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.download_source_auth_secret_storage_requirements_met
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.fleet_server_hosts
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.has_seen_add_data_notice
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.ilm_migration_status
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.integration_knowledge_enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.output_secret_storage_requirements_met
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.prerelease_integrations_enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.secret_storage_requirements_met
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.ssl_secret_storage_requirements_met
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.use_space_awareness_migration_started_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: ingest_manager_settings.use_space_awareness_migration_status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespaces
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: originId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: typeMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    bm25_k1: null
+    bm25_b: null
+indexing:
+  batch_size: 0
+  commit_interval_secs: 0
+  worker_threads: 0
+quota:
+  max_documents: null
+  max_size_mb: null
+embedding_generation: null
+facets: null
+boosting: null
+storage:
+  type: local
+  path: null
+system_fields:
+  indexed_at: true
+  document_boost: false
+hybrid: null
+replication: null
+reranking: null
+ilm_policy: null

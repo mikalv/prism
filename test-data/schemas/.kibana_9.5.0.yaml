@@ -1,0 +1,17 @@
+collection: .kibana_9.5.0
+description: "Kibana 9.5.0 saved objects"
+backends:
+  text:
+    fields:
+      - name: type
+        type: string
+        stored: true
+        indexed: true
+      - name: title
+        type: string
+        stored: true
+        indexed: true
+      - name: body
+        type: string
+        stored: true
+        indexed: true

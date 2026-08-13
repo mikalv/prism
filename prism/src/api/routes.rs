@@ -2069,8 +2069,19 @@ pub async fn create_ilm_policy(
     Path(name): Path<String>,
     State(state): State<IlmAppState>,
     Json(request): Json<CreatePolicyRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let ilm = state.ilm_manager.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // When ILM is disabled (ilm_manager == None), still acknowledge the PUT
+    // like ES would. Kibana plugins (alerting, reporting, entityManager)
+    // install ILM policies at startup via Ilm.putLifecycle and treat a
+    // non-2xx as a hard failure ('Error installing ILM policy ...'). Returning
+    // 404 here (the old behavior) breaks alerting/reporting init for no real
+    // reason — prism simply has no ILM engine to store it. (GET/list
+    // legitimately 404 when disabled: that's correct ES 'does not exist'
+    // semantics, which Kibana catches and uses to decide to create.)
+    let Some(ilm) = state.ilm_manager.as_ref() else {
+        tracing::debug!("ILM disabled: acknowledging PUT policy '{name}' as no-op");
+        return Ok(Json(serde_json::json!({ "acknowledged": true })));
+    };
 
     let config = crate::ilm::IlmPolicyConfig {
         description: request.description.unwrap_or_default(),
@@ -2086,7 +2097,7 @@ pub async fn create_ilm_policy(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(StatusCode::CREATED)
+    Ok(Json(serde_json::json!({ "acknowledged": true })))
 }
 
 /// DELETE /_ilm/policy/:name - Delete a policy

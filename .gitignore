@@ -1,4 +1,19 @@
 CLAUDE.md
+
+# Agent / runtime state (never commit)
+.pi/
+prism-data/
+
+# Logs (can be huge — test-data/prism.log is ~23GB)
+*.log
+prism.log
+
+# Stray local config inside test-data (root prism.toml IS committed as baseline)
+test-data/prism.toml
+
+# Build artifacts
+*.tsbuildinfo
+
 /target
 *.swp
 *.swo

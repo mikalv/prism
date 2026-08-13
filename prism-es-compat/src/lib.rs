@@ -30,6 +30,7 @@
 //! - `stats` / `avg` / `sum` / `min` / `max`
 
 pub mod error;
+pub mod persist;
 pub mod query;
 pub mod response;
 pub mod router;

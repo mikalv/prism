@@ -28,6 +28,19 @@ use crate::mcp::session::{SessionManager, SseEvent};
 use crate::mcp::tools::register_basic_tools;
 use crate::mcp::ToolRegistry;
 
+/// Stamp `X-Elastic-Product: Elasticsearch` on every response so official
+/// Elasticsearch clients (>=7.14) accept the server as genuine. Their
+/// ProductCheck middleware rejects any 2xx response lacking this header.
+async fn stamp_es_product_header(
+    mut response: axum::response::Response,
+) -> axum::response::Response {
+    response.headers_mut().insert(
+        axum::http::HeaderName::from_static("x-elastic-product"),
+        axum::http::HeaderValue::from_static("Elasticsearch"),
+    );
+    response
+}
+
 async fn metrics_middleware(
     req: axum::extract::Request,
     next: axum::middleware::Next,
@@ -300,6 +313,17 @@ impl ApiServer {
         let base = self.build_routes().await;
         let merged = base.merge(extension);
         let router = self.apply_middleware(merged).await;
+        // Stamp `X-Elastic-Product: Elasticsearch` on EVERY response.
+        // Official ES clients (>=7.14) run a ProductCheck that rejects any 2xx
+        // response lacking this header with `ProductNotSupportedError`. Because
+        // extension routes (ES-compat) are merged with the native API on the
+        // same port, some ES-format paths (e.g. `/_ilm/policy/{name}`) are
+        // served by native handlers that don't set the header; a port-wide
+        // layer is the only way to guarantee it on all of them. The header is
+        // harmless for native/UI/cluster clients.
+        let router = router.layer(axum::middleware::map_response(
+            stamp_es_product_header,
+        ));
         self.serve_router(router, addr, tls_config).await
     }
 
@@ -642,7 +666,8 @@ impl ApiServer {
             )
             .route("/admin/lint-schemas", get(crate::api::routes::lint_schemas))
             .route("/admin/debug", get(crate::api::routes::debug_info))
-            .route("/", get(crate::api::routes::root))
+            // Root endpoint (superseded by ES-compat `/`)
+            // .route("/", get(crate::api::routes::root))
             .route("/health", get(crate::api::routes::health))
             // Stats API (Issue #22)
             .route("/stats/cache", get(crate::api::routes::get_cache_stats))
@@ -680,12 +705,13 @@ impl ApiServer {
                 "/collections/:collection/_mlt",
                 post(crate::api::routes::more_like_this),
             )
-            // Multi-Collection Search API (Issue #74)
-            .route("/_msearch", post(crate::api::routes::multi_search))
-            .route(
-                "/:collections/_search",
-                post(crate::api::routes::multi_index_search),
-            )
+            // Multi-Collection Search API (superseded by ES-compat `/_msearch`)
+            // .route("/_msearch", post(crate::api::routes::multi_search))
+            // Multi-Collection Search API (superseded by ES-compat `/:index/_search`)
+            // .route(
+            //     "/:collections/_search",
+            //     post(crate::api::routes::multi_index_search),
+            // )
             // Lucene-style query DSL
             .route(
                 "/search/lucene",

@@ -40,6 +40,19 @@ pub struct EsSearchRequest {
     /// Track total hits exactly
     #[serde(default)]
     pub track_total_hits: Option<TrackTotalHits>,
+
+    /// Point-In-Time reference (stateless pseudo-PIT in Prism: the id encodes
+    /// the collection name; searches ignore the frozen-view semantics).
+    #[serde(default)]
+    pub pit: Option<EsPitRef>,
+}
+
+/// Reference to a Point-In-Time inside a search request body.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EsPitRef {
+    pub id: String,
+    #[serde(default)]
+    pub keep_alive: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -64,14 +77,11 @@ pub enum SourceFilter {
 #[serde(untagged)]
 pub enum SortClause {
     Field(String),
-    Object(HashMap<String, SortOrder>),
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum SortOrder {
-    Simple(String),
-    Object { order: String },
+    /// Any object shape, e.g. `{"field":"desc"}`, `{"field":{"order":"desc"}}`,
+    /// or `{"field":{"order":"desc","unmapped_type":"keyword","missing":"_last"}}`.
+    /// Kept as raw JSON so deserialization never rejects Kibana's sort clauses;
+    /// `translate_sort` extracts the field + order leniently.
+    Object(HashMap<String, Value>),
 }
 
 /// ES Query types
@@ -430,10 +440,31 @@ pub struct RangeAgg {
 pub struct RangeBucket {
     #[serde(default)]
     pub key: Option<String>,
+    /// Lenient: accepts a JSON number or a date-math string (e.g. "now").
+    /// Date math isn't evaluated here; non-numeric bounds yield `None`.
     #[serde(default)]
-    pub from: Option<f64>,
+    pub from: Option<RangeBound>,
     #[serde(default)]
-    pub to: Option<f64>,
+    pub to: Option<RangeBound>,
+}
+
+/// Lenient numeric bound for range aggregations: accepts either a JSON
+/// number or a string. Strings that aren't parseable as f64 (e.g. "now")
+/// are accepted at deserialization time but yield `None` from `as_f64`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum RangeBound {
+    Num(f64),
+    Str(String),
+}
+
+impl RangeBound {
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            RangeBound::Num(n) => Some(*n),
+            RangeBound::Str(s) => s.parse::<f64>().ok(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

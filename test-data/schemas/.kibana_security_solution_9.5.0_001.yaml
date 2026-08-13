@@ -1,0 +1,1287 @@
+collection: .kibana_security_solution_9.5.0_001
+description: Auto-created from Elasticsearch create-index request
+backends:
+  text:
+    fields:
+    - name: accessControl.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: coreMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: csp-rule-template.metadata
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: endpoint:unified-user-artifact-manifest.artifactIds
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: endpoint:unified-user-artifact-manifest.policyId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: endpoint:unified-user-artifact-manifest.semanticVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: endpoint:user-artifact-manifest.artifacts
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: endpoint:user-artifact-manifest.schemaVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.error
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.filter
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.integrationName
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.integrations
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.managedVersion
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.matchers
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.matchersModifiedByUser
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-analytics-monitoring-entity-source.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-status.fieldHistoryLength
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-status.filter
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-status.indexPattern
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-status.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-status.timestampField
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: entity-engine-status.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list._tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.comments
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.created_at
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.description
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.entries
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.expire_time
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.immutable
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.item_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.list_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.list_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.meta
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.os_types
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.tie_breaker_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list.version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic._tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.comments
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.created_at
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.description
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.entries
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.expire_time
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.immutable
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.item_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.list_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.list_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.meta
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.os_types
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.tie_breaker_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: exception-list-agnostic.version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespace
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: namespaces
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: originId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-manager-usage-metric.count
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-manager-usage-metric.errors
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.created_by_profile_uid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.interval
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.queries
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.rrule_schedule
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.schedule_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.shards
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.updated_by_profile_uid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack.version
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack-asset.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack-asset.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack-asset.queries
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack-asset.shards
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-pack-asset.version
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.created_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.created_by_profile_uid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.ecs_mapping
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.interval
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.platform
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.query
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.timeout
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.updated_by
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.updated_by_profile_uid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: osquery-saved-query.version
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: policy-settings-protection-updates-note.note
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: privilege-monitoring-status.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: references.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.alertSampleSizePerShard
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.dataViewId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.enableResetToZero
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.excludeAlertStatuses
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.filter
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.filters
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.identifierType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.interval
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.pageSize
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: risk-engine-configuration.range
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.deprecated
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.index
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.related_integrations
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.risk_score
+      type: f64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.rule_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.severity
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.threat
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-rule.version
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-solution-signals-migration.sourceIndex
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-solution-signals-migration.updated
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security-solution-signals-migration.version
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.created_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.created_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.description
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.example
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.file_hash_sha256
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.file_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.file_name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.file_size
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.file_type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.instructions
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.path_to_executable
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.platform
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.requires_input
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.tags
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:endpoint-scripts-library.updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:reference-data.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:reference-data.owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: security:reference-data.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-detection-engine-rule-actions.actions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-detection-engine-rule-actions.alertThrottle
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-detection-engine-rule-actions.ruleAlertId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-detection-engine-rule-actions.ruleThrottle
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.columns
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.created
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.createdBy
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.dataProviders
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.dateRange
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.eqlOptions
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.eventType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.excludedRowRendererIds
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.favorite
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.filters
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.indexNames
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.kqlMode
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.kqlQuery
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.savedSearchId
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.sort
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.status
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.templateTimelineId
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.templateTimelineVersion
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.timelineType
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.title
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.updated
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline.updatedBy
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-note.created
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-note.createdBy
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-note.eventId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-note.note
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-note.updated
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-note.updatedBy
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-pinned-event.created
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-pinned-event.createdBy
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-pinned-event.eventId
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-pinned-event.updated
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: siem-ui-timeline-pinned-event.updatedBy
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: trial-companion-nba-milestone.dismiss
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: trial-companion-nba-milestone.openTODOs
+      type: i64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: typeMigrationVersion
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_at
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: updated_by
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-config.description
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-config.managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-config.name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-config.riskModifier
+      type: f64
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-entity-source.enabled
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-entity-source.managed
+      type: bool
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-entity-source.name
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-entity-source.range
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: watchlist-entity-source.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    bm25_k1: null
+    bm25_b: null
+indexing:
+  batch_size: 0
+  commit_interval_secs: 0
+  worker_threads: 0
+quota:
+  max_documents: null
+  max_size_mb: null
+embedding_generation: null
+facets: null
+boosting: null
+storage:
+  type: local
+  path: null
+system_fields:
+  indexed_at: true
+  document_boost: false
+hybrid: null
+replication: null
+reranking: null
+ilm_policy: null

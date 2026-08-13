@@ -1,0 +1,129 @@
+collection: .cases-activity
+description: Auto-created from Elasticsearch create-index request
+backends:
+  text:
+    fields:
+    - name: '@timestamp'
+      type: date
+      stored: true
+      indexed: false
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.assignees_changed
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.attachment_reference_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.connector_id_new
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.payload_json
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.severity_new
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.status_new
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.tags_changed
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.type
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: action.verb
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: actor.email
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: actor.full_name
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: actor.profile_uid
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: actor.username
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: case.id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: owner
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    - name: space_id
+      type: string
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    bm25_k1: null
+    bm25_b: null
+indexing:
+  batch_size: 0
+  commit_interval_secs: 0
+  worker_threads: 0
+quota:
+  max_documents: null
+  max_size_mb: null
+embedding_generation: null
+facets: null
+boosting: null
+storage:
+  type: local
+  path: null
+system_fields:
+  indexed_at: true
+  document_boost: false
+hybrid: null
+replication: null
+reranking: null
+ilm_policy: null

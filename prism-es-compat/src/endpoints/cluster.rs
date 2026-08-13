@@ -3,7 +3,7 @@
 use crate::endpoints::search::EsCompatState;
 use crate::error::EsCompatError;
 use crate::response::{EsCatIndex, EsClusterHealth, EsRootInfo};
-use axum::extract::State;
+use axum::extract::{Path, Query, State};
 use axum::Json;
 
 /// GET /_elastic/ - Root info (ES version info)
@@ -21,6 +21,44 @@ pub async fn cluster_health_handler(
     let health = EsClusterHealth {
         active_primary_shards: collections.len() as u32,
         active_shards: collections.len() as u32,
+        ..Default::default()
+    };
+
+    Ok(Json(health))
+}
+
+/// GET /_cluster/health/{index} - Health for a specific index (or comma-separated list).
+/// Honors `wait_for_status` (always green for single-node Prism) and `timeout`.
+pub async fn cluster_health_index_handler(
+    State(state): State<EsCompatState>,
+    Path(index): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<EsClusterHealth>, EsCompatError> {
+    // wait_for_status is always satisfiable immediately (we report green).
+    // Parse it just to acknowledge; we ignore the actual timeout since we never block.
+    let _wait_for_status = params.get("wait_for_status").cloned().unwrap_or_default();
+    let _timeout = params.get("timeout").cloned().unwrap_or_default();
+
+    let collections = state.manager.list_collections();
+    let indices: Vec<&str> = index.split(',').collect();
+
+    // Count how many of the requested indices exist.
+    let existing: Vec<&str> = indices
+        .iter()
+        .filter(|i| collections.contains(&i.to_string()))
+        .copied()
+        .collect();
+
+    // If none of the requested indices exist, ES returns 404.
+    if existing.is_empty() && !indices.is_empty() {
+        return Err(EsCompatError::IndexNotFound(index.clone()));
+    }
+
+    // For a single-node Prism, each existing index contributes 1 primary shard.
+    let shards = existing.len() as u32;
+    let health = EsClusterHealth {
+        active_primary_shards: shards,
+        active_shards: shards,
         ..Default::default()
     };
 
@@ -173,7 +211,7 @@ mod tests {
     async fn test_root_handler_returns_info() {
         let Json(info) = root_handler().await;
         assert_eq!(info.name, "prism");
-        assert_eq!(info.version.number, "7.17.0");
+        assert_eq!(info.version.number, "9.5.0");
         assert!(info.tagline.contains("Prism"));
     }
 }

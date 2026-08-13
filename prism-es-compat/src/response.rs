@@ -454,7 +454,7 @@ impl Default for EsRootInfo {
             cluster_name: "prism".to_string(),
             cluster_uuid: "prism-es-compat".to_string(),
             version: EsVersion {
-                number: "7.17.0".to_string(), // Compatibility target
+                number: "9.5.0".to_string(), // Compatibility target
                 build_flavor: "default".to_string(),
                 build_type: "prism".to_string(),
                 build_hash: "unknown".to_string(),
@@ -785,7 +785,7 @@ mod tests {
         let info = EsRootInfo::default();
         assert_eq!(info.name, "prism");
         assert_eq!(info.cluster_name, "prism");
-        assert_eq!(info.version.number, "7.17.0");
+        assert_eq!(info.version.number, "9.5.0");
         assert_eq!(info.version.build_type, "prism");
         assert!(!info.version.build_snapshot);
         assert!(info.tagline.contains("Prism"));

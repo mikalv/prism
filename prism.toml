@@ -1,0 +1,77 @@
+[server]
+bind_addr = "127.0.0.1:8080"
+max_body_size = 104857600
+
+[server.cors]
+enabled = true
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+
+[server.tls]
+enabled = false
+bind_addr = "127.0.0.1:3443"
+cert_path = "./conf/tls/cert.pem"
+key_path = "./conf/tls/key.pem"
+
+[storage]
+data_dir = "/home/mikalv/.prismsearch"
+max_local_gb = 5.0
+
+[embedding]
+enabled = true
+batch_size = 128
+concurrency = 4
+
+[embedding.provider]
+type = "ollama"
+url = "http://localhost:11434"
+model = "nomic-embed-text"
+
+[logging]
+level = "info"
+
+[security]
+enabled = false
+api_keys = []
+isolation = false
+
+[security.roles]
+
+[security.audit]
+enabled = false
+index_to_collection = true
+
+[observability]
+log_format = "pretty"
+log_level = "warn"
+metrics_enabled = true
+query_log = true
+
+[cluster]
+enabled = false
+node_id = "node-c4c12b00"
+bind_addr = "0.0.0.0:9080"
+seed_nodes = []
+connect_timeout_ms = 5000
+request_timeout_ms = 30000
+
+[cluster.tls]
+enabled = true
+cert_path = "./conf/tls/cluster-cert.pem"
+key_path = "./conf/tls/cluster-key.pem"
+skip_verify = false
+
+[ilm]
+enabled = false
+check_interval_secs = 0
+
+[ilm.policies]
+
+[optimize]
+enabled = false
+interval_secs = 600
+max_segments = 3

@@ -12,6 +12,7 @@ pub mod mcp;
 pub mod migration;
 pub mod pipeline;
 pub mod query;
+pub mod query_log;
 pub mod ranking;
 pub mod schema;
 pub mod security;

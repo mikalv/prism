@@ -14,7 +14,7 @@ const MAX_SEARCH_LIMIT: usize = 10_000;
 pub struct QueryTranslator;
 
 /// Maximum length for passthrough query strings to prevent DoS
-const MAX_QUERY_STRING_LENGTH: usize = 10_000;
+const MAX_QUERY_STRING_LENGTH: usize = 1_048_576; // 1 MiB; generous for real-world ES clients (Kibana, Logstash) while still bounded
 
 impl QueryTranslator {
     /// Translate an ES search request to Prism Query + aggregations
@@ -129,11 +129,13 @@ impl QueryTranslator {
                 SortClause::Object(map) => map
                     .iter()
                     .next()
-                    .map(|(field, order)| {
-                        let order_str = match order {
-                            SortOrder::Simple(s) => s.as_str(),
-                            SortOrder::Object { order } => order.as_str(),
-                        };
+                    .map(|(field, val)| {
+                        // `val` may be a plain string ("desc") or an object
+                        // like {"order":"desc","unmapped_type":"keyword"}.
+                        let order_str = val
+                            .as_str()
+                            .or_else(|| val.get("order").and_then(|o| o.as_str()))
+                            .unwrap_or("asc");
                         SortField {
                             field: field.clone(),
                             ascending: !order_str.eq_ignore_ascii_case("desc"),
@@ -239,10 +241,13 @@ impl QueryTranslator {
 
             EsQuery::Bool(bool_query) => Self::translate_bool(bool_query),
 
-            EsQuery::Exists(exists) => Err(EsCompatError::UnsupportedQueryType(format!(
-                "exists query on field '{}' is not yet supported",
-                exists.field
-            ))),
+            EsQuery::Exists(exists) => {
+                // Top-level exists is extracted into a fast-field query by
+                // translate_query_top. For exists nested inside a bool clause we
+                // fall back to the Tantivy query-string form `field:*`, which
+                // matches documents that have any value for the field.
+                Ok(format!("{}:*", exists.field))
+            }
 
             EsQuery::QueryString(qs) => {
                 // Validate length to prevent DoS from crafted queries
@@ -553,8 +558,8 @@ impl QueryTranslator {
                         .iter()
                         .map(|r| RangeEntry {
                             key: r.key.clone(),
-                            from: r.from,
-                            to: r.to,
+                            from: r.from.as_ref().and_then(|b| b.as_f64()),
+                            to: r.to.as_ref().and_then(|b| b.as_f64()),
                         })
                         .collect(),
                 },
@@ -593,15 +598,17 @@ impl QueryTranslator {
             }));
         }
 
-        // If only sub-aggregations, this might be a pure nesting container
-        // Return None and let caller handle
-        if sub_aggs.is_some() {
-            return Err(EsCompatError::UnsupportedAggregation(format!(
-                "Aggregation '{}' has no recognized type",
-                name
-            )));
-        }
-
+        // Unrecognized aggregation type (e.g. composite, cardinality, scripted-
+        // metric, pipeline aggs like bucket_script). ES supports many we don't;
+        // erroring here aborts the ENTIRE search (Kibana's taskManager
+        // WorkloadAggregator uses such aggs, causing a 'Failed to poll for work'
+        // loop that keeps taskManager degraded). Be lenient: drop this agg and
+        // let the rest of the request succeed. A missing agg key in the
+        // response is far less harmful than a failed search.
+        tracing::debug!(
+            "Skipping unsupported aggregation '{}' (no recognized type)",
+            name
+        );
         Ok(None)
     }
 }

@@ -158,6 +158,109 @@ fn rewrite_unknown_fields_to_dynamic(qs: &str, field_map: &HashMap<String, Field
     out
 }
 
+/// Rewrite the Lucene/Elasticsearch "field exists" idiom `field:*` into the
+/// open-ended range `field:[* TO *]`, which Tantivy's query parser accepts as
+/// an exists match (bare `field:*` is rejected with "Range query need to target
+/// a specific field").
+///
+/// Only rewrites a lone `*` (the *entire* field value, followed by a token
+/// boundary) and skips occurrences inside quoted value literals. Prefix
+/// wildcards (`field:foo*`) and real ranges (`field:[* TO x}`) are left alone.
+/// Structure-preserving: it only swaps the value token, so nested boolean
+/// groups like Kibana's migration queries (`(* -(field:*) ...)`)
+/// keep their exact operator precedence.
+fn rewrite_field_star_exists(qs: &str) -> String {
+    use regex::Regex;
+    // field name, ':', a lone '*', then a boundary: end-of-string, ')', or
+    // whitespace. (Boolean operators in well-formed queries are space-
+    // separated, so whitespace covers `+`/`-`/`AND`/`OR`.)
+    //
+    // NOTE: Rust's `regex` crate has no lookahead, so the boundary is a
+    // *consuming* capture group that we re-append — not `(?=...)`. An earlier
+    // version used `(?=...)`, which `Regex::new` rejected, and a silent
+    // `Err(_) => qs.to_string()` fallback then masked the failure entirely
+    // (every `field:*` reached the parser unrewritten). The literal below is
+    // known-valid, so we `.expect` rather than silently no-op.
+    let re = Regex::new(r"([A-Za-z_][A-Za-z0-9_.\-]*):\*($|[)\s])")
+        .expect("rewrite_field_star_exists: static regex literal");
+
+    let mut out = String::with_capacity(qs.len());
+    let mut last = 0usize;
+    let mut in_quotes = false;
+
+    for caps in re.captures_iter(qs) {
+        let whole = caps.get(0).unwrap();
+        // Track quote state across the segment preceding this match so that
+        // `field:"v:*"` style value literals are left untouched.
+        for ch in qs[last..whole.start()].chars() {
+            if ch == '"' {
+                in_quotes = !in_quotes;
+            }
+        }
+        out.push_str(&qs[last..whole.start()]);
+        if in_quotes {
+            out.push_str(&qs[whole.start()..whole.end()]);
+        } else {
+            // `field:*<boundary>` -> `field:[* TO *]<boundary>`
+            out.push_str(caps.get(1).unwrap().as_str());
+            out.push_str(":[* TO *]");
+            out.push_str(caps.get(2).unwrap().as_str());
+        }
+        last = whole.end();
+    }
+    out.push_str(&qs[last..]);
+    out
+}
+
+/// Parse a query string through `query_parser`, logging the post-rewrite
+/// input and parse outcome to the query log when enabled. Shared by every
+/// search path — this is the single convergence point where a failing query is
+/// captured in full, untruncated, regardless of which API surface received it.
+fn parse_query_with_logging(
+    collection: &str,
+    op: &str,
+    query_string: &str,
+    query_parser: &QueryParser,
+) -> Result<Box<dyn tantivy::query::Query>> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        query_parser.parse_query(query_string)
+    })) {
+        Ok(Ok(q)) => {
+            crate::query_log::log(
+                &crate::query_log::QueryLogEntry::new("text-parse")
+                    .op(op)
+                    .collection(collection)
+                    .query(query_string),
+            );
+            Ok(q)
+        }
+        Ok(Err(e)) => {
+            let msg = e.to_string();
+            crate::query_log::log(
+                &crate::query_log::QueryLogEntry::new("text-parse")
+                    .op(op)
+                    .collection(collection)
+                    .query(query_string)
+                    .status("error")
+                    .error(&msg),
+            );
+            Err(Error::InvalidQuery(msg))
+        }
+        Err(_) => {
+            let msg = format!("Query parser panicked on input: {:?}", query_string);
+            crate::query_log::log(
+                &crate::query_log::QueryLogEntry::new("text-parse")
+                    .op(op)
+                    .collection(collection)
+                    .query(query_string)
+                    .status("error")
+                    .error(&msg),
+            );
+            Err(Error::InvalidQuery(msg))
+        }
+    }
+}
+
 /// Combine a parsed query with structured `exists` / `not_exists` field filters
 /// using Tantivy's fast-field [`ExistsQuery`]. Returns the parsed query unchanged
 /// when there are no exists clauses. Errors clearly if an exists field is unknown
@@ -174,14 +277,10 @@ fn combine_with_exists(
     }
     use tantivy::query::{BooleanQuery, ExistsQuery, Occur, Query as TQuery};
 
+    // Validate each exists field. Unknown fields route to the `_dynamic` JSON
+    // catch-all (ES dynamic mapping parity) when present; otherwise error.
     for f in exists_fields.iter().chain(not_exists_fields.iter()) {
         match field_map.get(f) {
-            None => {
-                return Err(Error::InvalidQuery(format!(
-                    "exists query references unknown field '{}'",
-                    f
-                )))
-            }
             Some(&field) => {
                 if !schema.get_field_entry(field).field_type().is_fast() {
                     return Err(Error::InvalidQuery(format!(
@@ -190,20 +289,38 @@ fn combine_with_exists(
                     )));
                 }
             }
+            None => {
+                if !field_map.contains_key("_dynamic") {
+                    return Err(Error::InvalidQuery(format!(
+                        "exists query references unknown field '{}'",
+                        f
+                    )));
+                }
+                // Unknown field: served via `_dynamic.<f>` subpath below.
+            }
         }
     }
 
+    // Resolve a field name to the ExistsQuery path, routing fields absent from
+    // the configured schema to the `_dynamic` catch-all subpath.
+    let exists_path = |f: &str| -> String {
+        if field_map.contains_key(f) {
+            f.to_string()
+        } else {
+            format!("_dynamic.{}", f)
+        }
+    };
     let mut clauses: Vec<(Occur, Box<dyn TQuery>)> = vec![(Occur::Must, parsed)];
     for f in exists_fields {
         clauses.push((
             Occur::Must,
-            Box::new(ExistsQuery::new_exists_query(f.clone())),
+            Box::new(ExistsQuery::new_exists_query(exists_path(f))),
         ));
     }
     for f in not_exists_fields {
         clauses.push((
             Occur::MustNot,
-            Box::new(ExistsQuery::new_exists_query(f.clone())),
+            Box::new(ExistsQuery::new_exists_query(exists_path(f))),
         ));
     }
     Ok(Box::new(BooleanQuery::new(clauses)))
@@ -819,9 +936,47 @@ impl SearchBackend for TextBackend {
                             }
                         }
 
-                        // String/text values (must come AFTER Date match)
-                        (serde_json::Value::String(s), _) => {
+                        // String values — coerce to the field's declared type (ES coerces
+                        // "123" on a long, "true" on a bool). A string blindly
+                        // add_text'd onto a numeric/bool field crashes add_document
+                        // with "Expected a I64"; Kibana saved-objects are dynamic so
+                        // this is common. Only Str fields take the raw text.
+                        (serde_json::Value::String(s), tantivy::schema::FieldType::Str(_)) => {
                             tantivy_doc.add_text(*field, s);
+                            true
+                        }
+                        (serde_json::Value::String(s), tantivy::schema::FieldType::I64(_)) => {
+                            match s.parse::<i64>() {
+                                Ok(v) => { tantivy_doc.add_i64(*field, v); true }
+                                Err(_) => false,
+                            }
+                        }
+                        (serde_json::Value::String(s), tantivy::schema::FieldType::U64(_)) => {
+                            match s.parse::<u64>() {
+                                Ok(v) => { tantivy_doc.add_u64(*field, v); true }
+                                Err(_) => false,
+                            }
+                        }
+                        (serde_json::Value::String(s), tantivy::schema::FieldType::F64(_)) => {
+                            match s.parse::<f64>() {
+                                Ok(v) => { tantivy_doc.add_f64(*field, v); true }
+                                Err(_) => false,
+                            }
+                        }
+                        (serde_json::Value::String(s), tantivy::schema::FieldType::Bool(_)) => {
+                            match s.as_str() {
+                                "true" => { tantivy_doc.add_bool(*field, true); true }
+                                "false" => { tantivy_doc.add_bool(*field, false); true }
+                                _ => false,
+                            }
+                        }
+                        // Number/Bool on a text field — stringify (ES indexes these as text)
+                        (serde_json::Value::Number(n), tantivy::schema::FieldType::Str(_)) => {
+                            tantivy_doc.add_text(*field, n.to_string());
+                            true
+                        }
+                        (serde_json::Value::Bool(b), tantivy::schema::FieldType::Str(_)) => {
+                            tantivy_doc.add_text(*field, if *b { "true" } else { "false" });
                             true
                         }
 
@@ -956,18 +1111,11 @@ impl SearchBackend for TextBackend {
         // so malicious/malformed queries don't crash the server.
         let query_string =
             rewrite_unknown_fields_to_dynamic(&query.query_string, &coll.field_map);
-        let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            query_parser.parse_query(&query_string)
-        })) {
-            Ok(Ok(q)) => q,
-            Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
-            Err(_) => {
-                return Err(Error::InvalidQuery(format!(
-                    "Query parser panicked on input: {:?}",
-                    query_string
-                )));
-            }
-        };
+        // Normalize the `field:*` exists idiom into an open-ended range that
+        // Tantivy accepts (bare `field:*` is a parse error).
+        let query_string = rewrite_field_star_exists(&query_string);
+        let parsed_query =
+            parse_query_with_logging(collection, "search", &query_string, &query_parser)?;
 
         // Fold any structured `exists` filters into the query.
         let parsed_query = combine_with_exists(
@@ -1302,18 +1450,14 @@ impl SearchBackend for TextBackend {
         let query_parser = QueryParser::for_index(&coll.index, fields_to_search.clone());
         let query_string =
             rewrite_unknown_fields_to_dynamic(&query.query_string, &coll.field_map);
-        let parsed_query = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            query_parser.parse_query(&query_string)
-        })) {
-            Ok(Ok(q)) => q,
-            Ok(Err(e)) => return Err(Error::InvalidQuery(e.to_string())),
-            Err(_) => {
-                return Err(Error::InvalidQuery(format!(
-                    "Query parser panicked on input: {:?}",
-                    query_string
-                )));
-            }
-        };
+        // Normalize the `field:*` exists idiom (same fix as `search()`).
+        let query_string = rewrite_field_star_exists(&query_string);
+        let parsed_query = parse_query_with_logging(
+            collection,
+            "search_with_aggs",
+            &query_string,
+            &query_parser,
+        )?;
 
         // Fold any structured `exists` filters into the query.
         let parsed_query = combine_with_exists(
@@ -2899,6 +3043,28 @@ mod tests {
                 .collect(),
             highlight: None,
         }
+    }
+
+    #[test]
+    fn rewrite_field_star_exists_regression() {
+        // Empty field map: every field is unknown, so `rewrite_unknown_fields`
+        // prefixes it with `_dynamic.` first (exercising the same field-name
+        // character class the star rewrite must handle).
+        let fm: HashMap<String, Field> = HashMap::new();
+        let run = |q: &str| {
+            let after_dyn = rewrite_unknown_fields_to_dynamic(q, &fm);
+            rewrite_field_star_exists(&after_dyn)
+        };
+        // Lone `field:*` at end-of-string.
+        assert_eq!(run("foo:*"), "_dynamic.foo:[* TO *]");
+        // Known-style field name with dots/dashes must survive both passes.
+        assert_eq!(run("hostname:*"), "_dynamic.hostname:[* TO *]");
+        // `*` followed by `)` (inside a boolean group).
+        assert_eq!(run("(* -(foo:*))"), "(* -(_dynamic.foo:[* TO *]))");
+        // An explicit range is left untouched (no bare lone `*` value).
+        assert_eq!(run("foo:[* TO *]"), "_dynamic.foo:[* TO *]");
+        // Quoted value containing `:*` is left untouched by the star rewrite.
+        assert_eq!(rewrite_field_star_exists("foo:\"x:*\""), "foo:\"x:*\"");
     }
 
     #[test]

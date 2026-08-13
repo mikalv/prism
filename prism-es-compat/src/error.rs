@@ -25,6 +25,9 @@ pub enum EsCompatError {
     #[error("Invalid request body: {0}")]
     InvalidRequestBody(String),
 
+    #[error("{0}")]
+    ResourceAlreadyExists(String),
+
     #[error("Parse error: {0}")]
     ParseError(String),
 
@@ -66,6 +69,7 @@ impl EsCompatError {
             Self::UnsupportedAggregation(_) => "parsing_exception",
             Self::MissingField(_) => "parsing_exception",
             Self::InvalidRequestBody(_) => "parse_exception",
+            Self::ResourceAlreadyExists(_) => "resource_already_exists_exception",
             Self::ParseError(_) => "parse_exception",
             Self::PrismError(e) => match e {
                 prism::Error::CollectionNotFound(_) => "index_not_found_exception",
@@ -86,6 +90,7 @@ impl EsCompatError {
             | Self::MissingField(_)
             | Self::InvalidRequestBody(_)
             | Self::ParseError(_) => StatusCode::BAD_REQUEST,
+            Self::ResourceAlreadyExists(_) => StatusCode::BAD_REQUEST,
             Self::PrismError(e) => match e {
                 prism::Error::CollectionNotFound(_) => StatusCode::NOT_FOUND,
                 // A bad query (e.g. exists on a non-fast field) is a 400, not 500.

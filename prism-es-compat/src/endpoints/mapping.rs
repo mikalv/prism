@@ -7,33 +7,36 @@ use axum::extract::{Path, State};
 use axum::Json;
 use prism::schema::FieldType;
 use std::collections::HashMap;
+use serde_json::{json, Value};
 
-/// GET /_elastic/{index}/_mapping - Get index mapping
+/// GET /{index}/_mapping - Get index mapping
 pub async fn mapping_handler(
     State(state): State<EsCompatState>,
     Path(index): Path<String>,
 ) -> Result<Json<EsMappingResponse>, EsCompatError> {
-    // Expand index pattern (sync)
-    let collections = state
-        .manager
-        .expand_collection_patterns(std::slice::from_ref(&index));
-
-    if collections.is_empty() {
+    // Support comma-separated multi-index requests
+    let indices: Vec<&str> = index.split(',').collect();
+    let mut all_indices = Vec::new();
+    if indices.len() == 1 {
+        all_indices = state.manager.expand_collection_patterns(std::slice::from_ref(&index));
+    } else {
+        for idx in indices {
+            let expanded = state.manager.expand_collection_patterns(&[idx.to_string()]);
+            all_indices.extend(expanded);
+        }
+    }
+    if all_indices.is_empty() {
         return Err(EsCompatError::IndexNotFound(index));
     }
 
-    let mut indices = HashMap::new();
+    let mut result_indices = HashMap::new();
 
-    for collection in collections {
-        // Get schema (sync)
-        let schema = state
-            .manager
-            .get_schema(&collection)
+    for collection in all_indices {
+        let schema = state.manager.get_schema(&collection)
             .ok_or_else(|| EsCompatError::IndexNotFound(collection.clone()))?;
 
         let mut properties = HashMap::new();
 
-        // Map text fields
         if let Some(text_config) = &schema.backends.text {
             for field in &text_config.fields {
                 let field_type = match field.field_type {
@@ -52,7 +55,6 @@ pub async fn mapping_handler(
                     format: None,
                 };
 
-                // Add multi-field for text (keyword sub-field)
                 if matches!(field.field_type, FieldType::Text) {
                     let mut sub_fields = HashMap::new();
                     sub_fields.insert(
@@ -66,7 +68,6 @@ pub async fn mapping_handler(
                     mapping.fields = Some(sub_fields);
                 }
 
-                // Add format for date fields
                 if matches!(field.field_type, FieldType::Date) {
                     mapping.format = Some("strict_date_optional_time||epoch_millis".to_string());
                 }
@@ -75,7 +76,6 @@ pub async fn mapping_handler(
             }
         }
 
-        // Map vector field (single embedding_field from VectorBackendConfig)
         if let Some(vector_config) = &schema.backends.vector {
             properties.insert(
                 vector_config.embedding_field.clone(),
@@ -87,7 +87,7 @@ pub async fn mapping_handler(
             );
         }
 
-        indices.insert(
+        result_indices.insert(
             collection,
             EsIndexMapping {
                 mappings: EsMappings { properties },
@@ -95,5 +95,27 @@ pub async fn mapping_handler(
         );
     }
 
-    Ok(Json(EsMappingResponse { indices }))
+    Ok(Json(EsMappingResponse { indices: result_indices }))
+}
+
+/// PUT /{index}/_mapping - Update index mapping.
+///
+/// Prism collections have a fixed schema defined at creation, so mapping
+/// updates are accepted as a no-op and acknowledged. This satisfies ES clients
+/// (notably the Kibana saved-objects migration, which PUTs mappings during
+/// index setup at the UPDATE_TARGET_MAPPINGS_PROPERTIES step).
+pub async fn put_mapping_handler(
+    State(state): State<EsCompatState>,
+    Path(index): Path<String>,
+    Json(_body): Json<Value>,
+) -> Result<Json<Value>, EsCompatError> {
+    let collections = state.manager.expand_collection_patterns(std::slice::from_ref(&index));
+    if collections.is_empty() {
+        return Err(EsCompatError::IndexNotFound(index));
+    }
+    tracing::debug!(
+        index = %index,
+        "PUT /_mapping acknowledged (no-op; prism collections have fixed schemas)"
+    );
+    Ok(Json(json!({ "acknowledged": true })))
 }

@@ -66,6 +66,13 @@ async fn main() -> Result<()> {
         registry.with(tracing_subscriber::fmt::layer()).init();
     }
 
+    // Initialize optional search-query logging (toggled via [observability].query_log)
+    let query_log_path = prism::query_log::resolve_path(
+        config.observability.query_log_path.as_deref(),
+        std::path::Path::new(&args.data_dir),
+    );
+    prism::query_log::init(config.observability.query_log, &query_log_path);
+
     // Initialize Prometheus metrics recorder
     let metrics_handle = if config.observability.metrics_enabled {
         let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -527,20 +534,9 @@ async fn main() -> Result<()> {
     // Add ES-compat routes if enabled
     #[cfg(feature = "es-compat")]
     {
-        // axum's `nest` does not match the bare trailing-slash root
-        // `/_elastic/`, which official ES clients probe for the product check;
-        // redirect it to `/_elastic` (which serves cluster info + the product
-        // header).
         extension_router = extension_router
-            .route(
-                "/_elastic/",
-                axum::routing::get(|| async { axum::response::Redirect::permanent("/_elastic") }),
-            )
-            .nest(
-                "/_elastic",
-                prism_es_compat::es_compat_router(server.manager()),
-            );
-        tracing::info!("Elasticsearch compatibility enabled at /_elastic/*");
+            .merge(prism_es_compat::es_compat_router(server.manager(), config.storage.data_dir.clone()));
+        tracing::info!("Elasticsearch compatibility enabled at standard paths (/)");
     }
 
     // Serve with extensions if any are enabled

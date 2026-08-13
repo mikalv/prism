@@ -1,0 +1,39 @@
+
+collection: syslog
+description: "System logs from /var/log/syslog and /var/log/auth.log (RFC 5424 structured)"
+
+backends:
+  text:
+    fields:
+      - name: timestamp
+        type: string
+        stored: true
+        indexed: true
+      - name: hostname
+        type: string
+        stored: true
+        indexed: true
+      - name: process
+        type: string
+        stored: true
+        indexed: true
+      - name: pid
+        type: string
+        stored: true
+        indexed: false
+      - name: message
+        type: text
+        stored: true
+        indexed: true
+      - name: facility
+        type: string
+        stored: true
+        indexed: true
+      - name: severity
+        type: string
+        stored: true
+        indexed: true
+      - name: source_file
+        type: string
+        stored: true
+        indexed: false

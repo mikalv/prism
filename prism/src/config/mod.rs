@@ -373,6 +373,15 @@ pub struct ObservabilityConfig {
     /// Enable Prometheus metrics at GET /metrics
     #[serde(default = "default_true")]
     pub metrics_enabled: bool,
+
+    /// Log every search query (raw body + translated/rewritten query string +
+    /// parse outcome) to a dedicated JSON-lines file. Default off; enable with
+    /// `[observability] query_log = true`.
+    #[serde(default)]
+    pub query_log: bool,
+
+    /// Path to the query log file. Defaults to `<data_dir>/logs/queries.log`.
+    pub query_log_path: Option<PathBuf>,
 }
 
 fn default_log_format() -> String {
@@ -389,6 +398,8 @@ impl Default for ObservabilityConfig {
             log_format: default_log_format(),
             log_level: default_log_level(),
             metrics_enabled: true,
+            query_log: false,
+            query_log_path: None,
         }
     }
 }
