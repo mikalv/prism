@@ -46,6 +46,9 @@ pub async fn bulk_handler(
     // Group by index for batch processing
     let mut by_index: HashMap<String, Vec<(String, Document)>> = HashMap::new();
     let mut delete_by_index: HashMap<String, Vec<String>> = HashMap::new();
+    // Update actions are handled individually (read-modify-write), so we keep
+    // the partial doc Value rather than a flattened Document.
+    let mut update_by_index: HashMap<String, Vec<(String, Value)>> = HashMap::new();
 
     for action in actions {
         match action {
@@ -54,20 +57,16 @@ pub async fn bulk_handler(
                 let fields = match doc {
                     Value::Object(obj) => obj.into_iter().collect(),
                     _ => {
-                        items.push(BulkItemResponse {
-                            index: Some(BulkItemResult { index: index.clone(),
-                            id: doc_id,
-                            version: 1,
-                            result: "error".to_string(),
-                            shards: ShardStats::default(),
-                            status: 400,
-                            error: Some(EsError {
-                                error_type: "mapper_parsing_exception".to_string(),
-                                reason: "Document must be an object".to_string(),
-                            }), seq_no: 0, primary_term: 1 }),
-                            create: None,
-                            delete: None,
-                        });
+                        items.push(BulkItemResponse { index: Some(BulkItemResult { index: index.clone(),
+                        id: doc_id,
+                        version: 1,
+                        result: "error".to_string(),
+                        shards: ShardStats::default(),
+                        status: 400,
+                        error: Some(EsError {
+                            error_type: "mapper_parsing_exception".to_string(),
+                            reason: "Document must be an object".to_string(),
+                        }), seq_no: 0, primary_term: 1 }), create: None, delete: None, update: None });
                         has_errors = true;
                         continue;
                     }
@@ -84,6 +83,9 @@ pub async fn bulk_handler(
             BulkAction::Delete { index, id } => {
                 delete_by_index.entry(index).or_default().push(id);
             }
+            BulkAction::Update { index, id, doc } => {
+                update_by_index.entry(index).or_default().push((id, doc));
+            }
         }
     }
 
@@ -92,23 +94,19 @@ pub async fn bulk_handler(
         // Reject wildcard patterns in index names
         if index.contains('*') || index.contains('?') {
             for (doc_id, _) in docs {
-                items.push(BulkItemResponse {
-                    index: Some(BulkItemResult { index: index.clone(),
-                    id: doc_id,
-                    version: 1,
-                    result: "error".to_string(),
-                    shards: ShardStats::default(),
-                    status: 400,
-                    error: Some(EsError {
-                        error_type: "invalid_index_name_exception".to_string(),
-                        reason: format!(
-                            "Wildcard patterns not allowed in bulk index name: [{}]",
-                            index
-                        ),
-                    }), seq_no: 0, primary_term: 1 }),
-                    create: None,
-                    delete: None,
-                });
+                items.push(BulkItemResponse { index: Some(BulkItemResult { index: index.clone(),
+                id: doc_id,
+                version: 1,
+                result: "error".to_string(),
+                shards: ShardStats::default(),
+                status: 400,
+                error: Some(EsError {
+                    error_type: "invalid_index_name_exception".to_string(),
+                    reason: format!(
+                        "Wildcard patterns not allowed in bulk index name: [{}]",
+                        index
+                    ),
+                }), seq_no: 0, primary_term: 1 }), create: None, delete: None, update: None });
                 has_errors = true;
             }
             continue;
@@ -122,20 +120,16 @@ pub async fn bulk_handler(
         if collections.is_empty() {
             // Collection doesn't exist - report errors
             for (doc_id, _) in docs {
-                items.push(BulkItemResponse {
-                    index: Some(BulkItemResult { index: index.clone(),
-                    id: doc_id,
-                    version: 1,
-                    result: "error".to_string(),
-                    shards: ShardStats::default(),
-                    status: 404,
-                    error: Some(EsError {
-                        error_type: "index_not_found_exception".to_string(),
-                        reason: format!("no such index [{}]", index),
-                    }), seq_no: 0, primary_term: 1 }),
-                    create: None,
-                    delete: None,
-                });
+                items.push(BulkItemResponse { index: Some(BulkItemResult { index: index.clone(),
+                id: doc_id,
+                version: 1,
+                result: "error".to_string(),
+                shards: ShardStats::default(),
+                status: 404,
+                error: Some(EsError {
+                    error_type: "index_not_found_exception".to_string(),
+                    reason: format!("no such index [{}]", index),
+                }), seq_no: 0, primary_term: 1 }), create: None, delete: None, update: None });
                 has_errors = true;
             }
             continue;
@@ -158,36 +152,28 @@ pub async fn bulk_handler(
         match state.manager.index(target_index, prism_docs).await {
             Ok(_) => {
                 for doc_id in doc_ids {
-                    items.push(BulkItemResponse {
-                        index: Some(BulkItemResult { index: target_index.clone(),
-                        id: doc_id,
-                        version: 1,
-                        result: "created".to_string(),
-                        shards: ShardStats::default(),
-                        status: 201,
-                        error: None, seq_no: 0, primary_term: 1 }),
-                        create: None,
-                        delete: None,
-                    });
+                    items.push(BulkItemResponse { index: Some(BulkItemResult { index: target_index.clone(),
+                    id: doc_id,
+                    version: 1,
+                    result: "created".to_string(),
+                    shards: ShardStats::default(),
+                    status: 201,
+                    error: None, seq_no: 0, primary_term: 1 }), create: None, delete: None, update: None });
                 }
             }
             Err(e) => {
                 warn!("bulk index error: {}", e);
                 for doc_id in doc_ids {
-                    items.push(BulkItemResponse {
-                        index: Some(BulkItemResult { index: target_index.clone(),
-                        id: doc_id,
-                        version: 1,
-                        result: "error".to_string(),
-                        shards: ShardStats::default(),
-                        status: 500,
-                        error: Some(EsError {
-                            error_type: "mapper_exception".to_string(),
-                            reason: e.to_string(),
-                        }), seq_no: 0, primary_term: 1 }),
-                        create: None,
-                        delete: None,
-                    });
+                    items.push(BulkItemResponse { index: Some(BulkItemResult { index: target_index.clone(),
+                    id: doc_id,
+                    version: 1,
+                    result: "error".to_string(),
+                    shards: ShardStats::default(),
+                    status: 500,
+                    error: Some(EsError {
+                        error_type: "mapper_exception".to_string(),
+                        reason: e.to_string(),
+                    }), seq_no: 0, primary_term: 1 }), create: None, delete: None, update: None });
                     has_errors = true;
                 }
             }
@@ -202,17 +188,13 @@ pub async fn bulk_handler(
 
         if collections.is_empty() {
             for id in ids {
-                items.push(BulkItemResponse {
-                    index: None,
-                    create: None,
-                    delete: Some(BulkItemResult { index: index.clone(),
-                    id,
-                    version: 1,
-                    result: "not_found".to_string(),
-                    shards: ShardStats::default(),
-                    status: 404,
-                    error: None, seq_no: 0, primary_term: 1 }),
-                });
+                items.push(BulkItemResponse { index: None, create: None, delete: Some(BulkItemResult { index: index.clone(),
+                id,
+                version: 1,
+                result: "not_found".to_string(),
+                shards: ShardStats::default(),
+                status: 404,
+                error: None, seq_no: 0, primary_term: 1 }), update: None });
             }
             continue;
         }
@@ -222,35 +204,143 @@ pub async fn bulk_handler(
         match state.manager.delete(target_index, ids.clone()).await {
             Ok(_) => {
                 for id in ids {
-                    items.push(BulkItemResponse {
-                        index: None,
-                        create: None,
-                        delete: Some(BulkItemResult { index: target_index.clone(),
-                        id,
-                        version: 1,
-                        result: "deleted".to_string(),
-                        shards: ShardStats::default(),
-                        status: 200,
-                        error: None, seq_no: 0, primary_term: 1 }),
-                    });
+                    items.push(BulkItemResponse { index: None, create: None, delete: Some(BulkItemResult { index: target_index.clone(),
+                    id,
+                    version: 1,
+                    result: "deleted".to_string(),
+                    shards: ShardStats::default(),
+                    status: 200,
+                    error: None, seq_no: 0, primary_term: 1 }), update: None });
                 }
             }
             Err(e) => {
                 warn!("bulk delete error: {}", e);
                 for id in ids {
-                    items.push(BulkItemResponse {
-                        index: None,
-                        create: None,
-                        delete: Some(BulkItemResult { index: target_index.clone(),
-                        id,
-                        version: 1,
-                        result: "error".to_string(),
-                        shards: ShardStats::default(),
-                        status: 500,
+                    items.push(BulkItemResponse { index: None, create: None, delete: Some(BulkItemResult { index: target_index.clone(),
+                    id,
+                    version: 1,
+                    result: "error".to_string(),
+                    shards: ShardStats::default(),
+                    status: 500,
+                    error: Some(EsError {
+                        error_type: "exception".to_string(),
+                        reason: e.to_string(),
+                    }), seq_no: 0, primary_term: 1 }), update: None });
+                    has_errors = true;
+                }
+            }
+        }
+    }
+
+    // Process update actions (read-modify-write per document). Kibana's
+    // saved-objects repository updates objects almost exclusively via bulk
+    // `update`; the source line is `{"doc": {...}}` (optionally with
+    // `doc_as_upsert`). We extract `doc`, merge over the existing fields
+    // (upsert when absent), and re-index.
+    for (index, updates) in update_by_index {
+        if index.contains('*') || index.contains('?') {
+            for (id, _) in updates {
+                items.push(BulkItemResponse {
+                    index: None, create: None, delete: None,
+                    update: Some(BulkItemResult {
+                        index: index.clone(), id, version: 1, seq_no: 0, primary_term: 1,
+                        result: "error".to_string(), shards: ShardStats::default(),
+                        status: 400,
                         error: Some(EsError {
-                            error_type: "exception".to_string(),
-                            reason: e.to_string(),
-                        }), seq_no: 0, primary_term: 1 }),
+                            error_type: "invalid_index_name_exception".to_string(),
+                            reason: format!("Wildcard patterns not allowed in bulk index name: [{}]", index),
+                        }),
+                    }),
+                });
+                has_errors = true;
+            }
+            continue;
+        }
+
+        let collections = state.manager.expand_collection_patterns(std::slice::from_ref(&index));
+        if collections.is_empty() {
+            for (id, _) in updates {
+                items.push(BulkItemResponse {
+                    index: None, create: None, delete: None,
+                    update: Some(BulkItemResult {
+                        index: index.clone(), id, version: 1, seq_no: 0, primary_term: 1,
+                        result: "error".to_string(), shards: ShardStats::default(),
+                        status: 404,
+                        error: Some(EsError {
+                            error_type: "index_not_found_exception".to_string(),
+                            reason: format!("no such index [{}]", index),
+                        }),
+                    }),
+                });
+                has_errors = true;
+            }
+            continue;
+        }
+
+        let target_index = collections.into_iter().next().unwrap();
+
+        for (id, doc_val) in updates {
+            // Source line is {"doc": {...}} (optionally doc_as_upsert).
+            let partial = match doc_val.get("doc") {
+                Some(d) => d.clone(),
+                None => doc_val.clone(),
+            };
+            let partial_fields: HashMap<String, Value> = match partial.as_object() {
+                Some(obj) => obj.clone().into_iter().collect(),
+                None => {
+                    items.push(BulkItemResponse {
+                        index: None, create: None, delete: None,
+                        update: Some(BulkItemResult {
+                            index: target_index.clone(), id, version: 1, seq_no: 0, primary_term: 1,
+                            result: "error".to_string(), shards: ShardStats::default(),
+                            status: 400,
+                            error: Some(EsError {
+                                error_type: "mapper_parsing_exception".to_string(),
+                                reason: "Update doc must be an object".to_string(),
+                            }),
+                        }),
+                    });
+                    has_errors = true;
+                    continue;
+                }
+            };
+
+            // read-modify-write: merge partial over existing fields (upsert).
+            let mut merged = match state.manager.get(&target_index, &id).await {
+                Ok(Some(existing)) => existing.fields,
+                _ => HashMap::new(),
+            };
+            for (k, v) in partial_fields {
+                merged.insert(k, v);
+            }
+
+            match state.manager
+                .index(&target_index, vec![Document { id: id.clone(), fields: merged }])
+                .await
+            {
+                Ok(_) => {
+                    items.push(BulkItemResponse {
+                        index: None, create: None, delete: None,
+                        update: Some(BulkItemResult {
+                            index: target_index.clone(), id, version: 1, seq_no: 0, primary_term: 1,
+                            result: "updated".to_string(), shards: ShardStats::default(),
+                            status: 200, error: None,
+                        }),
+                    });
+                }
+                Err(e) => {
+                    warn!("bulk update error: {}", e);
+                    items.push(BulkItemResponse {
+                        index: None, create: None, delete: None,
+                        update: Some(BulkItemResult {
+                            index: target_index.clone(), id, version: 1, seq_no: 0, primary_term: 1,
+                            result: "error".to_string(), shards: ShardStats::default(),
+                            status: 500,
+                            error: Some(EsError {
+                                error_type: "mapper_exception".to_string(),
+                                reason: e.to_string(),
+                            }),
+                        }),
                     });
                     has_errors = true;
                 }
@@ -337,10 +427,26 @@ fn parse_bulk_body(
                 .ok_or_else(|| EsCompatError::MissingField("_id".to_string()))?;
 
             actions.push(BulkAction::Delete { index, id });
-        } else if meta.update.is_some() {
-            // Skip update - not supported in v1
-            i += 1; // Skip the document body too
-            warn!("Update action not supported, skipping");
+        } else if let Some(update_meta) = meta.update {
+            let index = update_meta
+                .index
+                .or_else(|| default_index.map(String::from))
+                .ok_or_else(|| EsCompatError::MissingField("_index".to_string()))?;
+            let id = update_meta
+                .id
+                .ok_or_else(|| EsCompatError::MissingField("_id".to_string()))?;
+
+            i += 1;
+            if i >= lines.len() {
+                return Err(EsCompatError::InvalidRequestBody(
+                    "Missing document body".to_string(),
+                ));
+            }
+
+            let doc: Value = serde_json::from_str(lines[i])
+                .map_err(|e| EsCompatError::InvalidRequestBody(format!("Invalid doc: {}", e)))?;
+
+            actions.push(BulkAction::Update { index, id, doc });
         }
 
         i += 1;
@@ -557,14 +663,22 @@ not valid json
     // ===================================================================
 
     #[test]
-    fn test_parse_bulk_update_skipped() {
+    fn test_parse_bulk_update() {
         let body = make_bytes(
             r#"{"update":{"_index":"products","_id":"1"}}
 {"doc":{"price":19.99}}
 "#,
         );
         let actions = parse_bulk_body(&body, None).unwrap();
-        assert!(actions.is_empty(), "Update should be skipped");
+        assert_eq!(actions.len(), 1, "Update should be parsed as one action");
+        match &actions[0] {
+            BulkAction::Update { index, id, doc } => {
+                assert_eq!(index, "products");
+                assert_eq!(id, "1");
+                assert_eq!(doc, &serde_json::json!({"doc": {"price": 19.99}}));
+            }
+            other => panic!("expected Update, got {:?}", other),
+        }
     }
 
     // ===================================================================

@@ -398,6 +398,8 @@ pub struct BulkItemResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub create: Option<BulkItemResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub update: Option<BulkItemResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delete: Option<BulkItemResult>,
 }
 

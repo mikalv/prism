@@ -532,6 +532,15 @@ pub enum BulkAction {
         index: String,
         id: String,
     },
+    /// Partial/full-document update. Kibana's saved-objects repository updates
+    /// objects almost exclusively via bulk `update` actions (doc_as_upsert for
+    /// full docs, `doc` for partials). The source line is `{"doc": {...}}` or
+    /// `{"doc_as_upsert": true, "doc": {...}}`; we extract `doc` and upsert.
+    Update {
+        index: String,
+        id: String,
+        doc: Value,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
