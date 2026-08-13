@@ -1278,6 +1278,9 @@ mod tests {
                     index: "test".to_string(),
                     id: "1".to_string(),
                     score: Some(1.0),
+                    seq_no: 0,
+                    primary_term: 1,
+                    version: 1,
                     source: Some({
                         let mut m = HashMap::new();
                         m.insert("title".to_string(), Value::String("doc".to_string()));
@@ -1306,12 +1309,15 @@ mod tests {
                     index: "test".to_string(),
                     id: "1".to_string(),
                     version: 1,
+                    seq_no: 0,
+                    primary_term: 1,
                     result: "created".to_string(),
                     shards: ShardStats::default(),
                     status: 201,
                     error: None,
                 }),
                 create: None,
+                update: None,
                 delete: None,
             }],
         };
