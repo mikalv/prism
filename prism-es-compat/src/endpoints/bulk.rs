@@ -55,18 +55,16 @@ pub async fn bulk_handler(
                     Value::Object(obj) => obj.into_iter().collect(),
                     _ => {
                         items.push(BulkItemResponse {
-                            index: Some(BulkItemResult {
-                                index: index.clone(),
-                                id: doc_id,
-                                version: 1,
-                                result: "error".to_string(),
-                                shards: ShardStats::default(),
-                                status: 400,
-                                error: Some(EsError {
-                                    error_type: "mapper_parsing_exception".to_string(),
-                                    reason: "Document must be an object".to_string(),
-                                }),
-                            }),
+                            index: Some(BulkItemResult { index: index.clone(),
+                            id: doc_id,
+                            version: 1,
+                            result: "error".to_string(),
+                            shards: ShardStats::default(),
+                            status: 400,
+                            error: Some(EsError {
+                                error_type: "mapper_parsing_exception".to_string(),
+                                reason: "Document must be an object".to_string(),
+                            }), seq_no: 0, primary_term: 1 }),
                             create: None,
                             delete: None,
                         });
@@ -95,21 +93,19 @@ pub async fn bulk_handler(
         if index.contains('*') || index.contains('?') {
             for (doc_id, _) in docs {
                 items.push(BulkItemResponse {
-                    index: Some(BulkItemResult {
-                        index: index.clone(),
-                        id: doc_id,
-                        version: 1,
-                        result: "error".to_string(),
-                        shards: ShardStats::default(),
-                        status: 400,
-                        error: Some(EsError {
-                            error_type: "invalid_index_name_exception".to_string(),
-                            reason: format!(
-                                "Wildcard patterns not allowed in bulk index name: [{}]",
-                                index
-                            ),
-                        }),
-                    }),
+                    index: Some(BulkItemResult { index: index.clone(),
+                    id: doc_id,
+                    version: 1,
+                    result: "error".to_string(),
+                    shards: ShardStats::default(),
+                    status: 400,
+                    error: Some(EsError {
+                        error_type: "invalid_index_name_exception".to_string(),
+                        reason: format!(
+                            "Wildcard patterns not allowed in bulk index name: [{}]",
+                            index
+                        ),
+                    }), seq_no: 0, primary_term: 1 }),
                     create: None,
                     delete: None,
                 });
@@ -127,18 +123,16 @@ pub async fn bulk_handler(
             // Collection doesn't exist - report errors
             for (doc_id, _) in docs {
                 items.push(BulkItemResponse {
-                    index: Some(BulkItemResult {
-                        index: index.clone(),
-                        id: doc_id,
-                        version: 1,
-                        result: "error".to_string(),
-                        shards: ShardStats::default(),
-                        status: 404,
-                        error: Some(EsError {
-                            error_type: "index_not_found_exception".to_string(),
-                            reason: format!("no such index [{}]", index),
-                        }),
-                    }),
+                    index: Some(BulkItemResult { index: index.clone(),
+                    id: doc_id,
+                    version: 1,
+                    result: "error".to_string(),
+                    shards: ShardStats::default(),
+                    status: 404,
+                    error: Some(EsError {
+                        error_type: "index_not_found_exception".to_string(),
+                        reason: format!("no such index [{}]", index),
+                    }), seq_no: 0, primary_term: 1 }),
                     create: None,
                     delete: None,
                 });
@@ -165,15 +159,13 @@ pub async fn bulk_handler(
             Ok(_) => {
                 for doc_id in doc_ids {
                     items.push(BulkItemResponse {
-                        index: Some(BulkItemResult {
-                            index: target_index.clone(),
-                            id: doc_id,
-                            version: 1,
-                            result: "created".to_string(),
-                            shards: ShardStats::default(),
-                            status: 201,
-                            error: None,
-                        }),
+                        index: Some(BulkItemResult { index: target_index.clone(),
+                        id: doc_id,
+                        version: 1,
+                        result: "created".to_string(),
+                        shards: ShardStats::default(),
+                        status: 201,
+                        error: None, seq_no: 0, primary_term: 1 }),
                         create: None,
                         delete: None,
                     });
@@ -183,18 +175,16 @@ pub async fn bulk_handler(
                 warn!("bulk index error: {}", e);
                 for doc_id in doc_ids {
                     items.push(BulkItemResponse {
-                        index: Some(BulkItemResult {
-                            index: target_index.clone(),
-                            id: doc_id,
-                            version: 1,
-                            result: "error".to_string(),
-                            shards: ShardStats::default(),
-                            status: 500,
-                            error: Some(EsError {
-                                error_type: "mapper_exception".to_string(),
-                                reason: e.to_string(),
-                            }),
-                        }),
+                        index: Some(BulkItemResult { index: target_index.clone(),
+                        id: doc_id,
+                        version: 1,
+                        result: "error".to_string(),
+                        shards: ShardStats::default(),
+                        status: 500,
+                        error: Some(EsError {
+                            error_type: "mapper_exception".to_string(),
+                            reason: e.to_string(),
+                        }), seq_no: 0, primary_term: 1 }),
                         create: None,
                         delete: None,
                     });
@@ -215,15 +205,13 @@ pub async fn bulk_handler(
                 items.push(BulkItemResponse {
                     index: None,
                     create: None,
-                    delete: Some(BulkItemResult {
-                        index: index.clone(),
-                        id,
-                        version: 1,
-                        result: "not_found".to_string(),
-                        shards: ShardStats::default(),
-                        status: 404,
-                        error: None,
-                    }),
+                    delete: Some(BulkItemResult { index: index.clone(),
+                    id,
+                    version: 1,
+                    result: "not_found".to_string(),
+                    shards: ShardStats::default(),
+                    status: 404,
+                    error: None, seq_no: 0, primary_term: 1 }),
                 });
             }
             continue;
@@ -237,15 +225,13 @@ pub async fn bulk_handler(
                     items.push(BulkItemResponse {
                         index: None,
                         create: None,
-                        delete: Some(BulkItemResult {
-                            index: target_index.clone(),
-                            id,
-                            version: 1,
-                            result: "deleted".to_string(),
-                            shards: ShardStats::default(),
-                            status: 200,
-                            error: None,
-                        }),
+                        delete: Some(BulkItemResult { index: target_index.clone(),
+                        id,
+                        version: 1,
+                        result: "deleted".to_string(),
+                        shards: ShardStats::default(),
+                        status: 200,
+                        error: None, seq_no: 0, primary_term: 1 }),
                     });
                 }
             }
@@ -255,18 +241,16 @@ pub async fn bulk_handler(
                     items.push(BulkItemResponse {
                         index: None,
                         create: None,
-                        delete: Some(BulkItemResult {
-                            index: target_index.clone(),
-                            id,
-                            version: 1,
-                            result: "error".to_string(),
-                            shards: ShardStats::default(),
-                            status: 500,
-                            error: Some(EsError {
-                                error_type: "exception".to_string(),
-                                reason: e.to_string(),
-                            }),
-                        }),
+                        delete: Some(BulkItemResult { index: target_index.clone(),
+                        id,
+                        version: 1,
+                        result: "error".to_string(),
+                        shards: ShardStats::default(),
+                        status: 500,
+                        error: Some(EsError {
+                            error_type: "exception".to_string(),
+                            reason: e.to_string(),
+                        }), seq_no: 0, primary_term: 1 }),
                     });
                     has_errors = true;
                 }

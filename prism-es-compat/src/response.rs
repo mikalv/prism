@@ -409,6 +409,10 @@ pub struct BulkItemResult {
     pub id: String,
     #[serde(rename = "_version")]
     pub version: u64,
+    #[serde(rename = "_seq_no")]
+    pub seq_no: i64,
+    #[serde(rename = "_primary_term")]
+    pub primary_term: i64,
     pub result: String,
     #[serde(rename = "_shards")]
     pub shards: ShardStats,
@@ -559,6 +563,10 @@ pub struct EsGetResponse {
     pub id: String,
     #[serde(rename = "_version")]
     pub version: u64,
+    #[serde(rename = "_seq_no")]
+    pub seq_no: i64,
+    #[serde(rename = "_primary_term")]
+    pub primary_term: i64,
     pub found: bool,
     #[serde(rename = "_source", skip_serializing_if = "Option::is_none")]
     pub source: Option<HashMap<String, Value>>,
@@ -573,6 +581,10 @@ pub struct EsIndexResponse {
     pub id: String,
     #[serde(rename = "_version")]
     pub version: u64,
+    #[serde(rename = "_seq_no")]
+    pub seq_no: i64,
+    #[serde(rename = "_primary_term")]
+    pub primary_term: i64,
     pub result: String,
     #[serde(rename = "_shards")]
     pub shards: ShardStats,
@@ -587,6 +599,10 @@ pub struct EsDeleteResponse {
     pub id: String,
     #[serde(rename = "_version")]
     pub version: u64,
+    #[serde(rename = "_seq_no")]
+    pub seq_no: i64,
+    #[serde(rename = "_primary_term")]
+    pub primary_term: i64,
     pub result: String,
     #[serde(rename = "_shards")]
     pub shards: ShardStats,

@@ -28,20 +28,16 @@ pub async fn get_doc_handler(
     let doc = state.manager.get(&index, &id).await?;
 
     match doc {
-        Some(doc) => Ok(Json(EsGetResponse {
-            index,
-            id: doc.id,
-            version: 1,
-            found: true,
-            source: Some(crate::response::flatten_dynamic(doc.fields)),
-        })),
-        None => Ok(Json(EsGetResponse {
-            index,
-            id,
-            version: 1,
-            found: false,
-            source: None,
-        })),
+        Some(doc) => Ok(Json(EsGetResponse { index,
+        id: doc.id,
+        version: 1,
+        found: true,
+        source: Some(crate::response::flatten_dynamic(doc.fields)), seq_no: 0, primary_term: 1 })),
+        None => Ok(Json(EsGetResponse { index,
+        id,
+        version: 1,
+        found: false,
+        source: None, seq_no: 0, primary_term: 1 })),
     }
 }
 
@@ -75,13 +71,11 @@ pub async fn post_doc_handler(
 
     Ok((
         StatusCode::CREATED,
-        Json(EsIndexResponse {
-            index,
-            id,
-            version: 1,
-            result: "created".to_string(),
-            shards: ShardStats::default(),
-        }),
+        Json(EsIndexResponse { index,
+        id,
+        version: 1,
+        result: "created".to_string(),
+        shards: ShardStats::default(), seq_no: 0, primary_term: 1 }),
     ))
 }
 
@@ -107,13 +101,11 @@ pub async fn create_doc_handler(
     state.manager.index(&index, vec![doc]).await?;
     Ok((
         StatusCode::CREATED,
-        Json(EsIndexResponse {
-            index,
-            id,
-            version: 1,
-            result: "created".to_string(),
-            shards: ShardStats::default(),
-        }),
+        Json(EsIndexResponse { index,
+        id,
+        version: 1,
+        result: "created".to_string(),
+        shards: ShardStats::default(), seq_no: 0, primary_term: 1 }),
     ))
 }
 
@@ -161,13 +153,11 @@ pub async fn put_doc_handler(
 
     Ok((
         StatusCode::CREATED,
-        Json(EsIndexResponse {
-            index,
-            id,
-            version: 1,
-            result: "created".to_string(),
-            shards: ShardStats::default(),
-        }),
+        Json(EsIndexResponse { index,
+        id,
+        version: 1,
+        result: "created".to_string(),
+        shards: ShardStats::default(), seq_no: 0, primary_term: 1 }),
     ))
 }
 
@@ -178,13 +168,11 @@ pub async fn delete_doc_handler(
 ) -> Result<Json<EsDeleteResponse>, EsCompatError> {
     state.manager.delete(&index, vec![id.clone()]).await?;
 
-    Ok(Json(EsDeleteResponse {
-        index,
-        id,
-        version: 1,
-        result: "deleted".to_string(),
-        shards: ShardStats::default(),
-    }))
+    Ok(Json(EsDeleteResponse { index,
+    id,
+    version: 1,
+    result: "deleted".to_string(),
+    shards: ShardStats::default(), seq_no: 0, primary_term: 1 }))
 }
 
 /// HEAD /{index} - Check if index exists
@@ -622,17 +610,15 @@ mod tests {
 
     #[test]
     fn test_get_response_found_serde() {
-        let resp = EsGetResponse {
-            index: "test".to_string(),
-            id: "1".to_string(),
-            version: 1,
-            found: true,
-            source: Some({
-                let mut m = HashMap::new();
-                m.insert("title".to_string(), Value::String("doc".to_string()));
-                m
-            }),
-        };
+        let resp = EsGetResponse { index: "test".to_string(),
+        id: "1".to_string(),
+        version: 1,
+        found: true,
+        source: Some({
+            let mut m = HashMap::new();
+            m.insert("title".to_string(), Value::String("doc".to_string()));
+            m
+        }), seq_no: 0, primary_term: 1 };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"found\":true"));
         assert!(json.contains("\"_source\""));
@@ -641,13 +627,11 @@ mod tests {
 
     #[test]
     fn test_get_response_not_found_serde() {
-        let resp = EsGetResponse {
-            index: "test".to_string(),
-            id: "missing".to_string(),
-            version: 1,
-            found: false,
-            source: None,
-        };
+        let resp = EsGetResponse { index: "test".to_string(),
+        id: "missing".to_string(),
+        version: 1,
+        found: false,
+        source: None, seq_no: 0, primary_term: 1 };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"found\":false"));
         assert!(!json.contains("\"_source\""));
@@ -655,13 +639,11 @@ mod tests {
 
     #[test]
     fn test_index_response_serde() {
-        let resp = EsIndexResponse {
-            index: "test".to_string(),
-            id: "1".to_string(),
-            version: 1,
-            result: "created".to_string(),
-            shards: ShardStats::default(),
-        };
+        let resp = EsIndexResponse { index: "test".to_string(),
+        id: "1".to_string(),
+        version: 1,
+        result: "created".to_string(),
+        shards: ShardStats::default(), seq_no: 0, primary_term: 1 };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"result\":\"created\""));
         assert!(json.contains("\"_shards\""));
@@ -669,13 +651,11 @@ mod tests {
 
     #[test]
     fn test_delete_response_serde() {
-        let resp = EsDeleteResponse {
-            index: "test".to_string(),
-            id: "1".to_string(),
-            version: 1,
-            result: "deleted".to_string(),
-            shards: ShardStats::default(),
-        };
+        let resp = EsDeleteResponse { index: "test".to_string(),
+        id: "1".to_string(),
+        version: 1,
+        result: "deleted".to_string(),
+        shards: ShardStats::default(), seq_no: 0, primary_term: 1 };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"result\":\"deleted\""));
     }
