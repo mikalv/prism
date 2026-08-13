@@ -33,7 +33,7 @@ pub async fn get_doc_handler(
             id: doc.id,
             version: 1,
             found: true,
-            source: Some(doc.fields),
+            source: Some(crate::response::flatten_dynamic(doc.fields)),
         })),
         None => Ok(Json(EsGetResponse {
             index,

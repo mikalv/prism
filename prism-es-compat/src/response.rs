@@ -58,6 +58,17 @@ pub struct Hit {
     pub id: String,
     #[serde(rename = "_score")]
     pub score: Option<f32>,
+    /// ES sequence-number metadata. prism doesn't track real seq_no /
+    /// primary_term, but the official ES client's taskManager and Discovery
+    /// service validate these as integers on every hit; omitting them yields
+    /// "_primary_term from elasticsearch must be an integer". Static defaults
+    /// satisfy the validation (Kibana doesn't rely on the real values here).
+    #[serde(rename = "_seq_no")]
+    pub seq_no: i64,
+    #[serde(rename = "_primary_term")]
+    pub primary_term: i64,
+    #[serde(rename = "_version")]
+    pub version: i64,
     // None when the request set `_source: false`, so the key is omitted entirely.
     #[serde(rename = "_source", skip_serializing_if = "Option::is_none")]
     pub source: Option<HashMap<String, Value>>,
@@ -133,6 +144,26 @@ fn matches_any(patterns: &[String], field: &str) -> bool {
     patterns.iter().any(|p| source_pattern_matches(p, field))
 }
 
+/// Flatten the `_dynamic` catch-all field into top-level fields.
+///
+/// Prism routes document fields not declared in the collection schema into a
+/// stored `_dynamic` JSON object at index time (ES dynamic-mapping parity).
+/// But ES clients (Kibana) expect those fields at the top level of `_source` —
+/// e.g. a saved object's attributes live at `_source[doc.type]`, not under
+/// `_dynamic`. Flattening here reconstructs the original document shape so
+/// `_source` round-trips faithfully. Applied at both the search and GET
+/// response choke points.
+pub fn flatten_dynamic(mut fields: HashMap<String, Value>) -> HashMap<String, Value> {
+    if let Some(dynamic) = fields.remove("_dynamic") {
+        if let Value::Object(map) = dynamic {
+            for (k, v) in map {
+                fields.entry(k).or_insert(v);
+            }
+        }
+    }
+    fields
+}
+
 /// Apply an ES `_source` filter to a hit's fields. Returns `None` when the
 /// source should be omitted entirely (`_source: false`). With no filter, all
 /// fields are returned. Include/exclude patterns support `*` wildcards; names
@@ -142,6 +173,7 @@ fn apply_source_filter(
     source: Option<&crate::query::SourceFilter>,
 ) -> Option<HashMap<String, Value>> {
     use crate::query::SourceFilter;
+    let fields = flatten_dynamic(fields);
     match source {
         None | Some(SourceFilter::Bool(true)) => Some(fields),
         Some(SourceFilter::Bool(false)) => None,
@@ -262,6 +294,9 @@ impl ResponseMapper {
             index: index.to_string(),
             id: result.id,
             score: Some(result.score),
+            seq_no: 0,
+            primary_term: 1,
+            version: 1,
             source: apply_source_filter(result.fields, source),
             highlight: result.highlight,
         }

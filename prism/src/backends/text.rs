@@ -106,6 +106,23 @@ fn owned_value_to_json(
         tantivy::schema::OwnedValue::Bytes(b) => Some(serde_json::Value::String(
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b),
         )),
+        // Dynamic JSON object/array (the `_dynamic` catch-all). Recursively
+        // convert so the original document shape round-trips through `_source`.
+        // Without these arms the catch-all `_ => None` silently dropped every
+        // dynamically-mapped field, making ES `_source` lose all non-schema
+        // fields (breaking Kibana saved objects, whose attributes live there).
+        tantivy::schema::OwnedValue::Object(obj) => {
+            let mut map = serde_json::Map::new();
+            for (k, v) in obj {
+                if let Some(jv) = owned_value_to_json(v.clone()) {
+                    map.insert(k, jv);
+                }
+            }
+            Some(serde_json::Value::Object(map))
+        }
+        tantivy::schema::OwnedValue::Array(arr) => Some(serde_json::Value::Array(
+            arr.into_iter().filter_map(owned_value_to_json).collect(),
+        )),
         _ => None,
     }
 }
@@ -440,6 +457,19 @@ fn materialize_hit(
                 if let Some(json_value) = owned_value_to_json(value) {
                     fields.insert(entry.name().to_string(), json_value);
                 }
+            }
+        }
+    }
+    // Flatten the `_dynamic` catch-all into top-level fields so the original
+    // document shape (and thus ES `_source`) is reconstructed faithfully.
+    // Unknown fields were routed into `_dynamic` at index time; without this
+    // merge they'd appear nested under `_dynamic` instead of at top level,
+    // and Kibana's saved-objects parser (which reads `_source[doc.type]`)
+    // would get `undefined` attributes and crash.
+    if let Some(dynamic) = fields.remove("_dynamic") {
+        if let serde_json::Value::Object(map) = dynamic {
+            for (k, v) in map {
+                fields.entry(k).or_insert(v);
             }
         }
     }
