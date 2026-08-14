@@ -677,6 +677,221 @@ pub async fn list_pipelines(State(state): State<AppState>) -> Json<PipelineListR
     Json(PipelineListResponse { pipelines })
 }
 
+#[derive(Serialize)]
+pub struct DeleteDocumentResponse {
+    pub collection: String,
+    pub id: String,
+    pub result: &'static str,
+}
+
+/// DELETE /collections/:collection/documents/:id - Delete a single document.
+///
+/// Idempotent: deleting a missing document still returns `200` with
+/// `"result": "not_found"` (matching the native GET semantics of returning
+/// `null` rather than 404). A missing *collection* returns 404.
+#[tracing::instrument(
+    name = "delete_document",
+    skip(manager, user_ext, checker_ext),
+    fields(collection = %collection, doc_id = %id)
+)]
+pub async fn delete_document(
+    Path((collection, id)): Path<(String, String)>,
+    State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
+) -> Result<Json<DeleteDocumentResponse>, (StatusCode, Json<serde_json::Value>)> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Delete,
+    )
+    .map_err(|c| {
+        (
+            c,
+            Json(serde_json::json!({ "error": "forbidden" })),
+        )
+    })?;
+
+    // Distinguish missing collection (404) from missing document (idempotent ok)
+    if !manager.collection_exists(&collection) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": format!("Collection not found: {}", collection) })),
+        ));
+    }
+
+    let existed = manager.get(&collection, &id).await.map_err(|e| {
+        tracing::error!("Failed to fetch document '{}' in '{}': {:?}", id, collection, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+    })?;
+
+    if existed.is_some() {
+        manager
+            .delete(&collection, vec![id.clone()])
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to delete document '{}' from '{}': {:?}", id, collection, e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": e.to_string() })),
+                )
+            })?;
+    }
+
+    Ok(Json(DeleteDocumentResponse {
+        collection,
+        id,
+        result: if existed.is_some() {
+            "deleted"
+        } else {
+            "not_found"
+        },
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct DeleteByQueryRequest {
+    /// Free-form query string (same syntax as POST /collections/:c/search).
+    /// Empty string / `"*"` matches all documents.
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Restrict matching to these fields.
+    #[serde(default)]
+    pub fields: Vec<String>,
+    /// Maximum number of matching documents to delete. Defaults to 1000.
+    /// Set to 0 to delete everything matched (no cap).
+    #[serde(default = "default_delete_by_query_max")]
+    pub max_deletes: usize,
+}
+
+fn default_delete_by_query_max() -> usize {
+    1000
+}
+
+#[derive(Serialize)]
+pub struct DeleteByQueryResponse {
+    pub collection: String,
+    pub deleted: usize,
+    pub matched: usize,
+    pub failed: usize,
+    pub ids: Vec<String>,
+}
+
+/// POST /collections/:collection/_delete_by_query - Delete all documents
+/// matching a query (Elasticsearch-style).
+///
+/// Two-phase: search (no ranking, no highlighting) → batch delete. The matched
+/// set is capped by `max_deletes` (default 1000) so a wildcard delete of a huge
+/// collection doesn't run in one unbounded request.
+#[tracing::instrument(
+    name = "delete_by_query",
+    skip(manager, user_ext, checker_ext, request),
+    fields(collection = %collection)
+)]
+pub async fn delete_by_query(
+    Path(collection): Path<String>,
+    State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
+    Json(request): Json<DeleteByQueryRequest>,
+) -> Result<Json<DeleteByQueryResponse>, (StatusCode, Json<serde_json::Value>)> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Delete,
+    )
+    .map_err(|c| {
+        (
+            c,
+            Json(serde_json::json!({ "error": "forbidden" })),
+        )
+    })?;
+
+    let query_string = request.query.unwrap_or_else(|| "*".to_string());
+
+    // Phase 1: find matching ids (skip ranking — we only need the id set).
+    let search_query = Query {
+        vector: None,
+        query_string: query_string.clone(),
+        fields: request.fields.clone(),
+        limit: if request.max_deletes == 0 {
+            usize::MAX
+        } else {
+            request.max_deletes
+        },
+        offset: 0,
+        merge_strategy: None,
+        text_weight: None,
+        vector_weight: None,
+        highlight: None,
+        rrf_k: None,
+        min_score: None,
+        score_function: None,
+        skip_ranking: true,
+        sort: Vec::new(),
+        exists_fields: Vec::new(),
+        not_exists_fields: Vec::new(),
+        explain: false,
+    };
+
+    let results = manager
+        .search(&collection, search_query, None)
+        .await
+        .map_err(|e| {
+            let status = match &e {
+                crate::Error::CollectionNotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            (
+                status,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        })?;
+
+    let ids: Vec<String> = results.results.into_iter().map(|r| r.id).collect();
+    let matched = ids.len();
+
+    if ids.is_empty() {
+        return Ok(Json(DeleteByQueryResponse {
+            collection,
+            deleted: 0,
+            matched: 0,
+            failed: 0,
+            ids: Vec::new(),
+        }));
+    }
+
+    // Phase 2: batch delete.
+    let failed = match manager.delete(&collection, ids.clone()).await {
+        Ok(()) => 0,
+        Err(e) => {
+            tracing::error!(
+                "delete_by_query: batch delete failed for collection '{}': {:?}",
+                collection,
+                e
+            );
+            ids.len()
+        }
+    };
+
+    Ok(Json(DeleteByQueryResponse {
+        collection,
+        deleted: if failed == 0 { matched } else { 0 },
+        matched,
+        failed,
+        ids,
+    }))
+}
+
 pub async fn get_document(
     Path((collection, id)): Path<(String, String)>,
     State(manager): State<Arc<CollectionManager>>,

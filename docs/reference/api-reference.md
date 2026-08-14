@@ -333,6 +333,75 @@ Retrieve a single document by ID.
 **Errors:**
 - `404` — Document or collection not found
 
+### DELETE /collections/:collection/documents/:id
+
+Delete a single document by ID.
+
+```bash
+curl -X DELETE 'localhost:8080/collections/articles/documents/doc-1'
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "articles",
+  "id": "doc-1",
+  "result": "deleted"
+}
+```
+
+Idempotent: deleting a document that does not exist returns `200` with
+`"result": "not_found"` instead of an error (mirroring the GET endpoint's
+null-body semantics for missing documents).
+
+**Errors:**
+- `404` — Collection not found
+- `403` — Insufficient permissions (requires `delete` permission on the collection)
+
+---
+
+### POST /collections/:collection/_delete_by_query
+
+Delete all documents matching a query (Elasticsearch-style `_delete_by_query`).
+
+**Request:**
+
+```json
+{
+  "query": "category:old",
+  "fields": [],
+  "max_deletes": 1000
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `query` | string | `"*"` | Query string (same syntax as search). Empty/`"*"` matches all documents |
+| `fields` | array | `[]` | Restrict matching to these fields |
+| `max_deletes` | integer | `1000` | Cap on documents deleted per call. `0` = no cap |
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "articles",
+  "deleted": 2,
+  "matched": 2,
+  "failed": 0,
+  "ids": ["doc-1", "doc-2"]
+}
+```
+
+Two-phase implementation: the matching id set is fetched first (unranked
+search), then deleted in one batch. Deletion is synchronous — when the
+response returns, the documents are deleted from the text backend.
+
+**Errors:**
+- `404` — Collection not found
+- `400` — Invalid query
+- `403` — Insufficient permissions (requires `delete` permission on the collection)
+
 ---
 
 ## Aggregations

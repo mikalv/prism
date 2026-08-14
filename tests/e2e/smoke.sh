@@ -77,6 +77,34 @@ http_post "/collections/articles/documents?pipeline=nonexistent" \
     '{"documents": [{"id": "99", "fields": {"title": "test"}}]}'
 assert_status "Unknown pipeline returns 400" "400"
 
+# --- Test: Delete single document ---
+http_delete "/collections/articles/documents/6"
+assert_status "DELETE document returns 200" "200"
+assert_json "DELETE document result" ".result" "deleted"
+
+# --- Test: Delete same document again (idempotent) ---
+http_delete "/collections/articles/documents/6"
+assert_status "Idempotent DELETE returns 200" "200"
+assert_json "Idempotent DELETE result" ".result" "not_found"
+
+# --- Test: Deleted document is gone ---
+http_get "/collections/articles/documents/6"
+assert_status "GET deleted doc returns 200" "200"
+assert_json "GET deleted doc body is null" "." "null"
+
+# --- Test: Delete document in missing collection ---
+http_delete "/collections/nonexistent/documents/6"
+assert_status "DELETE doc in missing collection returns 404" "404"
+
+# --- Test: Delete by query ---
+http_post "/collections/articles/_delete_by_query" '{"query": "category:test"}'
+assert_status "_delete_by_query returns 200" "200"
+assert_json_gt "_delete_by_query deleted some docs" ".deleted" "0"
+
+# --- Test: Delete by query in missing collection ---
+http_post "/collections/nonexistent/_delete_by_query" '{"query": "*"}'
+assert_status "_delete_by_query missing collection returns 404" "404"
+
 # --- Summary ---
 echo ""
 echo "Container logs:"

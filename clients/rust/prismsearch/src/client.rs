@@ -82,7 +82,7 @@ impl Client {
         Ok(resp.json().await?)
     }
 
-    async fn post_json<B: Serialize, T: serde::de::DeserializeOwned>(
+    pub(crate) async fn post_json<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         body: &B,
@@ -152,6 +152,37 @@ impl Client {
 
     pub async fn delete_collection(&self, name: &str) -> Result<serde_json::Value> {
         self.delete_json(&format!("/collections/{}", name)).await
+    }
+
+    /// DELETE /collections/:collection/documents/:id
+    ///
+    /// Idempotent: a missing document yields `"result": "not_found"` (200),
+    /// a missing collection yields 404.
+    pub async fn delete_document(
+        &self,
+        collection: &str,
+        id: &str,
+    ) -> Result<serde_json::Value> {
+        self.delete_json(&format!("/collections/{}/documents/{}", collection, id))
+            .await
+    }
+
+    /// POST /collections/:collection/_delete_by_query
+    ///
+    /// Deletes all documents matching `query` (same query-string syntax as
+    /// search). Capped at `max_deletes` (default 1000; 0 = no cap).
+    pub async fn delete_by_query(
+        &self,
+        collection: &str,
+        query: &str,
+        max_deletes: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        let body = serde_json::json!({
+            "query": query,
+            "max_deletes": max_deletes.unwrap_or(1000),
+        });
+        self.post_json(&format!("/collections/{}/_delete_by_query", collection), &body)
+            .await
     }
 
     pub async fn get_schema(&self, collection: &str) -> Result<serde_json::Value> {
