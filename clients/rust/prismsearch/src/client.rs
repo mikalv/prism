@@ -167,6 +167,23 @@ impl Client {
             .await
     }
 
+    /// PUT /collections/:collection/documents/:id
+    ///
+    /// Upsert a single document. Returns `"created"` (201) when the ID was
+    /// new, `"updated"` (200) when an existing document was replaced.
+    pub async fn update_document(
+        &self,
+        collection: &str,
+        id: &str,
+        fields: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.put_json(
+            &format!("/collections/{}/documents/{}", collection, id),
+            fields,
+        )
+        .await
+    }
+
     /// POST /collections/:collection/_delete_by_query
     ///
     /// Deletes all documents matching `query` (same query-string syntax as

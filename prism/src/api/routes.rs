@@ -684,6 +684,92 @@ pub struct DeleteDocumentResponse {
     pub result: &'static str,
 }
 
+#[derive(Serialize)]
+pub struct UpdateDocumentResponse {
+    pub collection: String,
+    pub id: String,
+    /// "created" | "updated"
+    pub result: &'static str,
+}
+
+/// PUT /collections/:collection/documents/:id - Upsert a single document.
+///
+/// Indexes the body fields as a document with the given ID. Since the text
+/// backend upserts (delete-by-id + add), this both creates and replaces —
+/// matching ES `PUT /{index}/_doc/{id}`. Requires `write` permission.
+#[tracing::instrument(
+    name = "update_document",
+    skip(manager, user_ext, checker_ext, body),
+    fields(collection = %collection, doc_id = %id)
+)]
+pub async fn update_document(
+    Path((collection, id)): Path<(String, String)>,
+    State(manager): State<Arc<CollectionManager>>,
+    user_ext: Option<axum::extract::Extension<crate::security::types::AuthUser>>,
+    checker_ext: Option<
+        axum::extract::Extension<Arc<crate::security::permissions::PermissionChecker>>,
+    >,
+    Json(body): Json<HashMap<String, serde_json::Value>>,
+) -> Result<(StatusCode, Json<UpdateDocumentResponse>), (StatusCode, Json<serde_json::Value>)> {
+    authorize_collection(
+        &user_ext,
+        &checker_ext,
+        &collection,
+        crate::security::types::Permission::Write,
+    )
+    .map_err(|c| {
+        (
+            c,
+            Json(serde_json::json!({ "error": "forbidden" })),
+        )
+    })?;
+
+    if !manager.collection_exists(&collection) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": format!("Collection not found: {}", collection) })),
+        ));
+    }
+
+    let existed = manager.get(&collection, &id).await.map_err(|e| {
+        tracing::error!("Failed to fetch document '{}' in '{}': {:?}", id, collection, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+    })?;
+
+    let doc = Document {
+        id: id.clone(),
+        fields: body,
+    };
+
+    manager.index(&collection, vec![doc]).await.map_err(|e| {
+        tracing::error!("Failed to index document '{}' into '{}': {:?}", id, collection, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+    })?;
+
+    Ok((
+        if existed.is_some() {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        Json(UpdateDocumentResponse {
+            collection,
+            id,
+            result: if existed.is_some() {
+                "updated"
+            } else {
+                "created"
+            },
+        }),
+    ))
+}
+
 /// DELETE /collections/:collection/documents/:id - Delete a single document.
 ///
 /// Idempotent: deleting a missing document still returns `200` with

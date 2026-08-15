@@ -333,6 +333,36 @@ Retrieve a single document by ID.
 **Errors:**
 - `404` — Document or collection not found
 
+### PUT /collections/:collection/documents/:id
+
+Upsert a single document by ID. The request body is the document fields.
+
+```bash
+curl -X PUT 'localhost:8080/collections/articles/documents/doc-1' \
+  -H 'content-type: application/json' \
+  -d '{"title": "Revised Title", "content": "Updated content..."}'
+```
+
+**Response:** `201 Created` (new ID) or `200 OK` (replaced existing)
+
+```json
+{
+  "collection": "articles",
+  "id": "doc-1",
+  "result": "updated"
+}
+```
+
+The text backend upserts (delete-by-id + add), so re-indexing replaces the
+previous version of the document rather than duplicating it — same semantics
+as Elasticsearch's `PUT /{index}/_doc/{id}`.
+
+**Errors:**
+- `404` — Collection not found
+- `403` — Insufficient permissions (requires `write` permission on the collection)
+
+---
+
 ### DELETE /collections/:collection/documents/:id
 
 Delete a single document by ID.

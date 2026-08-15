@@ -616,6 +616,7 @@ impl ApiServer {
             .route(
                 "/collections/:collection/documents/:id",
                 get(crate::api::routes::get_document)
+                    .put(crate::api::routes::update_document)
                     .delete(crate::api::routes::delete_document),
             )
             .route(

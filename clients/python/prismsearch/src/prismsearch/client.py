@@ -95,6 +95,14 @@ class Prismsearch:
     def get_document(self, collection: str, doc_id: str) -> dict | None:
         return self._get(f"/collections/{collection}/documents/{doc_id}")
 
+    def update_document(self, collection: str, doc_id: str, fields: dict) -> dict:
+        """PUT /collections/:collection/documents/:id
+
+        Upsert a single document. Returns ``"created"`` (201) when the ID was
+        new, ``"updated"`` (200) when an existing document was replaced.
+        """
+        return self._put(f"/collections/{collection}/documents/{doc_id}", json=fields)
+
     def delete_document(self, collection: str, doc_id: str) -> dict:
         """DELETE /collections/:collection/documents/:id
 

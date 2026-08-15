@@ -440,6 +440,7 @@ See [API Reference](guides/api-reference.md) for full details.
 | POST | `/collections/:name/search` | Search collection |
 | POST | `/collections/:name/documents` | Index documents |
 | GET | `/collections/:name/documents/:id` | Get document |
+| PUT | `/collections/:name/documents/:id` | Upsert document (201 created / 200 updated) |
 | DELETE | `/collections/:name/documents/:id` | Delete document (idempotent) |
 | POST | `/collections/:name/_delete_by_query` | Delete all documents matching a query |
 | POST | `/collections/:name/aggregate` | Run aggregations |

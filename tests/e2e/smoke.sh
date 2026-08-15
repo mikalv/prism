@@ -77,6 +77,24 @@ http_post "/collections/articles/documents?pipeline=nonexistent" \
     '{"documents": [{"id": "99", "fields": {"title": "test"}}]}'
 assert_status "Unknown pipeline returns 400" "400"
 
+# --- Test: Upsert document via PUT ---
+http_put "/collections/articles/documents/6" '{"title": "re-uploaded", "content": "put content", "category": "tech"}'
+assert_status "PUT new document returns 201" "201"
+assert_json "PUT create result" ".result" "created"
+
+http_put "/collections/articles/documents/6" '{"title": "re-uploaded again", "content": "put content v2", "category": "tech"}'
+assert_status "PUT existing document returns 200" "200"
+assert_json "PUT update result" ".result" "updated"
+
+http_get "/collections/articles/documents/6"
+assert_json "PUT replaced content" ".fields.title" "re-uploaded again"
+
+http_post "/collections/articles/search" '{"query": "*", "limit": 100}'
+assert_json "PUT did not duplicate" ".results | map(.id) | .[] | select(. == \"6\") | length" "1"
+
+http_put "/collections/nonexistent/documents/6" '{"title": "x"}'
+assert_status "PUT in missing collection returns 404" "404"
+
 # --- Test: Delete single document ---
 http_delete "/collections/articles/documents/6"
 assert_status "DELETE document returns 200" "200"
