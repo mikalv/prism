@@ -34,6 +34,9 @@ pub struct RpcQuery {
     pub exists_fields: Vec<String>,
     #[serde(default)]
     pub not_exists_fields: Vec<String>,
+    /// Request per-result score explanations (propagated to shards).
+    #[serde(default)]
+    pub explain: bool,
 }
 
 impl From<prism::backends::Query> for RpcQuery {
@@ -55,6 +58,7 @@ impl From<prism::backends::Query> for RpcQuery {
             sort: q.sort,
             exists_fields: q.exists_fields,
             not_exists_fields: q.not_exists_fields,
+            explain: q.explain,
         }
     }
 }
@@ -78,6 +82,7 @@ impl From<RpcQuery> for prism::backends::Query {
             sort: q.sort,
             exists_fields: q.exists_fields,
             not_exists_fields: q.not_exists_fields,
+            explain: q.explain,
         }
     }
 }
@@ -168,6 +173,7 @@ impl From<RpcSearchResult> for prism::backends::SearchResult {
             score: r.score,
             fields: r.fields,
             highlight: r.highlight,
+            score_explanation: None,
         }
     }
 }
@@ -622,6 +628,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
 
         let rpc: RpcQuery = query.clone().into();
@@ -660,6 +667,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
 
         let rpc: RpcQuery = query.into();
@@ -720,6 +728,7 @@ mod tests {
             score: 0.95,
             fields: fields.clone(),
             highlight: Some(highlight.clone()),
+            score_explanation: None,
         };
 
         let rpc: RpcSearchResult = result.into();
@@ -738,6 +747,7 @@ mod tests {
             score: 0.5,
             fields: HashMap::new(),
             highlight: None,
+            score_explanation: None,
         };
 
         let rpc: RpcSearchResult = result.into();
@@ -755,12 +765,14 @@ mod tests {
                     score: 1.0,
                     fields: HashMap::new(),
                     highlight: None,
+                    score_explanation: None,
                 },
                 prism::backends::SearchResult {
                     id: "b".into(),
                     score: 0.8,
                     fields: HashMap::new(),
                     highlight: None,
+                    score_explanation: None,
                 },
             ],
             total: 42,
@@ -814,6 +826,7 @@ mod tests {
                 sort: Vec::new(),
                 exists_fields: Vec::new(),
                 not_exists_fields: Vec::new(),
+                explain: false,
             },
             max_docs: 0,
             dry_run: true,
@@ -861,6 +874,7 @@ mod tests {
                 sort: Vec::new(),
                 exists_fields: Vec::new(),
                 not_exists_fields: Vec::new(),
+                explain: false,
             },
             source_node: Some("node-1:9100".into()),
             batch_size: 500,

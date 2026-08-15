@@ -141,6 +141,7 @@ mod tests {
                 score: 1.0,
                 fields: HashMap::from([("title".to_string(), serde_json::json!("exact"))]),
                 highlight: None,
+                score_explanation: None,
             },
             SearchResult {
                 id: "2".to_string(),
@@ -150,6 +151,7 @@ mod tests {
                     serde_json::json!("a much longer title here"),
                 )]),
                 highlight: None,
+                score_explanation: None,
             },
         ];
 
@@ -173,6 +175,7 @@ mod tests {
                 ("count".to_string(), serde_json::json!(42)),
             ]),
             highlight: None,
+            score_explanation: None,
         };
 
         // Specific fields

@@ -143,8 +143,8 @@ pub async fn context(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let mut context_items = Vec::new();
 
     // Search observations
@@ -186,8 +186,8 @@ pub async fn context(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     if let Ok(results) = manager.search("memories", query2, None).await {
         for r in results.results {
             let content = r
@@ -252,8 +252,8 @@ pub async fn search(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let mut all_results = Vec::new();
 
     // Search both collections

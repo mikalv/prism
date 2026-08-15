@@ -615,7 +615,13 @@ impl ApiServer {
             )
             .route(
                 "/collections/:collection/documents/:id",
-                get(crate::api::routes::get_document),
+                get(crate::api::routes::get_document)
+                    .put(crate::api::routes::update_document)
+                    .delete(crate::api::routes::delete_document),
+            )
+            .route(
+                "/collections/:collection/_delete_by_query",
+                post(crate::api::routes::delete_by_query),
             )
             // Collection metadata API (Issue #21)
             .route(

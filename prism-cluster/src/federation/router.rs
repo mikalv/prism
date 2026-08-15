@@ -304,6 +304,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
 
         let decision = router.route("products", &query).unwrap();
@@ -353,6 +354,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
 
         let decision = router.route("products", &query).unwrap();
@@ -412,6 +414,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
         let decision = router.route("products", &query).unwrap();
         assert_eq!(decision.targets.len(), 3);

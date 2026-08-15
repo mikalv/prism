@@ -81,6 +81,7 @@ mod tests {
             score,
             fields: HashMap::new(),
             highlight: None,
+            score_explanation: None,
         }
     }
 

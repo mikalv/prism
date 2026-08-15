@@ -85,6 +85,30 @@ http_get() {
     rm -f "$tmpfile"
 }
 
+# Usage: http_put "/path" '{"json":"body"}' -> sets $HTTP_STATUS and $HTTP_BODY
+http_put() {
+    local path="$1"
+    local data="$2"
+    local tmpfile
+    tmpfile=$(mktemp)
+    HTTP_STATUS=$(curl -s -o "$tmpfile" -w "%{http_code}" \
+        -X PUT -H "Content-Type: application/json" \
+        -d "$data" "${PRISM_URL}${path}")
+    HTTP_BODY=$(cat "$tmpfile")
+    rm -f "$tmpfile"
+}
+
+# Usage: http_delete "/path" -> sets $HTTP_STATUS and $HTTP_BODY
+http_delete() {
+    local path="$1"
+    local tmpfile
+    tmpfile=$(mktemp)
+    HTTP_STATUS=$(curl -s -o "$tmpfile" -w "%{http_code}" \
+        -X DELETE "${PRISM_URL}${path}")
+    HTTP_BODY=$(cat "$tmpfile")
+    rm -f "$tmpfile"
+}
+
 # Usage: http_post "/path" '{"json":"body"}' -> sets $HTTP_STATUS and $HTTP_BODY
 http_post() {
     local path="$1"

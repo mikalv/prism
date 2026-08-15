@@ -48,6 +48,10 @@ pub struct Query {
     pub exists_fields: Vec<String>,
     /// Fields that must NOT have a value (negated `exists`).
     pub not_exists_fields: Vec<String>,
+    /// When true, populate `score_explanation` on each result with a
+    /// per-stage breakdown of how its final score was computed. Off by
+    /// default; the only runtime cost is a per-stage branch when enabled.
+    pub explain: bool,
 }
 
 /// Configuration for search result highlighting
@@ -90,6 +94,10 @@ pub struct SearchResult {
     /// Highlighted snippets per field (only present when highlight is requested)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub highlight: Option<HashMap<String, Vec<String>>>,
+    /// Per-stage score breakdown (only present when `explain: true` was set
+    /// on the request).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_explanation: Option<crate::ranking::ScoreExplanation>,
 }
 
 #[derive(Debug, Clone, Serialize)]

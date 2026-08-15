@@ -4,7 +4,21 @@ All notable changes to Prism are documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-10
+
 ### Added
+
+- **Score explanation API (`"explain": true`).** Any search request
+  (`POST /collections/:collection/search`, `POST /api/search`,
+  `POST /_msearch`) may set `"explain": true` to receive a per-result
+  `score_explanation` object that traces how the hit's final score was
+  computed, stage by stage: `base` (BM25 / vector / hybrid backend output),
+  `recency_decay`, `doc_boost`, each configured `signal:<field>`, and
+  `rerank:<name>` (Phase 2 cross-encoder / score_function). Each component
+  records its operation (base / multiply / add / replace) and the resulting
+  running score, so a client can replay the computation top-to-bottom to
+  verify `final_score`. Off by default; negligible cost when disabled. See
+  `docs/guides/ranking.md` "Score explanation".
 
 - **`prism-mailsync` client (`clients/python/mailsync`)** — an incremental,
   resumable indexer that syncs a remote **IMAP** mailbox (many folders, very

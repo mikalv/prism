@@ -121,8 +121,8 @@ async fn test_search_with_facets() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let results = manager
         .search("logs", query, None)
         .await
@@ -177,8 +177,8 @@ async fn test_search_pagination() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let results1 = manager
         .search("logs", query1, None)
         .await
@@ -207,8 +207,8 @@ async fn test_search_pagination() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let results2 = manager
         .search("logs", query2, None)
         .await
@@ -280,8 +280,8 @@ async fn test_collection_not_found() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let result = manager.search("nonexistent", query, None).await;
     assert!(result.is_err(), "Should error on nonexistent collection");
 }

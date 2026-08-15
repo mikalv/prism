@@ -155,8 +155,8 @@ async fn iterate_all_documents(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let results = manager.search(collection, query, None).await?;
 
     // Get vectors if vector backend is enabled

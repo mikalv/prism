@@ -357,6 +357,7 @@ mod tests {
             score,
             fields,
             highlight: None,
+            score_explanation: None,
         }
     }
 

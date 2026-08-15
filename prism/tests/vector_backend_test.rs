@@ -137,6 +137,7 @@ async fn test_index_and_search() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
     let results = SearchBackend::search(&backend, "test2", query)
         .await
@@ -286,8 +287,8 @@ async fn test_search_offset_paginates() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     // offset 0 -> nearest (d1)
     let page0 = SearchBackend::search(&backend, "pg", base.clone())
         .await

@@ -56,7 +56,8 @@ Full-featured search endpoint.
     "post_tag": "</b>",
     "fragment_size": 150,
     "number_of_fragments": 3
-  }
+  },
+  "explain": false
 }
 ```
 
@@ -71,6 +72,7 @@ Full-featured search endpoint.
 | `text_weight` | float | 0.5 | No |
 | `vector_weight` | float | 0.5 | No |
 | `highlight` | object | null | No |
+| `explain` | boolean | false | No |
 
 **Response:** `200 OK`
 
@@ -188,6 +190,78 @@ Advanced Lucene-style query DSL with facets, boosting, and context.
 
 ---
 
+## Pagination
+
+All search endpoints (`POST /collections/:collection/search`,
+`POST /api/search`, `POST /_msearch`, `POST /search/lucene`) support
+**stateless offset/limit pagination** via the `offset` and `limit` request
+fields. There is no cursor or scroll token for search — every page is a fresh
+query, which keeps the server stateless and makes pages linkable/cacheable.
+
+| field    | type   | default | meaning                                    |
+| -------- | ------ | ------- | ------------------------------------------ |
+| `limit`  | usize  | `10`    | Max hits to return in this page.           |
+| `offset` | usize  | `0`     | Number of top-ranked hits to skip (0-based). |
+
+The response carries `total` (total matching hits the engine found), so the
+client can compute how many pages remain: `pages = ceil(total / limit)`.
+
+### Getting results 20–40
+
+`offset` is 0-indexed and measured from the top of the ranked list, so hits
+21–40 are requested with `offset: 20, limit: 20`:
+
+```bash
+curl -s localhost:8080/collections/pages/search \
+  -H 'content-type: application/json' \
+  -d '{"query": "marketplace", "offset": 20, "limit": 20}' | jq '.total, .results | length'
+```
+
+If you prefer 1-indexed page numbers, convert:
+`offset = (page - 1) * limit`. Page 2 with page size 20 → `offset: 20`.
+
+### How the engine paginates
+
+Prism uses two strategies depending on whether the request sorts:
+
+- **Default (score-ranked, no `sort`):** the engine fetches only
+  `offset + limit` top candidate docs from the inverted index, then skips
+  `offset` and returns `limit`. This is efficient — the deeper the page, the
+  more candidates it must pull, but only by the page depth, not the whole
+  index.
+- **With explicit `sort`:** all matching candidates are materialised, sorted,
+  then skipped/sliced. Use `sort` only when you need a non-score ordering
+  (e.g. by a date field), since it disables the cheap top-N path.
+
+### Deep paging guidance
+
+Because pagination is stateless and recomputes the query each call, **deep
+paging** (e.g. `offset: 10000`) re-fetches `offset + limit` candidates on
+every request. For typical UI pagination (first ~10 pages) this is
+negligible. For bulk export or exhaustive walks of *all* matching documents,
+prefer one of:
+
+- **`POST /collections/:collection/aggregate`** — get grouped counts rather
+  than every doc.
+- **`GET /collections/:collection/documents`** — list/scroll all documents in
+  a collection (not a search) using `offset`/`limit` with a `has_more` flag,
+  well-suited to exhaustive collection walks:
+  ```bash
+  curl -s 'localhost:8080/collections/pages/documents?offset=0&limit=100' | jq '.has_more'
+  ```
+- **`POST /_msearch`** across collections if you want one shot at broad
+  recall instead of many deep pages.
+
+### Consistency between pages
+
+Since each page is an independent query, the underlying index can change
+between page fetches (new docs indexed, deletes). This means a hit could
+shift across a page boundary or appear/disappear across pages. For a stable
+snapshot view, ensure no writes occur during the walk, or accept small drift.
+The ranked order itself is deterministic for a fixed index state.
+
+---
+
 ## Documents
 
 ### POST /collections/:collection/documents
@@ -258,6 +332,105 @@ Retrieve a single document by ID.
 
 **Errors:**
 - `404` — Document or collection not found
+
+### PUT /collections/:collection/documents/:id
+
+Upsert a single document by ID. The request body is the document fields.
+
+```bash
+curl -X PUT 'localhost:8080/collections/articles/documents/doc-1' \
+  -H 'content-type: application/json' \
+  -d '{"title": "Revised Title", "content": "Updated content..."}'
+```
+
+**Response:** `201 Created` (new ID) or `200 OK` (replaced existing)
+
+```json
+{
+  "collection": "articles",
+  "id": "doc-1",
+  "result": "updated"
+}
+```
+
+The text backend upserts (delete-by-id + add), so re-indexing replaces the
+previous version of the document rather than duplicating it — same semantics
+as Elasticsearch's `PUT /{index}/_doc/{id}`.
+
+**Errors:**
+- `404` — Collection not found
+- `403` — Insufficient permissions (requires `write` permission on the collection)
+
+---
+
+### DELETE /collections/:collection/documents/:id
+
+Delete a single document by ID.
+
+```bash
+curl -X DELETE 'localhost:8080/collections/articles/documents/doc-1'
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "articles",
+  "id": "doc-1",
+  "result": "deleted"
+}
+```
+
+Idempotent: deleting a document that does not exist returns `200` with
+`"result": "not_found"` instead of an error (mirroring the GET endpoint's
+null-body semantics for missing documents).
+
+**Errors:**
+- `404` — Collection not found
+- `403` — Insufficient permissions (requires `delete` permission on the collection)
+
+---
+
+### POST /collections/:collection/_delete_by_query
+
+Delete all documents matching a query (Elasticsearch-style `_delete_by_query`).
+
+**Request:**
+
+```json
+{
+  "query": "category:old",
+  "fields": [],
+  "max_deletes": 1000
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `query` | string | `"*"` | Query string (same syntax as search). Empty/`"*"` matches all documents |
+| `fields` | array | `[]` | Restrict matching to these fields |
+| `max_deletes` | integer | `1000` | Cap on documents deleted per call. `0` = no cap |
+
+**Response:** `200 OK`
+
+```json
+{
+  "collection": "articles",
+  "deleted": 2,
+  "matched": 2,
+  "failed": 0,
+  "ids": ["doc-1", "doc-2"]
+}
+```
+
+Two-phase implementation: the matching id set is fetched first (unranked
+search), then deleted in one batch. Deletion is synchronous — when the
+response returns, the documents are deleted from the text backend.
+
+**Errors:**
+- `404` — Collection not found
+- `400` — Invalid query
+- `403` — Insufficient permissions (requires `delete` permission on the collection)
 
 ---
 
