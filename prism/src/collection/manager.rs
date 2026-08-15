@@ -1707,6 +1707,7 @@ backends:
             min_score: None,
             score_function: None,
             skip_ranking: false,
+            explain: false,
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
