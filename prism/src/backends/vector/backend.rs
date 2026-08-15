@@ -354,8 +354,8 @@ impl VectorBackend {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
-
         self.search(collection, query).await
     }
 
@@ -1098,6 +1098,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
         let results = backend.search("test", query).await.unwrap();
         assert!(!results.results.is_empty());
@@ -1188,6 +1189,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
         let results = backend.search("test", query).await.unwrap();
         assert_eq!(results.results.len(), 1);

@@ -95,6 +95,36 @@ class Prismsearch:
     def get_document(self, collection: str, doc_id: str) -> dict | None:
         return self._get(f"/collections/{collection}/documents/{doc_id}")
 
+    def update_document(self, collection: str, doc_id: str, fields: dict) -> dict:
+        """PUT /collections/:collection/documents/:id
+
+        Upsert a single document. Returns ``"created"`` (201) when the ID was
+        new, ``"updated"`` (200) when an existing document was replaced.
+        """
+        return self._put(f"/collections/{collection}/documents/{doc_id}", json=fields)
+
+    def delete_document(self, collection: str, doc_id: str) -> dict:
+        """DELETE /collections/:collection/documents/:id
+
+        Idempotent: a missing document returns ``{"result": "not_found"}``
+        (200); a missing collection raises PrismError with 404.
+        """
+        return self._delete(f"/collections/{collection}/documents/{doc_id}")
+
+    def delete_by_query(
+        self, collection: str, query: str, max_deletes: int | None = None
+    ) -> dict:
+        """POST /collections/:collection/_delete_by_query
+
+        Deletes all documents matching ``query`` (same query-string syntax as
+        search). Capped at ``max_deletes`` (default 1000; 0 = no cap).
+        """
+        body: dict = {"query": query}
+        if max_deletes is not None:
+            body["max_deletes"] = max_deletes
+        _, data = self._post(f"/collections/{collection}/_delete_by_query", json=body)
+        return data
+
     # -- Search --
 
     def search(self, collection: str, body: dict) -> SearchResults:

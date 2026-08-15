@@ -591,6 +591,7 @@ pub async fn count_handler(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let results = state

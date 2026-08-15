@@ -137,6 +137,7 @@ async fn execute_single_search(
                         score: r.score,
                         fields: r.fields,
                         highlight: r.highlight,
+                        score_explanation: None,
                     })
                     .collect(),
                 total: multi.total as u64,

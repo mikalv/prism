@@ -54,6 +54,7 @@ impl QueryTranslator {
             sort: Self::translate_sort(request.sort.as_deref()),
             exists_fields,
             not_exists_fields,
+            explain: false,
         };
 
         Ok((query, aggregations))

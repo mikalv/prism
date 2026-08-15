@@ -185,8 +185,8 @@ pub async fn search_lucene(
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
-
     let search_results = match manager.search(&req.collection, query, None).await {
         Ok(results) => results,
         Err(crate::Error::CollectionNotFound(_)) => {

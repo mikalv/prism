@@ -135,6 +135,7 @@ fn make_query(q: &str) -> Query {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     }
 }
 
@@ -1269,6 +1270,7 @@ async fn test_agg_global() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let aggs = vec![AggregationRequest {
@@ -1756,6 +1758,7 @@ async fn test_search_with_aggs_on_empty_results() {
         sort: Vec::new(),
         exists_fields: Vec::new(),
         not_exists_fields: Vec::new(),
+        explain: false,
     };
 
     let aggs = vec![AggregationRequest {

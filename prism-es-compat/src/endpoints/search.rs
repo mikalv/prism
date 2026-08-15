@@ -98,6 +98,7 @@ pub async fn search_handler(
                         score: r.score,
                         fields: r.fields,
                         highlight: r.highlight,
+                        score_explanation: None,
                     })
                     .collect(),
                 total: multi_results.total as u64,

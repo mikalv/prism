@@ -153,6 +153,7 @@ impl HybridSearchCoordinator {
                     score: text_weight * norm,
                     fields: r.fields,
                     highlight: r.highlight,
+                    score_explanation: None,
                 },
             );
         }
@@ -204,6 +205,7 @@ impl HybridSearchCoordinator {
                     score: vector_weight * norm,
                     fields: r.fields,
                     highlight: r.highlight,
+                    score_explanation: None,
                 });
         }
 
@@ -263,6 +265,7 @@ impl HybridSearchCoordinator {
                     score,
                     fields,
                     highlight: None,
+                    score_explanation: None,
                 }
             })
             .collect();
@@ -319,6 +322,7 @@ impl SearchBackend for HybridSearchCoordinator {
                 sort: Vec::new(),
                 exists_fields: Vec::new(),
                 not_exists_fields: Vec::new(),
+                explain: false,
             };
             let text_q = Query {
                 vector: None,
@@ -336,7 +340,8 @@ impl SearchBackend for HybridSearchCoordinator {
                 skip_ranking: true,
                 sort: Vec::new(),
                 exists_fields: query.exists_fields.clone(),
-                not_exists_fields: query.not_exists_fields.clone(),
+                not_exists_fields: Vec::new(),
+                explain: false,
             };
             let t = self.text_backend.search(collection, text_q);
             let v = self.vector_backend.search(collection, vec_q);
@@ -360,6 +365,7 @@ impl SearchBackend for HybridSearchCoordinator {
                 sort: query.sort.clone(),
                 exists_fields: query.exists_fields.clone(),
                 not_exists_fields: query.not_exists_fields.clone(),
+                explain: query.explain,
             };
             let t = self.text_backend.search(collection, text_q).await?;
             return Ok(t);
@@ -521,6 +527,7 @@ mod tests {
             score: 1.0,
             fields: HashMap::new(),
             highlight: None,
+            score_explanation: None,
         }
     }
 
@@ -542,6 +549,7 @@ mod tests {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         }
     }
 

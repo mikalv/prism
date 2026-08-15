@@ -437,6 +437,7 @@ impl CollectionManager {
         // Phase 1: Retrieve candidates
         let original_limit = query.limit;
         let query_string_for_rerank = query.query_string.clone();
+        let explain = query.explain;
         let mut phase1_query = query;
         if let (Some(ref config), Some(_)) = (&rerank_config, &reranker) {
             // Expand limit to retrieve more candidates for reranking
@@ -464,9 +465,23 @@ impl CollectionManager {
                 .await
             {
                 Ok(new_scores) => {
-                    // Apply new scores
-                    for (result, &score) in results.results.iter_mut().zip(new_scores.iter()) {
-                        result.score = score;
+                    // Apply new scores, recording the rerank step in the
+                    // score explanation when requested.
+                    let reranker_name = reranker.name().to_string();
+                    for (result, &new_score) in results.results.iter_mut().zip(new_scores.iter()) {
+                        if explain {
+                            let previous = result.score as f64;
+                            let value = new_score as f64;
+                            if let Some(ex) = result.score_explanation.as_mut() {
+                                ex.components.push(crate::ranking::ScoreComponent {
+                                    name: format!("rerank:{}", reranker_name),
+                                    op: crate::ranking::ScoreOp::Replace { value, previous },
+                                    note: None,
+                                });
+                                ex.final_score = value;
+                            }
+                        }
+                        result.score = new_score;
                     }
                     // Re-sort by new scores (highest first)
                     results.results.sort_by(|a, b| {
@@ -924,6 +939,7 @@ impl CollectionManager {
                 sort: Vec::new(),
                 exists_fields: Vec::new(),
                 not_exists_fields: Vec::new(),
+                explain: false,
             };
             return self.text_backend.search(collection, query).await;
         }
@@ -948,6 +964,7 @@ impl CollectionManager {
                 sort: Vec::new(),
                 exists_fields: Vec::new(),
                 not_exists_fields: Vec::new(),
+                explain: false,
             };
             return self.vector_backend.search(collection, query).await;
         }
@@ -972,8 +989,8 @@ impl CollectionManager {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
-
         let vec_query_obj = Query {
             vector: None,
             query_string: serde_json::to_string(&vec).unwrap_or_default(),
@@ -991,8 +1008,8 @@ impl CollectionManager {
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
-
         // Run searches in parallel
         let (text_results, vec_results) = tokio::join!(
             self.text_backend.search(collection, text_query_obj),
@@ -1561,6 +1578,7 @@ backends:
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         }
     }
 
@@ -1624,8 +1642,8 @@ backends:
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
-
         let results = manager.search("articles", query, None).await?;
         assert!(results.total > 0);
 
@@ -2113,12 +2131,14 @@ backends:
                     score: 1.0,
                     fields: HashMap::new(),
                     highlight: None,
+                    score_explanation: None,
                 },
                 crate::backends::SearchResult {
                     id: "d2".to_string(),
                     score: 0.5,
                     fields: HashMap::new(),
                     highlight: None,
+                    score_explanation: None,
                 },
             ],
             total: 2,
@@ -2147,6 +2167,7 @@ backends:
                     score: 1.0 - (i as f32 * 0.01),
                     fields: HashMap::new(),
                     highlight: None,
+                    score_explanation: None,
                 })
                 .collect(),
             total: 20,
@@ -2321,8 +2342,8 @@ backends:
             sort: Vec::new(),
             exists_fields: Vec::new(),
             not_exists_fields: Vec::new(),
+            explain: false,
         };
-
         let results = manager
             .multi_search(
                 &["products".to_string(), "articles".to_string()],

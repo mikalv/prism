@@ -15,6 +15,8 @@ pub mod score_function;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
+use serde::Serialize;
+
 pub use cross_encoder::CrossEncoderReranker;
 pub use decay::{
     compute_decay, compute_decay_from_micros, parse_duration, DecayConfig, DecayFunction,
@@ -23,6 +25,42 @@ pub use reranker::{extract_text_from_result, RerankOptions, RerankRequest, Reran
 pub use score_function::ScoreFunctionReranker;
 
 use crate::schema::BoostingConfig;
+
+/// How a score component contributes to the running total.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ScoreOp {
+    /// The starting point. Exactly one per explanation.
+    Base { raw: f64 },
+    /// Multiply the running score by `factor`.
+    Multiply { factor: f64, result: f64 },
+    /// Add `delta` to the running score.
+    Add { delta: f64, result: f64 },
+    /// Replace the running score with `value` (Phase 2 reranker).
+    Replace { value: f64, previous: f64 },
+}
+
+/// One named step in the score pipeline.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScoreComponent {
+    /// Human-readable stage name: "base", "recency_decay", "doc_boost",
+    /// "signal:view_count", "rerank:cross_encoder", "rerank:score_function", …
+    pub name: String,
+    /// What this component did to the score.
+    #[serde(flatten)]
+    pub op: ScoreOp,
+    /// Optional human note.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// Full breakdown for one result, evaluable top-to-bottom.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScoreExplanation {
+    pub components: Vec<ScoreComponent>,
+    /// The score after the last component applied. Equals SearchResult.score.
+    pub final_score: f64,
+}
 
 /// Score adjustment configuration derived from schema BoostingConfig
 #[derive(Debug, Clone)]
@@ -83,21 +121,66 @@ pub fn apply_ranking_adjustments(
     results: &mut [RankableResult],
     config: &RankingConfig,
     now: SystemTime,
+    explain: bool,
 ) {
     for result in results.iter_mut() {
         let mut score = result.score as f64;
+        let mut comps: Vec<ScoreComponent> = if explain {
+            vec![ScoreComponent {
+                name: "base".to_string(),
+                op: ScoreOp::Base { raw: score },
+                note: None,
+            }]
+        } else {
+            Vec::new()
+        };
 
         // Apply recency decay if configured
         if let Some(decay_config) = &config.recency_decay {
             if let Some(indexed_at_micros) = result.indexed_at_micros {
                 let decay = compute_decay_from_micros(decay_config, indexed_at_micros, now);
-                score *= decay;
+                let new_score = score * decay;
+                if explain {
+                    comps.push(ScoreComponent {
+                        name: "recency_decay".to_string(),
+                        op: ScoreOp::Multiply {
+                            factor: decay,
+                            result: new_score,
+                        },
+                        note: Some(format!(
+                            "{:?}, scale={}s",
+                            decay_config.function,
+                            decay_config.scale.as_secs()
+                        )),
+                    });
+                }
+                score = new_score;
+            } else if explain {
+                comps.push(ScoreComponent {
+                    name: "recency_decay".to_string(),
+                    op: ScoreOp::Multiply {
+                        factor: 1.0,
+                        result: score,
+                    },
+                    note: Some("no _indexed_at → skipped".to_string()),
+                });
             }
         }
 
         // Apply document boost if present
         if let Some(boost) = result.boost {
-            score *= boost;
+            let new_score = score * boost;
+            if explain {
+                comps.push(ScoreComponent {
+                    name: "doc_boost".to_string(),
+                    op: ScoreOp::Multiply {
+                        factor: boost,
+                        result: new_score,
+                    },
+                    note: None,
+                });
+            }
+            score = new_score;
         }
 
         // Apply custom ranking signals: each contributes field_value * weight
@@ -108,12 +191,39 @@ pub fn apply_ranking_adjustments(
                     .or_else(|| val.as_i64().map(|i| i as f64))
                     .or_else(|| val.as_u64().map(|u| u as f64));
                 if let Some(v) = numeric {
-                    score += v * (*weight as f64);
+                    let delta = v * (*weight as f64);
+                    let new_score = score + delta;
+                    if explain {
+                        comps.push(ScoreComponent {
+                            name: format!("signal:{}", field_name),
+                            op: ScoreOp::Add {
+                                delta,
+                                result: new_score,
+                            },
+                            note: Some(format!("{}={} × weight={}", field_name, v, weight)),
+                        });
+                    }
+                    score = new_score;
                 }
+            } else if explain {
+                comps.push(ScoreComponent {
+                    name: format!("signal:{}", field_name),
+                    op: ScoreOp::Add {
+                        delta: 0.0,
+                        result: score,
+                    },
+                    note: Some("field missing → skipped".to_string()),
+                });
             }
         }
 
         result.adjusted_score = score as f32;
+        if explain {
+            result.explanation = Some(ScoreExplanation {
+                components: comps,
+                final_score: score,
+            });
+        }
     }
 
     // Re-sort by adjusted score (highest first)
@@ -135,6 +245,8 @@ pub struct RankableResult {
     pub indexed_at_micros: Option<i64>,
     /// _boost value from document
     pub boost: Option<f64>,
+    /// Score breakdown (present only when explain was requested).
+    pub explanation: Option<ScoreExplanation>,
 }
 
 impl RankableResult {
@@ -153,6 +265,7 @@ impl RankableResult {
             fields,
             indexed_at_micros,
             boost,
+            explanation: None,
         }
     }
 }
@@ -192,7 +305,7 @@ mod tests {
             make_result("doc3", 1.0, None, Some(0.5)),
         ];
 
-        apply_ranking_adjustments(&mut results, &config, now);
+        apply_ranking_adjustments(&mut results, &config, now, false);
 
         // doc2 with boost=2.0 should be first
         assert_eq!(results[0].id, "doc2");
@@ -240,7 +353,7 @@ mod tests {
             make_result("two_weeks", 1.0, Some(two_weeks_micros), None),
         ];
 
-        apply_ranking_adjustments(&mut results, &config, now);
+        apply_ranking_adjustments(&mut results, &config, now, false);
 
         // Recent should be first (highest score)
         assert_eq!(results[0].id, "recent");
@@ -286,11 +399,191 @@ mod tests {
             make_result("new_regular", 1.0, Some(now_micros), Some(1.0)),
         ];
 
-        apply_ranking_adjustments(&mut results, &config, now);
+        apply_ranking_adjustments(&mut results, &config, now, false);
 
         // Old doc: 1.0 * 0.5 (decay) * 3.0 (boost) = 1.5
         // New doc: 1.0 * 1.0 (no decay) * 1.0 (boost) = 1.0
         assert_eq!(results[0].id, "old_popular");
         assert!(results[0].adjusted_score > results[1].adjusted_score);
+    }
+
+    // --- explain (score breakdown) tests ---
+
+    fn make_result_with_signals(id: &str, score: f32, signals: &[(&str, f64)]) -> RankableResult {
+        let mut fields = HashMap::new();
+        for (name, val) in signals {
+            fields.insert(name.to_string(), serde_json::json!(val));
+        }
+        RankableResult::from_fields(id.to_string(), score, fields)
+    }
+
+    #[test]
+    fn explain_off_leaves_explanation_none() {
+        let config = RankingConfig {
+            field_weights: HashMap::new(),
+            recency_decay: None,
+            signals: vec![("views".to_string(), 0.01)],
+        };
+        let mut results = vec![make_result_with_signals("d1", 1.0, &[("views", 100.0)])];
+        apply_ranking_adjustments(&mut results, &config, SystemTime::now(), false);
+        assert!(
+            results[0].explanation.is_none(),
+            "explain=false must not populate explanation"
+        );
+    }
+
+    #[test]
+    fn explain_emits_base_component() {
+        let config = RankingConfig {
+            field_weights: HashMap::new(),
+            recency_decay: None,
+            signals: vec![],
+        };
+        let mut results = vec![make_result("d1", 5.0, None, None)];
+        apply_ranking_adjustments(&mut results, &config, SystemTime::now(), true);
+
+        let ex = results[0]
+            .explanation
+            .as_ref()
+            .expect("explain=true must populate");
+        assert_eq!(ex.components.len(), 1);
+        assert_eq!(ex.components[0].name, "base");
+        match ex.components[0].op {
+            ScoreOp::Base { raw } => assert!((raw - 5.0).abs() < 1e-9),
+            _ => panic!("expected Base op"),
+        }
+        assert!((ex.final_score - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn explain_records_recency_boost_and_skip() {
+        use std::time::Duration;
+        let config = RankingConfig {
+            field_weights: HashMap::new(),
+            signals: vec![],
+            recency_decay: Some(DecayConfig::new(
+                DecayFunction::Exponential,
+                Duration::from_secs(7 * 86400),
+                0.5,
+            )),
+        };
+        let now = SystemTime::now();
+        let now_micros = now
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as i64;
+        let week_old = now_micros - (7 * 86400 * 1_000_000);
+
+        let mut results = vec![
+            make_result("recent", 1.0, Some(now_micros), None),
+            make_result("stale", 1.0, Some(week_old), None),
+            make_result("nots", 1.0, None, None), // no _indexed_at
+        ];
+        apply_ranking_adjustments(&mut results, &config, now, true);
+
+        // recent: factor ~1.0
+        let recent = results.iter().find(|r| r.id == "recent").unwrap();
+        let rec_comp = recent
+            .explanation
+            .as_ref()
+            .unwrap()
+            .components
+            .iter()
+            .find(|c| c.name == "recency_decay")
+            .unwrap();
+        match rec_comp.op {
+            ScoreOp::Multiply { factor, .. } => assert!(factor > 0.9),
+            _ => panic!(),
+        }
+
+        // stale: factor ~0.5
+        let stale = results.iter().find(|r| r.id == "stale").unwrap();
+        let stale_comp = stale
+            .explanation
+            .as_ref()
+            .unwrap()
+            .components
+            .iter()
+            .find(|c| c.name == "recency_decay")
+            .unwrap();
+        match stale_comp.op {
+            ScoreOp::Multiply { factor, .. } => assert!((factor - 0.5).abs() < 0.1),
+            _ => panic!(),
+        }
+
+        // nots (no timestamp): skip note present
+        let nots = results.iter().find(|r| r.id == "nots").unwrap();
+        let nots_comp = nots
+            .explanation
+            .as_ref()
+            .unwrap()
+            .components
+            .iter()
+            .find(|c| c.name == "recency_decay")
+            .unwrap();
+        assert!(nots_comp.note.as_ref().unwrap().contains("skipped"));
+    }
+
+    #[test]
+    fn explain_records_boost_and_signals_and_resums() {
+        let config = RankingConfig {
+            field_weights: HashMap::new(),
+            recency_decay: None,
+            signals: vec![("views".to_string(), 0.01)],
+        };
+        // score = 10.0, boost = 2.0, views = 300 → 10*2 + 300*0.01 = 23.0
+        let mut results = vec![make_result_with_signals(
+            "d1",
+            10.0,
+            &[("views", 300.0), ("_boost", 2.0)],
+        )];
+        apply_ranking_adjustments(&mut results, &config, SystemTime::now(), true);
+
+        let ex = results[0].explanation.as_ref().unwrap();
+        // Should have: base, doc_boost, signal:views
+        assert_eq!(ex.components.len(), 3);
+        assert_eq!(ex.components[0].name, "base");
+        assert_eq!(ex.components[1].name, "doc_boost");
+        assert_eq!(ex.components[2].name, "signal:views");
+
+        // Replay the ops top-to-bottom and confirm we land on final_score.
+        let mut running = 0.0f64;
+        for c in &ex.components {
+            running = match c.op {
+                ScoreOp::Base { raw } => raw,
+                ScoreOp::Multiply { result, .. } => result,
+                ScoreOp::Add { result, .. } => result,
+                ScoreOp::Replace { value, .. } => value,
+            };
+        }
+        assert!(
+            (running - ex.final_score).abs() < 1e-5,
+            "replayed running={} should equal final_score={}",
+            running,
+            ex.final_score
+        );
+        assert!((ex.final_score - 23.0).abs() < 1e-4);
+        assert!((results[0].adjusted_score as f64 - ex.final_score).abs() < 1e-4);
+    }
+
+    #[test]
+    fn explain_missing_signal_field_is_noted() {
+        let config = RankingConfig {
+            field_weights: HashMap::new(),
+            recency_decay: None,
+            signals: vec![("missing".to_string(), 1.0)],
+        };
+        let mut results = vec![make_result("d1", 1.0, None, None)];
+        apply_ranking_adjustments(&mut results, &config, SystemTime::now(), true);
+
+        let sig = results[0]
+            .explanation
+            .as_ref()
+            .unwrap()
+            .components
+            .iter()
+            .find(|c| c.name == "signal:missing")
+            .unwrap();
+        assert!(sig.note.as_ref().unwrap().contains("skipped"));
     }
 }
