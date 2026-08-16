@@ -590,9 +590,23 @@ impl SearchBackend for VectorBackend {
             let docs_len = docs.len();
 
             for doc in docs {
-                let vector_value = doc.fields.get(&target_field).ok_or_else(|| {
-                    crate::error::Error::Schema(format!("Missing {} field", target_field))
-                })?;
+                let vector_value = match doc.fields.get(&target_field) {
+                    Some(v) => v,
+                    None => {
+                        // Document without an embedding: allowed when the
+                        // collection uses auto-embedding (the provider could not
+                        // generate one, or a reindex stripped a stale vector).
+                        // Skip rather than fail the whole batch; the doc stays
+                        // text-searchable and a later reindex can embed it.
+                        tracing::warn!(
+                            collection,
+                            id = %doc.id,
+                            "document missing '{}' field; skipping vector insert",
+                            target_field
+                        );
+                        continue;
+                    }
+                };
 
                 let vector: Vec<f32> = serde_json::from_value(vector_value.clone())
                     .map_err(|_| crate::error::Error::Schema("Invalid embedding format".into()))?;

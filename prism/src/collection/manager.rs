@@ -428,11 +428,11 @@ impl CollectionManager {
         let mut reembedded = 0usize;
         let mut skipped = 0usize;
         loop {
-            // `field:[* TO *]` matches every doc where the embedding SOURCE
-            // field exists — i.e. all docs eligible for embedding.
+            // "*" = match-all (same translation the ES-compat layer uses
+            // for match_all queries); docs without the source field are
+            // skipped by auto-embed downstream.
             let query = crate::backends::Query {
-                query_string: format!("{}:[* TO *]", source_field),
-                fields: vec![],
+                query_string: "*".to_string(),
                 limit: batch_size,
                 offset,
                 ..Default::default()
@@ -448,9 +448,12 @@ impl CollectionManager {
                 .iter()
                 .map(|r| {
                     let mut fields = r.fields.clone();
-                    // Strip stale vector so auto-embed regenerates it.
-                    let had_vector = fields.remove(&target_field).is_some();
-                    if had_vector {
+                    // Strip any stale vector cached in the stored fields; the
+                    // live vector lives in the vector index and is overwritten
+                    // by the upsert below.
+                    fields.remove(&target_field);
+                    let eligible = fields.contains_key(&source_field);
+                    if eligible {
                         reembedded += 1;
                     } else {
                         skipped += 1;
