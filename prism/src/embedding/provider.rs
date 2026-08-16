@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderConfig {
     /// Ollama local embedding server
     Ollama { url: String, model: String },
-    /// OpenAI-compatible API (works with OpenAI, Azure, Together, etc.)
+    /// OpenAI-compatible API (works with OpenAI, Azure, NVIDIA NIM, Together, etc.)
     OpenAI {
         url: String,
         api_key: String,
@@ -33,6 +33,18 @@ impl Default for ProviderConfig {
         Self::Ollama {
             url: "http://localhost:11434".to_string(),
             model: "nomic-embed-text".to_string(),
+        }
+    }
+}
+
+impl ProviderConfig {
+    /// Human-readable name for logging ("ollama/bge-m3", "openai/baai/bge-m3", ...)
+    pub fn model_display_name(&self) -> String {
+        match self {
+            ProviderConfig::Ollama { model, .. } => format!("ollama/{}", model),
+            ProviderConfig::OpenAI { model, .. } => format!("openai-compat/{}", model),
+            #[cfg(feature = "provider-onnx")]
+            ProviderConfig::Onnx { .. } => "onnx/local".to_string(),
         }
     }
 }
@@ -88,6 +100,26 @@ pub async fn create_provider(
                 super::onnx::OnnxProvider::new(model_path.clone(), model_id.clone(), cache_path)
                     .await?;
             Ok(Box::new(provider))
+        }
+    }
+}
+
+/// Create a fallback-aware provider from a primary and optional fallback config.
+///
+/// The two providers must serve the same vector space (same model / identical
+/// weights). If `fallback` is None this is equivalent to `create_provider`.
+pub async fn create_provider_with_fallback(
+    primary: &ProviderConfig,
+    fallback: Option<&ProviderConfig>,
+) -> anyhow::Result<Box<dyn EmbeddingProvider>> {
+    let primary_provider = create_provider(primary).await?;
+
+    match fallback {
+        None => Ok(primary_provider),
+        Some(fb_config) => {
+            let fallback_provider = create_provider(fb_config).await?;
+            let wrapped = super::fallback::FallbackProvider::new(primary_provider, fallback_provider)?;
+            Ok(Box::new(wrapped))
         }
     }
 }

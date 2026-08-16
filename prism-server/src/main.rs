@@ -133,7 +133,18 @@ async fn main() -> Result<()> {
     // Set up embedding provider if enabled
     if config.embedding.enabled {
         tracing::info!("Setting up embedding provider...");
-        match prism::embedding::create_provider(&config.embedding.provider).await {
+        if let Some(ref fb) = config.embedding.fallback {
+            tracing::info!(
+                "Embedding fallback provider configured (model: {})",
+                fb.model_display_name()
+            );
+        }
+        match prism::embedding::create_provider_with_fallback(
+            &config.embedding.provider,
+            config.embedding.fallback.as_ref(),
+        )
+        .await
+        {
             Ok(provider) => {
                 // Priority: CLI arg > env var > config > default
                 let cache_path = args

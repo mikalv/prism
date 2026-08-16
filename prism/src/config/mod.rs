@@ -303,6 +303,11 @@ pub struct EmbeddingConfig {
     /// Provider configuration (ollama, openai, etc.)
     #[serde(default)]
     pub provider: crate::embedding::ProviderConfig,
+    /// Optional fallback provider used when the primary is unreachable.
+    /// MUST serve the same vector space (same model / identical weights),
+    /// e.g. bge-m3 on local Ollama with baai/bge-m3 on NVIDIA NIM.
+    #[serde(default)]
+    pub fallback: Option<crate::embedding::ProviderConfig>,
     /// Cache directory for embeddings (optional)
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
@@ -331,6 +336,7 @@ impl Default for EmbeddingConfig {
         Self {
             enabled: default_true(),
             provider: crate::embedding::ProviderConfig::default(),
+            fallback: None,
             cache_dir: None,
             batch_size: default_embed_batch_size(),
             concurrency: default_embed_concurrency(),

@@ -51,6 +51,13 @@ fn known_dimensions(model: &str) -> Option<usize> {
         "text-embedding-3-small" => Some(1536),
         "text-embedding-3-large" => Some(3072),
         "text-embedding-ada-002" => Some(1536),
+        // NVIDIA NIM (integrate.api.nvidia.com)
+        "baai/bge-m3" => Some(1024),
+        "nvidia/nv-embedqa-e5-v5" => Some(1024),
+        "snowflake/arctic-embed-l" => Some(1024),
+        "nvidia/nemotron-3-embed-1b" => Some(2048),
+        "nvidia/llama-nemotron-embed-1b-v2" => Some(2048),
+        "nvidia/nv-embed-v1" => Some(4096),
         _ => None,
     }
 }

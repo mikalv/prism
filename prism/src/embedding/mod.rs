@@ -5,6 +5,7 @@
 //! - OpenAI-compatible APIs
 //! - ONNX (local model inference)
 
+mod fallback;
 mod ollama;
 mod openai;
 mod provider;
@@ -16,9 +17,10 @@ mod model;
 #[cfg(feature = "provider-onnx")]
 mod onnx;
 
+pub use fallback::FallbackProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
-pub use provider::{create_provider, EmbeddingProvider, ProviderConfig};
+pub use provider::{create_provider, create_provider_with_fallback, EmbeddingProvider, ProviderConfig};
 
 #[cfg(feature = "provider-onnx")]
 pub use inference::Embedder;
