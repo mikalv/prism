@@ -7,9 +7,28 @@ use crate::schema::{CollectionSchema, SchemaLoader};
 use crate::{Error, Result};
 use parking_lot::RwLock;
 use prism_storage::SegmentStorage;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+/// Per-collection outcome of a reindex run.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReindexCollectionResult {
+    pub collection: String,
+    /// Documents that had a stale embedding stripped and were re-embedded.
+    pub reembedded: usize,
+    /// Documents that had no stored embedding (already clean or new).
+    pub skipped: usize,
+}
+
+/// Aggregate outcome of a multi-collection reindex run.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReindexSummary {
+    pub collections: Vec<ReindexCollectionResult>,
+    pub total_reembedded: usize,
+    pub total_skipped: usize,
+}
 
 pub struct CollectionManager {
     schemas: RwLock<HashMap<String, CollectionSchema>>,
@@ -368,6 +387,129 @@ impl CollectionManager {
             start.elapsed().as_secs_f64(),
             err_count,
         );
+    }
+
+    /// Reindex one collection: scroll all documents from the text backend,
+    /// strip the stored embedding field, and re-index them so auto-embedding
+    /// regenerates vectors with the currently configured provider. Returns
+    /// (collections processed, documents re-embedded, documents skipped).
+    ///
+    /// For text-only collections this is a no-op returning zero counts.
+    #[tracing::instrument(name = "reindex_collection", skip(self), fields(collection = %collection))]
+    pub async fn reindex_collection(
+        &self,
+        collection: &str,
+        batch_size: usize,
+    ) -> Result<(usize, usize, usize)> {
+        let resolved = self.resolve_collection_name(collection);
+        let collection = resolved.as_str();
+
+        let embedding_fields = {
+            let schemas = self.schemas.read();
+            let schema = schemas
+                .get(collection)
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+            schema
+                .embedding_generation
+                .as_ref()
+                .filter(|e| e.enabled)
+                .map(|e| (e.source_field.clone(), e.target_field.clone()))
+        };
+
+        // Text-only collection: nothing to re-embed.
+        let (source_field, target_field) = match embedding_fields {
+            Some((s, t)) => (s, t),
+            None => {
+                tracing::info!(collection, "reindex: no embedding config, skipping");
+                return Ok((1, 0, 0));
+            }
+        };
+        let mut offset = 0usize;
+        let mut reembedded = 0usize;
+        let mut skipped = 0usize;
+        loop {
+            // `field:[* TO *]` matches every doc where the embedding SOURCE
+            // field exists — i.e. all docs eligible for embedding.
+            let query = crate::backends::Query {
+                query_string: format!("{}:[* TO *]", source_field),
+                fields: vec![],
+                limit: batch_size,
+                offset,
+                ..Default::default()
+            };
+
+            let page = self.text_backend.search(collection, query.clone()).await?;
+            if page.results.is_empty() {
+                break;
+            }
+
+            let batch: Vec<Document> = page
+                .results
+                .iter()
+                .map(|r| {
+                    let mut fields = r.fields.clone();
+                    // Strip stale vector so auto-embed regenerates it.
+                    let had_vector = fields.remove(&target_field).is_some();
+                    if had_vector {
+                        reembedded += 1;
+                    } else {
+                        skipped += 1;
+                    }
+                    Document {
+                        id: r.id.clone(),
+                        fields,
+                    }
+                })
+                .collect();
+
+            self.index(collection, batch).await?;
+
+            offset += page.results.len();
+            if page.results.len() < batch_size {
+                break;
+            }
+        }
+
+        Ok((1, reembedded, skipped))
+    }
+
+    /// Reindex multiple collections (supports wildcards like `logs-*`).
+    /// Processes collections sequentially and aggregates results. A failing
+    /// collection aborts the run with the error; counts up to that point are
+    /// lost (the caller can retry the remaining collections).
+    #[tracing::instrument(name = "reindex_collections", skip(self))]
+    pub async fn reindex_collections(
+        &self,
+        patterns: &[String],
+        batch_size: usize,
+    ) -> Result<ReindexSummary> {
+        let collections = self.expand_collection_patterns(patterns);
+        if collections.is_empty() {
+            return Err(Error::InvalidQuery(format!(
+                "No collections match patterns: {:?}",
+                patterns
+            )));
+        }
+
+        let mut summary = ReindexSummary {
+            collections: Vec::with_capacity(collections.len()),
+            total_reembedded: 0,
+            total_skipped: 0,
+        };
+
+        for collection in collections {
+            let (_n, reembedded, skipped) =
+                self.reindex_collection(&collection, batch_size).await?;
+            summary.total_reembedded += reembedded;
+            summary.total_skipped += skipped;
+            summary.collections.push(ReindexCollectionResult {
+                collection,
+                reembedded,
+                skipped,
+            });
+        }
+
+        Ok(summary)
     }
 
     pub async fn index(&self, collection: &str, docs: Vec<Document>) -> Result<()> {

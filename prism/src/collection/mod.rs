@@ -2,4 +2,4 @@ pub mod detach;
 pub mod manager;
 
 pub use manager::CollectionManager;
-pub use manager::{MultiSearchResult, MultiSearchResults};
+pub use manager::{MultiSearchResult, MultiSearchResults, ReindexCollectionResult, ReindexSummary};

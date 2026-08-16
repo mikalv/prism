@@ -1909,6 +1909,57 @@ pub async fn reconstruct_document(
     Ok(Json(doc))
 }
 
+/// POST /admin/reindex — re-embed one or more collections (wildcards OK).
+///
+/// Body: `{ "collections": ["ltm-*", "docs"], "batch_size": 100 }`
+/// Strips stored embeddings and regenerates them with the active provider.
+#[derive(Debug, Deserialize)]
+pub struct ReindexParams {
+    /// Collection names or glob patterns (e.g. `ws_mikalv_docs_*`)
+    pub collections: Vec<String>,
+    /// Documents per scroll page (default 100)
+    #[serde(default = "default_reindex_batch_size")]
+    pub batch_size: usize,
+}
+
+fn default_reindex_batch_size() -> usize {
+    100
+}
+
+pub async fn reindex_collections(
+    State(manager): State<Arc<CollectionManager>>,
+    Json(params): Json<ReindexParams>,
+) -> Result<Json<crate::collection::ReindexSummary>, (StatusCode, String)> {
+    if params.collections.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "`collections` must contain at least one name or pattern".to_string(),
+        ));
+    }
+    if params.batch_size == 0 || params.batch_size > 1000 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "`batch_size` must be between 1 and 1000".to_string(),
+        ));
+    }
+
+    tracing::info!(
+        collections = ?params.collections,
+        batch_size = params.batch_size,
+        "Reindex request received"
+    );
+
+    let summary = manager
+        .reindex_collections(&params.collections, params.batch_size)
+        .await
+        .map_err(|e| {
+            tracing::error!("Reindex failed: {:?}", e);
+            into_http_error(e)
+        })?;
+
+    Ok(Json(summary))
+}
+
 // ============================================================================
 // Suggestions / Autocomplete API (Issue #47)
 // ============================================================================
