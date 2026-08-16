@@ -97,13 +97,115 @@ paths:
         - $ref: "#/components/parameters/documentId"
       responses:
         "200":
-          description: Document found
+          description: Document found (body is null when the document does not exist)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Document"
         "404":
-          description: Document or collection not found
+          description: Collection not found
+    put:
+      tags: [documents]
+      operationId: updateDocument
+      summary: Upsert document by ID
+      description: >
+        Index the request body fields as the document with the given ID.
+        Creates (201 + result:created) or replaces (200 + result:updated) —
+        the backend upserts, so no duplication. Requires write permission.
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Document fields
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateDocumentResponse"
+        "200":
+          description: Document updated (replaced)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateDocumentResponse"
+        "404":
+          description: Collection not found
+        "403":
+          description: Insufficient permissions
+    delete:
+      tags: [documents]
+      operationId: deleteDocument
+      summary: Delete document by ID
+      description: >
+        Idempotent — deleting a missing document returns 200 with
+        result:not_found; a missing collection returns 404. Requires delete
+        permission.
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/documentId"
+      responses:
+        "200":
+          description: Document deleted (or was already absent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteDocumentResponse"
+        "404":
+          description: Collection not found
+        "403":
+          description: Insufficient permissions
+
+  /collections/{collection}/_delete_by_query:
+    post:
+      tags: [documents]
+      operationId: deleteByQuery
+      summary: Delete all documents matching a query
+      description: >
+        Two-phase: fetch matching IDs (unranked), then batch delete. Capped
+        by max_deletes (default 1000; 0 = no cap). Requires delete permission.
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: Query string (same syntax as search; "*" or empty matches all)
+                  default: "*"
+                fields:
+                  type: array
+                  items:
+                    type: string
+                  description: Restrict matching to these fields
+                max_deletes:
+                  type: integer
+                  description: Cap on documents deleted per call (0 = no cap)
+                  default: 1000
+      responses:
+        "200":
+          description: Matching documents deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteByQueryResponse"
+        "400":
+          description: Invalid query
+        "404":
+          description: Collection not found
+        "403":
+          description: Insufficient permissions
 
   /collections/{name}:
     put:
@@ -886,6 +988,50 @@ components:
                 type: string
               error:
                 type: string
+
+    UpdateDocumentResponse:
+      type: object
+      required: [collection, id, result]
+      properties:
+        collection:
+          type: string
+        id:
+          type: string
+        result:
+          type: string
+          enum: [created, updated]
+          description: '"created" when the ID was new, "updated" when replaced'
+
+    DeleteDocumentResponse:
+      type: object
+      required: [collection, id, result]
+      properties:
+        collection:
+          type: string
+        id:
+          type: string
+        result:
+          type: string
+          enum: [deleted, not_found]
+          description: Idempotent — '"not_found"' when the document was already absent
+
+    DeleteByQueryResponse:
+      type: object
+      required: [collection, deleted, matched, failed, ids]
+      properties:
+        collection:
+          type: string
+        deleted:
+          type: integer
+        matched:
+          type: integer
+        failed:
+          type: integer
+        ids:
+          type: array
+          items:
+            type: string
+          description: IDs of the deleted documents
 
     CreateCollectionResponse:
       type: object
