@@ -27,3 +27,7 @@ inspiration
 .worktrees/
 /site/
 .worktrees/
+
+# Python artifacts
+clients/python/prismsearch/.venv/
+__pycache__/
