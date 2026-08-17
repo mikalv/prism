@@ -265,10 +265,10 @@ fn stage(args: &DistArgs, root: &Path, prefix: &str, staging: &Path) -> Result<(
     // -- bin/ ---------------------------------------------------------------
     let ext = bin_extension(&args.target);
     let server_src = release_bin(root, &args.target, "prism-server");
-    let cli_src = release_bin(root, &args.target, "prism");
+    let cli_src = release_bin(root, &args.target, "prismctl");
 
     copy_file(&server_src, &base.join(format!("bin/prism-server{}", ext)))?;
-    copy_file(&cli_src, &base.join(format!("bin/prism{}", ext)))?;
+    copy_file(&cli_src, &base.join(format!("bin/prismctl{}", ext)))?;
 
     fs::write(base.join("bin/start.sh"), generate_start_sh())?;
     #[cfg(unix)]
@@ -625,7 +625,7 @@ change the bind address, storage path, or embedding settings.
 
 ## CLI
 
-    bin/prism --help
+    bin/prismctl --help
 
 ## Documentation
 

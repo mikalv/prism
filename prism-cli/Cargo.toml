@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Prism CLI tools for migration and administration"
 
 [[bin]]
-name = "prism"
+name = "prismctl"
 path = "src/main.rs"
 
 [dependencies]
