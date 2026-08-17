@@ -563,8 +563,68 @@ impl CollectionManager {
                 .map(|e| e.enabled)
                 .unwrap_or(false)
         {
-            // Already vector-enabled: fall through to a plain re-embed pass.
-            tracing::info!(collection, "vectorize: already vector-enabled, re-embedding");
+            // Already vector-enabled. If the configured model differs from
+            // the active provider's model, embeddings would be a mix of two
+            // different vector spaces — dimensions may even differ (nomic=768
+            // vs mxbai/bge-m3=1024). Update the schema (model + dimension),
+            // drop the in-memory index, re-init from the new config, and
+            // re-embed everything. Otherwise a plain re-embed pass suffices.
+            let active_model = self.vector_backend.embedding_provider_model();
+            let active_dim = self.vector_backend.embedding_provider_dimensions();
+            let schema_model = schema.embedding_generation.as_ref().map(|e| e.model.clone());
+            let model_changed = active_model
+                .as_deref()
+                .zip(schema_model.as_deref())
+                .map(|(a, s)| !a.is_empty() && !s.is_empty() && a != s)
+                .unwrap_or(false);
+            let dim_mismatch = active_dim
+                .zip(schema.backends.vector.as_ref().map(|v| v.dimension))
+                .map(|(a, s)| a != s)
+                .unwrap_or(false);
+
+            if !model_changed && !dim_mismatch {
+                tracing::info!(collection, "vectorize: already vector-enabled with matching model, re-embedding");
+                return self.reindex_collection(collection, batch_size).await;
+            }
+
+            tracing::info!(
+                collection,
+                model_changed,
+                dim_mismatch,
+                "vectorize: model/dimension changed, rebuilding vector index"
+            );
+            let mut new_schema = schema.clone();
+            if let Some(m) = active_model {
+                if let Some(e) = new_schema.embedding_generation.as_mut() {
+                    e.model = m;
+                }
+            }
+            if let (Some(dim), Some(v)) = (active_dim, new_schema.backends.vector.as_mut()) {
+                v.dimension = dim;
+            }
+            // Lint, re-init backend, persist, then fall through to the shared
+            // backfill path below by treating new_schema as the working one.
+            let issues = SchemaLoader::lint_schema(&new_schema);
+            if !issues.is_empty() {
+                return Err(Error::Schema(format!(
+                    "Schema lint errors for '{}': {}",
+                    collection,
+                    issues.join("; ")
+                )));
+            }
+            self.vector_backend.remove_collection(collection).await?;
+            let backend =
+                Self::build_backend_for_schema(&new_schema, &self.text_backend, &self.vector_backend)?;
+            self.vector_backend.initialize(collection, &new_schema).await?;
+            if let Some(b) = backend {
+                self.per_collection_backends
+                    .write()
+                    .insert(collection.to_string(), b);
+            }
+            self.schemas
+                .write()
+                .insert(collection.to_string(), new_schema.clone());
+            self.persist_schema(&new_schema)?;
             return self.reindex_collection(collection, batch_size).await;
         }
 

@@ -147,6 +147,13 @@ impl VectorBackend {
         ep.as_ref().map(|p| p.provider().dimensions())
     }
 
+    /// Model name of the active embedding provider, if configured. Used by
+    /// vectorize to detect model changes that require full re-embedding.
+    pub fn embedding_provider_model(&self) -> Option<String> {
+        let ep = self.embedding_provider.read();
+        ep.as_ref().map(|p| p.provider().model_name().to_string())
+    }
+
     /// Get cache statistics from the embedding provider
     pub async fn embedding_cache_stats(&self) -> Option<EmbeddingCacheStats> {
         let provider = {
