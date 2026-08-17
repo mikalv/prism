@@ -672,6 +672,7 @@ impl ApiServer {
             )
             .route("/admin/lint-schemas", get(crate::api::routes::lint_schemas))
             .route("/admin/reindex", post(crate::api::routes::reindex_collections))
+            .route("/admin/vectorize", post(crate::api::routes::vectorize_collections))
             .route("/admin/debug", get(crate::api::routes::debug_info))
             // Root endpoint (superseded by ES-compat `/`)
             // .route("/", get(crate::api::routes::root))

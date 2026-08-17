@@ -140,6 +140,13 @@ impl VectorBackend {
         *ep = Some(provider);
     }
 
+    /// Dimension of the active embedding provider's model, if configured.
+    /// Used by vectorize to size new vector backends correctly.
+    pub fn embedding_provider_dimensions(&self) -> Option<usize> {
+        let ep = self.embedding_provider.read();
+        ep.as_ref().map(|p| p.provider().dimensions())
+    }
+
     /// Get cache statistics from the embedding provider
     pub async fn embedding_cache_stats(&self) -> Option<EmbeddingCacheStats> {
         let provider = {

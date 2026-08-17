@@ -3,7 +3,8 @@ use crate::backends::{
     SearchResultsWithAggs, ShardedGraphBackend, TextBackend, VectorBackend,
 };
 use crate::ranking::reranker::{RerankOptions, Reranker};
-use crate::schema::{CollectionSchema, SchemaLoader};
+use crate::schema::{CollectionSchema, SchemaLoader, VectorBackendConfig};
+use crate::schema::types::{EmbeddingGenerationConfig, VectorDistance};
 use crate::{Error, Result};
 use parking_lot::RwLock;
 use prism_storage::SegmentStorage;
@@ -474,6 +475,193 @@ impl CollectionManager {
         }
 
         Ok((1, reembedded, skipped))
+    }
+
+    /// Add vector embedding to an existing text-only collection and
+    /// backfill embeddings for all documents.
+    ///
+    /// Mutates the schema: sets `backends.vector` (dimension/model taken
+    /// from the currently configured embedding provider when not supplied)
+    /// and `embedding_generation` (source/target fields). Then re-initializes
+    /// the collection's backend so the hybrid coordinator picks up vector
+    /// search, persists the schema, and finally re-indexes every document
+    /// through the normal index path — which triggers `VectorBackend::index`
+    /// auto-embedding for docs that lack the target vector field.
+    ///
+    /// Returns (collections processed, docs re-embedded, docs skipped).
+    #[tracing::instrument(name = "vectorize_collections", skip(self))]
+    pub async fn vectorize_collections(
+        &self,
+        patterns: &[String],
+        source_field: Option<String>,
+        target_field: Option<String>,
+        model: Option<String>,
+        batch_size: usize,
+    ) -> Result<ReindexSummary> {
+        let collections = self.expand_collection_patterns(patterns);
+        if collections.is_empty() {
+            return Err(Error::InvalidQuery(format!(
+                "No collections match patterns: {:?}",
+                patterns
+            )));
+        }
+
+        let mut summary = ReindexSummary {
+            collections: Vec::with_capacity(collections.len()),
+            total_reembedded: 0,
+            total_skipped: 0,
+        };
+
+        for collection in collections {
+            let (_n, reembedded, skipped) = self
+                .vectorize_collection(
+                    &collection,
+                    source_field.as_deref(),
+                    target_field.as_deref(),
+                    model.as_deref(),
+                    batch_size,
+                )
+                .await?;
+            summary.total_reembedded += reembedded;
+            summary.total_skipped += skipped;
+            summary.collections.push(ReindexCollectionResult {
+                collection,
+                reembedded,
+                skipped,
+            });
+        }
+
+        Ok(summary)
+    }
+
+    /// Single-collection vectorize: see [`vectorize_collections`].
+    #[tracing::instrument(name = "vectorize_collection", skip(self), fields(collection = %collection))]
+    pub async fn vectorize_collection(
+        &self,
+        collection: &str,
+        source_field: Option<&str>,
+        target_field: Option<&str>,
+        model: Option<&str>,
+        batch_size: usize,
+    ) -> Result<(usize, usize, usize)> {
+        let resolved = self.resolve_collection_name(collection);
+        let collection = resolved.as_str();
+
+        // Mutate the schema: add vector backend + embedding generation.
+        let schema = {
+            let schemas = self.schemas.read();
+            schemas
+                .get(collection)
+                .cloned()
+                .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?
+        };
+
+        if schema.backends.vector.is_some()
+            && schema
+                .embedding_generation
+                .as_ref()
+                .map(|e| e.enabled)
+                .unwrap_or(false)
+        {
+            // Already vector-enabled: fall through to a plain re-embed pass.
+            tracing::info!(collection, "vectorize: already vector-enabled, re-embedding");
+            return self.reindex_collection(collection, batch_size).await;
+        }
+
+        // Resolve source/target from explicit args, then schema hints, then
+        // document-backed defaults.
+        let source_field = source_field
+            .map(|s| s.to_string())
+            .or_else(|| {
+                schema
+                    .embedding_generation
+                    .as_ref()
+                    .map(|e| e.source_field.clone())
+            })
+            .unwrap_or_else(|| "content".to_string());
+        let target_field = target_field
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| {
+                schema
+                    .embedding_generation
+                    .as_ref()
+                    .map(|e| e.target_field.clone())
+                    .unwrap_or_else(|| "embedding".to_string())
+            });
+
+        let mut new_schema = schema.clone();
+        new_schema.embedding_generation = Some(EmbeddingGenerationConfig {
+            enabled: true,
+            model: model.map(|m| m.to_string()).unwrap_or_default(),
+            source_field: source_field.clone(),
+            target_field: target_field.clone(),
+        });
+        if new_schema.backends.vector.is_none() {
+            new_schema.backends.vector = Some(VectorBackendConfig {
+                embedding_field: target_field.clone(),
+                dimension: 0, // filled from provider below
+                distance: VectorDistance::Cosine,
+                hnsw_m: 16,
+                hnsw_ef_construction: 200,
+                hnsw_ef_search: 100,
+                vector_weight: 0.5,
+                num_shards: 1,
+                shard_oversample: 2.5,
+                compaction: Default::default(),
+                wal: Default::default(),
+            });
+        }
+
+        // Dimension must come from the active provider (e.g. 768 for
+        // nomic-embed-text); a mismatch would break every vector query.
+        let dim = self
+            .vector_backend
+            .embedding_provider_dimensions()
+            .ok_or_else(|| {
+                Error::InvalidQuery(
+                    "No embedding provider configured on this server — cannot vectorize. \
+                     Set [embedding] in prism.toml and restart."
+                        .to_string(),
+                )
+            })?;
+        if let Some(v) = new_schema.backends.vector.as_mut() {
+            v.dimension = dim;
+        }
+
+        // Lint before applying so we fail loudly on bad config.
+        let issues = SchemaLoader::lint_schema(&new_schema);
+        if !issues.is_empty() {
+            return Err(Error::Schema(format!(
+                "Schema lint errors for '{}': {}",
+                collection,
+                issues.join("; ")
+            )));
+        }
+
+        // Re-apply schema in memory: rebuild backend, re-init vector index.
+        let backend =
+            Self::build_backend_for_schema(&new_schema, &self.text_backend, &self.vector_backend)?;
+        self.vector_backend.initialize(collection, &new_schema).await?;
+        if let Some(b) = backend {
+            self.per_collection_backends
+                .write()
+                .insert(collection.to_string(), b);
+        }
+        self.schemas
+            .write()
+            .insert(collection.to_string(), new_schema.clone());
+        self.persist_schema(&new_schema)?;
+        tracing::info!(
+            collection,
+            source = %source_field,
+            target = %target_field,
+            dim,
+            "vectorize: schema updated, starting backfill"
+        );
+
+        // Backfill: stream all docs through index() which auto-embeds.
+        // Reuse the existing reindex pass now that the schema is vector-enabled.
+        self.reindex_collection(collection, batch_size).await
     }
 
     /// Reindex multiple collections (supports wildcards like `logs-*`).

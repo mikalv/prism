@@ -1960,6 +1960,75 @@ pub async fn reindex_collections(
     Ok(Json(summary))
 }
 
+/// POST /admin/vectorize — add vector embedding to text-only collections
+/// and backfill embeddings for all documents.
+///
+/// Body: `{ "collections": ["ws_*"], "source_field": "content",
+///         "target_field": "embedding", "batch_size": 100 }`
+///
+/// - `source_field` defaults to `content` (falls back to schema hint)
+/// - `target_field` defaults to `embedding`
+/// - `model` is recorded in the schema but the ACTIVE provider is always
+///   used for generation; dimension is taken from the provider.
+/// - Collections that already have vector enabled get a plain re-embed pass.
+#[derive(Debug, Deserialize)]
+pub struct VectorizeParams {
+    /// Collection names or glob patterns (e.g. `ws_mikalv_docs_*`)
+    pub collections: Vec<String>,
+    /// Field to embed (default: `content`)
+    #[serde(default)]
+    pub source_field: Option<String>,
+    /// Field to store the vector in (default: `embedding`)
+    #[serde(default)]
+    pub target_field: Option<String>,
+    /// Model name recorded in schema metadata (default: active provider's)
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Documents per scroll page (default 100)
+    #[serde(default = "default_reindex_batch_size")]
+    pub batch_size: usize,
+}
+
+pub async fn vectorize_collections(
+    State(manager): State<Arc<CollectionManager>>,
+    Json(params): Json<VectorizeParams>,
+) -> Result<Json<crate::collection::ReindexSummary>, (StatusCode, String)> {
+    if params.collections.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "`collections` must contain at least one name or pattern".to_string(),
+        ));
+    }
+    if params.batch_size == 0 || params.batch_size > 1000 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "`batch_size` must be between 1 and 1000".to_string(),
+        ));
+    }
+
+    tracing::info!(
+        collections = ?params.collections,
+        source = ?params.source_field,
+        "Vectorize request received"
+    );
+
+    let summary = manager
+        .vectorize_collections(
+            &params.collections,
+            params.source_field,
+            params.target_field,
+            params.model,
+            params.batch_size,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Vectorize failed: {:?}", e);
+            into_http_error(e)
+        })?;
+
+    Ok(Json(summary))
+}
+
 // ============================================================================
 // Suggestions / Autocomplete API (Issue #47)
 // ============================================================================
