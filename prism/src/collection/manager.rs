@@ -447,7 +447,16 @@ impl CollectionManager {
             let batch: Vec<Document> = page
                 .results
                 .iter()
-                .map(|r| {
+                .filter_map(|r| {
+                    // Skip docs whose vector is already in the HNSW index:
+                    // re-writing them through index() would re-embed (cached)
+                    // and more importantly re-write HNSW + tantivy, which is
+                    // what makes restarts quadratic. Embedding cache keeps
+                    // the HTTP call cheap, but the write path is not.
+                    if self.vector_backend.has_vector(collection, &r.id) {
+                        skipped += 1;
+                        return None;
+                    }
                     let mut fields = r.fields.clone();
                     // Strip any stale vector cached in the stored fields; the
                     // live vector lives in the vector index and is overwritten
@@ -459,14 +468,19 @@ impl CollectionManager {
                     } else {
                         skipped += 1;
                     }
-                    Document {
+                    if !eligible {
+                        return None;
+                    }
+                    Some(Document {
                         id: r.id.clone(),
                         fields,
-                    }
+                    })
                 })
                 .collect();
 
-            self.index(collection, batch).await?;
+            if !batch.is_empty() {
+                self.index(collection, batch).await?;
+            }
 
             offset += page.results.len();
             if page.results.len() < batch_size {

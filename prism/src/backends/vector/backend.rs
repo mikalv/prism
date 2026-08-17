@@ -154,6 +154,22 @@ impl VectorBackend {
         ep.as_ref().map(|p| p.provider().model_name().to_string())
     }
 
+    /// Whether the collection's vector index already holds a vector for
+    /// `doc_id`. Used by reindex to skip docs whose embedding is already
+    /// present (avoids re-writing them through HNSW/tantivy on restart).
+    pub fn has_vector(&self, collection: &str, doc_id: &str) -> bool {
+        let indexes = self.indexes.read();
+        let Some(sharded) = indexes.get(collection) else {
+            return false;
+        };
+        let shard_id = shard_for_doc(doc_id, sharded.num_shards) as usize;
+        sharded
+            .shards
+            .get(shard_id)
+            .map(|s| s.contains(doc_id))
+            .unwrap_or(false)
+    }
+
     /// Get cache statistics from the embedding provider
     pub async fn embedding_cache_stats(&self) -> Option<EmbeddingCacheStats> {
         let provider = {
