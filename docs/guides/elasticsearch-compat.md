@@ -10,7 +10,7 @@ Build with the `es-compat` feature flag:
 cargo build --release -p prismsearch-server --features es-compat
 ```
 
-When enabled, ES-compatible endpoints are mounted at the `/_elastic/` prefix.
+When enabled, ES-compatible endpoints are mounted at their standard Elasticsearch paths on the root router (no `/_elastic` prefix — Kibana and ES clients connect directly).
 
 ## Supported Endpoints
 
@@ -18,36 +18,36 @@ When enabled, ES-compatible endpoints are mounted at the `/_elastic/` prefix.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/_elastic/` | Cluster info (version, name) |
-| `GET` | `/_elastic/_cat/indices` | List all indices |
-| `GET` | `/_elastic/_cluster/health` | Cluster health |
+| `GET` | `/` | Cluster info (version, name) |
+| `GET` | `/_cat/indices` | List all indices |
+| `GET` | `/_cluster/health` | Cluster health |
 
 ### Document CRUD
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/_elastic/{index}/_doc/{id}` | Get document by ID |
-| `HEAD` | `/_elastic/{index}/_doc/{id}` | Check if document exists |
-| `POST` | `/_elastic/{index}/_doc` | Index document (auto-ID) |
-| `PUT` | `/_elastic/{index}/_doc/{id}` | Index document (explicit ID) |
-| `DELETE` | `/_elastic/{index}/_doc/{id}` | Delete document |
+| `GET` | `/{index}/_doc/{id}` | Get document by ID |
+| `HEAD` | `/{index}/_doc/{id}` | Check if document exists |
+| `POST` | `/{index}/_doc` | Index document (auto-ID) |
+| `PUT` | `/{index}/_doc/{id}` | Index document (explicit ID) |
+| `DELETE` | `/{index}/_doc/{id}` | Delete document |
 
 ### Search
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/_elastic/{index}/_search` | Search with ES query DSL |
-| `GET` | `/_elastic/{index}/_search?q=...` | Query string search |
-| `POST` | `/_elastic/_msearch` | Multi-search |
-| `GET` | `/_elastic/{index}/_count` | Count documents |
+| `POST` | `/{index}/_search` | Search with ES query DSL |
+| `GET` | `/{index}/_search?q=...` | Query string search |
+| `POST` | `/_msearch` | Multi-search |
+| `GET` | `/{index}/_count` | Count documents |
 
 ### Index Management
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `HEAD` | `/_elastic/{index}` | Check if index exists |
-| `GET` | `/_elastic/{index}/_mapping` | Get index mapping |
-| `POST` | `/_elastic/{index}/_bulk` | Bulk index/delete operations |
+| `HEAD` | `/{index}` | Check if index exists |
+| `GET` | `/{index}/_mapping` | Get index mapping |
+| `POST` | `/{index}/_bulk` | Bulk index/delete operations |
 
 ## Response Format
 
@@ -56,7 +56,7 @@ Responses follow Elasticsearch 7+ conventions with `_index`, `_id`, `_version`, 
 ### Get Document
 
 ```bash
-curl http://localhost:3080/_elastic/articles/_doc/doc-1
+curl http://localhost:3080/articles/_doc/doc-1
 ```
 
 ```json
@@ -75,7 +75,7 @@ curl http://localhost:3080/_elastic/articles/_doc/doc-1
 ### Index Document
 
 ```bash
-curl -X PUT http://localhost:3080/_elastic/articles/_doc/doc-1 \
+curl -X PUT http://localhost:3080/articles/_doc/doc-1 \
   -H "Content-Type: application/json" \
   -d '{"title": "Hello", "content": "World"}'
 ```
@@ -97,7 +97,7 @@ curl -X PUT http://localhost:3080/_elastic/articles/_doc/doc-1 \
 ### Delete Document
 
 ```bash
-curl -X DELETE http://localhost:3080/_elastic/articles/_doc/doc-1
+curl -X DELETE http://localhost:3080/articles/_doc/doc-1
 ```
 
 ```json
@@ -113,13 +113,13 @@ curl -X DELETE http://localhost:3080/_elastic/articles/_doc/doc-1
 ### Query String Search
 
 ```bash
-curl "http://localhost:3080/_elastic/articles/_search?q=hello&size=5"
+curl "http://localhost:3080/articles/_search?q=hello&size=5"
 ```
 
 ### Count
 
 ```bash
-curl http://localhost:3080/_elastic/articles/_count
+curl http://localhost:3080/articles/_count
 ```
 
 ```json
@@ -132,7 +132,7 @@ curl http://localhost:3080/_elastic/articles/_count
 ### Bulk Operations
 
 ```bash
-curl -X POST http://localhost:3080/_elastic/articles/_bulk \
+curl -X POST http://localhost:3080/articles/_bulk \
   -H "Content-Type: application/x-ndjson" \
   -d '
 {"index": {"_id": "1"}}
@@ -165,7 +165,7 @@ filters. Two behaviors are worth calling out explicitly:
 
 ## Client Libraries
 
-Every `/_elastic/*` response carries the `X-Elastic-Product: Elasticsearch`
+Every `/*` response carries the `X-Elastic-Product: Elasticsearch`
 header, which the official clients (elasticsearch-py/js/java ≥ 7.14) require
 before they will talk to the server.
 
@@ -174,7 +174,7 @@ before they will talk to the server.
 ```python
 from elasticsearch import Elasticsearch
 
-es = Elasticsearch("http://localhost:3080/_elastic")
+es = Elasticsearch("http://localhost:3080")
 es.index(index="articles", id="1", document={"title": "Hello"})
 result = es.search(index="articles", query={"match": {"title": "hello"}})
 ```
@@ -189,13 +189,13 @@ PrismEx.search("articles", %{query: %{match: %{title: "hello"}}})
 
 ## Feature matrix
 
-A quick reference for what the `/_elastic` compatibility layer supports, what
+A quick reference for what the ES compatibility layer supports, what
 is partially supported, and what is not supported. Verified against
 `prism-es-compat/src/router.rs`, `query/types.rs`, and `query/translator.rs`.
 
 ### REST endpoints
 
-| ES endpoint | Prism `/_elastic` | Notes |
+| ES endpoint | Prism ES-compat | Notes |
 |---|:---:|---|
 | `GET /` (cluster info) | ✅ | Version, name |
 | `GET /_cluster/health` | ✅ | |

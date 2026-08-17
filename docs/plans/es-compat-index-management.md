@@ -1,5 +1,7 @@
 # Plan: ES-compat index create/delete endpoints
 
+> **Note (2026-08-16):** Since the Kibana bring-up, ES-compat endpoints are served at their standard Elasticsearch paths on the root router — the `/_elastic` prefix referenced below was removed.
+
 **Status:** Draft for review
 **Goal:** Add `PUT /{index}` and `DELETE /{index}` to the `/_elastic`
 compatibility layer so that apps speaking the ES REST API can manage the

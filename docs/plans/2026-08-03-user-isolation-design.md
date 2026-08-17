@@ -1,5 +1,7 @@
 # User Isolation Mode — Design & Plan
 
+> **Note (2026-08-16):** Since the Kibana bring-up, ES-compat endpoints are served at their standard Elasticsearch paths on the root router — the `/_elastic` prefix referenced below was removed.
+
 **Date:** 2026-08-03
 **Status:** Proposal
 **Effort estimate:** Small–Medium (~1 focused day for the core; ES-compat audit is the long pole)

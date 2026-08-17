@@ -10,7 +10,7 @@ Prism uses Cargo feature flags to include optional components:
 |---------|-------------|
 | `full` | All embedding providers and storage backends |
 | `ui` | Embedded web UI at `/ui/` |
-| `es-compat` | Elasticsearch-compatible API at `/_elastic/` |
+| `es-compat` | Elasticsearch-compatible API at `/` |
 | `cluster` | Clustering and federation support |
 | `storage-s3` | S3/MinIO storage backend |
 | `provider-openai` | OpenAI embeddings |
