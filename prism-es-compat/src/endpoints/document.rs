@@ -245,14 +245,24 @@ pub async fn put_doc_handler(
     // Auto-create index if it doesn't exist (ES auto_create_index).
     ensure_collection(&state, &index, Some(&doc.fields)).await?;
 
+    // ES semantics: 200 + "updated" when the id already exists,
+    // 201 + "created" when it is new.
+    let existed = state.manager.get(&index, &id).await?.is_some();
+
     state.manager.index(&index, vec![doc]).await?;
 
+    let (status, result) = if existed {
+        (StatusCode::OK, "updated")
+    } else {
+        (StatusCode::CREATED, "created")
+    };
+
     Ok((
-        StatusCode::CREATED,
+        status,
         Json(EsIndexResponse { index,
         id,
         version: 1,
-        result: "created".to_string(),
+        result: result.to_string(),
         shards: ShardStats::default(), seq_no: 0, primary_term: 1 }),
     ))
 }
@@ -262,6 +272,20 @@ pub async fn delete_doc_handler(
     State(state): State<EsCompatState>,
     Path((index, id)): Path<(String, String)>,
 ) -> Result<Json<EsDeleteResponse>, EsCompatError> {
+    // ES semantics: 404 when the index does not exist; 200 + result
+    // "not_found" when the index exists but the doc does not.
+    if state.manager.get_schema(&index).is_none() {
+        return Err(EsCompatError::IndexNotFound(index));
+    }
+    let existed = state.manager.get(&index, &id).await?.is_some();
+    if !existed {
+        return Ok(Json(EsDeleteResponse { index,
+        id,
+        version: 1,
+        result: "not_found".to_string(),
+        shards: ShardStats::default(), seq_no: 0, primary_term: 1 }));
+    }
+
     state.manager.delete(&index, vec![id.clone()]).await?;
 
     Ok(Json(EsDeleteResponse { index,
@@ -793,6 +817,10 @@ pub struct SearchQueryParams {
     pub q: Option<String>,
     pub size: Option<usize>,
     pub from: Option<usize>,
+    /// Sort spec, e.g. `sort=timestamp:desc` or `sort=price,title:asc`
+    /// (comma-separated, same syntax as ES).
+    #[serde(default)]
+    pub sort: Option<String>,
 }
 
 /// GET /_elastic/{index}/_search?q=... - Query string search
@@ -815,7 +843,26 @@ pub async fn get_search_handler(
         return Err(EsCompatError::IndexNotFound(index));
     }
 
-    // Build an EsSearchRequest from query params
+    // Build an EsSearchRequest from query params. `sort` arrives as a
+    // comma-separated string (`timestamp:desc,price`); parse each clause
+    // through serde_json so it reuses the same lenient untagged SortClause
+    // deserializer as POST bodies.
+    let mut sort: Option<Vec<crate::query::SortClause>> = None;
+    if let Some(sort_str) = params.sort.as_deref() {
+        let clauses: Vec<serde_json::Value> = sort_str
+            .split(',')
+            .map(|c| c.trim())
+            .filter(|c| !c.is_empty())
+            .map(|c| match c.split_once(':') {
+                Some((field, order)) => serde_json::json!({ field: order }),
+                None => serde_json::Value::String(c.to_string()),
+            })
+            .collect();
+        if !clauses.is_empty() {
+            sort = serde_json::from_value(serde_json::Value::Array(clauses)).ok();
+        }
+    }
+
     let request = if let Some(q) = params.q {
         use crate::query::{EsQuery, QueryStringQuery};
         EsSearchRequest {
@@ -828,12 +875,14 @@ pub async fn get_search_handler(
             })),
             from: params.from,
             size: params.size,
+            sort,
             ..Default::default()
         }
     } else {
         EsSearchRequest {
             from: params.from,
             size: params.size,
+            sort,
             ..Default::default()
         }
     };
