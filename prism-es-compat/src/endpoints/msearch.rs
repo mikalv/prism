@@ -5,6 +5,7 @@ use crate::error::EsCompatError;
 use crate::query::{EsSearchRequest, MSearchHeader, QueryTranslator};
 use crate::response::{EsError, EsMSearchItem, EsMSearchResponse, ResponseMapper};
 use axum::body::Bytes;
+use axum::extract::Path;
 use axum::extract::State;
 use axum::Json;
 use prism::backends::SearchResult;
@@ -15,9 +16,15 @@ use tracing::warn;
 /// POST /_elastic/_msearch - Multi-search
 pub async fn msearch_handler(
     State(state): State<EsCompatState>,
+    raw_query: Option<axum::extract::RawQuery>,
     body: Bytes,
 ) -> Result<Json<EsMSearchResponse>, EsCompatError> {
     let start = Instant::now();
+    let as_int = raw_query
+        .map(|axum::extract::RawQuery(q)| {
+            q.as_deref().is_some_and(|q| q.contains("rest_total_hits_as_int=true"))
+        })
+        .unwrap_or(false);
 
     // Parse NDJSON body
     let searches = parse_msearch_body(&body)?;
@@ -25,12 +32,50 @@ pub async fn msearch_handler(
     let mut responses = Vec::with_capacity(searches.len());
 
     for (header, request) in searches {
-        let result = execute_single_search(&state.manager, header, request).await;
+        let result = execute_single_search(&state.manager, header, request, as_int).await;
         responses.push(result);
     }
 
     let took_ms = start.elapsed().as_millis() as u64;
 
+    Ok(Json(EsMSearchResponse {
+        took: took_ms,
+        responses,
+    }))
+}
+
+
+/// POST /:index/_msearch — index-scoped multi-search. The path index is the
+/// default for any sub-search whose header omits `index` (Elasticsearch
+/// semantics). Kibana's taskManager polls `POST /<index>/_msearch`, so without
+/// this route every index-scoped msearch 404s and taskManager stays degraded.
+pub async fn msearch_handler_indexed(
+    State(state): State<EsCompatState>,
+    Path(index): Path<String>,
+    raw_query: Option<axum::extract::RawQuery>,
+    body: Bytes,
+) -> Result<Json<EsMSearchResponse>, EsCompatError> {
+    let start = Instant::now();
+    let as_int = raw_query
+        .map(|axum::extract::RawQuery(q)| {
+            q.as_deref().is_some_and(|q| q.contains("rest_total_hits_as_int=true"))
+        })
+        .unwrap_or(false);
+
+    let mut searches = parse_msearch_body(&body)?;
+    for (header, _request) in searches.iter_mut() {
+        if header.index.is_none() {
+            header.index = Some(index.clone());
+        }
+    }
+
+    let mut responses = Vec::with_capacity(searches.len());
+    for (header, request) in searches {
+        let result = execute_single_search(&state.manager, header, request, as_int).await;
+        responses.push(result);
+    }
+
+    let took_ms = start.elapsed().as_millis() as u64;
     Ok(Json(EsMSearchResponse {
         took: took_ms,
         responses,
@@ -73,6 +118,7 @@ async fn execute_single_search(
     manager: &CollectionManager,
     header: MSearchHeader,
     request: EsSearchRequest,
+    as_int: bool,
 ) -> EsMSearchItem {
     let start = Instant::now();
 
@@ -157,14 +203,20 @@ async fn execute_single_search(
     };
 
     let took_ms = start.elapsed().as_millis() as u64;
-    let response = ResponseMapper::map_search_results_with_source(
+    let response = ResponseMapper::map_search_results_opt(
         &index_name,
         results,
         took_ms,
         request.source.as_ref(),
         request.track_total_hits.as_ref(),
+        request.sort.as_deref(),
+        request.search_after.as_deref(),
+        as_int,
     );
-    EsMSearchItem::Success(response)
+    EsMSearchItem::Success {
+        response,
+        status: 200,
+    }
 }
 
 #[cfg(test)]

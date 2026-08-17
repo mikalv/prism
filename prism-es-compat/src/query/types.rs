@@ -33,6 +33,11 @@ pub struct EsSearchRequest {
     #[serde(default)]
     pub sort: Option<Vec<SortClause>>,
 
+    /// `search_after` cursor (values aligned with `sort`). Prism applies it
+    /// as a post-filter over the returned hits' sort tuples.
+    #[serde(default)]
+    pub search_after: Option<Vec<Value>>,
+
     /// Highlighting configuration
     #[serde(default)]
     pub highlight: Option<EsHighlight>,
@@ -96,6 +101,9 @@ pub enum EsQuery {
 
     /// Match phrase query
     MatchPhrase(HashMap<String, MatchPhraseQuery>),
+
+    /// Match phrase prefix query (phrase with the last term treated as a prefix)
+    MatchPhrasePrefix(HashMap<String, MatchPhraseQuery>),
 
     /// Multi-match across multiple fields
     MultiMatch(MultiMatchQuery),

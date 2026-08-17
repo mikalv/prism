@@ -1,10 +1,11 @@
 //! Query AST to Tantivy Query conversion adapter
 
-use crate::query::ast::{QueryNode, TermQuery};
+use crate::query::ast::{QueryNode, RangeQuery, TermQuery};
 use crate::query::{QueryError, Result};
 use std::collections::HashMap;
 use tantivy::query::{
-    AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, TermQuery as TantivyTermQuery,
+    AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, RangeQuery as TantivyRangeQuery,
+    TermQuery as TantivyTermQuery,
 };
 use tantivy::schema::{Field, Schema};
 use tantivy::Term;
@@ -38,10 +39,127 @@ impl QueryAdapter {
             QueryNode::Wildcard(_) => Err(QueryError::ExecutionError(
                 "Wildcard queries not yet implemented (Phase 2)".to_string(),
             )),
-            QueryNode::Range(_) => Err(QueryError::ExecutionError(
-                "Range queries not yet implemented (Phase 2)".to_string(),
-            )),
+            QueryNode::Range(range) => Self::convert_range(range, schema, field_map),
         }
+    }
+
+    /// Convert a range query on a field into a typed Tantivy RangeQuery.
+    ///
+    /// The bound strings are parsed according to the field's Tantivy entry
+    /// type: `date` fields parse RFC3339-ish timestamps (falling back to
+    /// date-math resolution), numeric fields parse integers/floats, and
+    /// everything else compares lexicographically as raw terms.
+    fn convert_range(
+        range: &RangeQuery,
+        schema: &Schema,
+        field_map: &HashMap<String, Field>,
+    ) -> Result<Box<dyn Query>> {
+        use std::ops::Bound as B;
+
+        let field = field_map
+            .get(&range.field)
+            .ok_or_else(|| QueryError::InvalidField(range.field.clone()))?;
+        let field_name = range.field.clone();
+        let entry = schema.get_field_entry(*field);
+        let value_type = entry.field_type().value_type();
+
+        let (l_bound, u_bound): (B<Term>, B<Term>) = match value_type {
+            tantivy::schema::Type::Date => {
+                let parse_date = |s: &str| -> Result<tantivy::DateTime> {
+                    let resolved = crate::date_math::resolve_date_math(s);
+                    let dt = chrono::DateTime::parse_from_rfc3339(&resolved).map_err(|e| {
+                        QueryError::ExecutionError(format!(
+                            "invalid date bound '{s}' for range on '{field_name}': {e}"
+                        ))
+                    })?;
+                    Ok(tantivy::DateTime::from_timestamp_micros(
+                        dt.timestamp_micros(),
+                    ))
+                };
+                let lower = match &range.lower {
+                    Some(s) => B::Included(Term::from_field_date(*field, parse_date(s)?)),
+                    None => B::Unbounded,
+                };
+                let upper = match &range.upper {
+                    Some(s) => {
+                        if range.inclusive {
+                            B::Included(Term::from_field_date(*field, parse_date(s)?))
+                        } else {
+                            B::Excluded(Term::from_field_date(*field, parse_date(s)?))
+                        }
+                    }
+                    None => B::Unbounded,
+                };
+                (lower, upper)
+            }
+            tantivy::schema::Type::I64
+            | tantivy::schema::Type::U64
+            | tantivy::schema::Type::F64 => {
+                let mk_term = |s: &str| -> Result<Term> {
+                    match value_type {
+                        tantivy::schema::Type::I64 => Ok(Term::from_field_i64(
+                            *field,
+                            s.parse::<i64>().map_err(|e| {
+                                QueryError::ExecutionError(format!(
+                                    "invalid i64 bound '{s}' for range on '{field_name}': {e}"
+                                ))
+                            })?,
+                        )),
+                        tantivy::schema::Type::U64 => Ok(Term::from_field_u64(
+                            *field,
+                            s.parse::<u64>().map_err(|e| {
+                                QueryError::ExecutionError(format!(
+                                    "invalid u64 bound '{s}' for range on '{field_name}': {e}"
+                                ))
+                            })?,
+                        )),
+                        _ => Ok(Term::from_field_f64(
+                            *field,
+                            s.parse::<f64>().map_err(|e| {
+                                QueryError::ExecutionError(format!(
+                                    "invalid f64 bound '{s}' for range on '{field_name}': {e}"
+                                ))
+                            })?,
+                        )),
+                    }
+                };
+                let lower = match &range.lower {
+                    Some(s) => B::Included(mk_term(s)?),
+                    None => B::Unbounded,
+                };
+                let upper = match &range.upper {
+                    Some(s) => {
+                        if range.inclusive {
+                            B::Included(mk_term(s)?)
+                        } else {
+                            B::Excluded(mk_term(s)?)
+                        }
+                    }
+                    None => B::Unbounded,
+                };
+                (lower, upper)
+            }
+            _ => {
+                // Str/text fields: lexicographic comparison over raw terms.
+                let lower = match &range.lower {
+                    Some(s) => B::Included(Term::from_field_text(*field, s)),
+                    None => B::Unbounded,
+                };
+                let upper = match &range.upper {
+                    Some(s) => {
+                        if range.inclusive {
+                            B::Included(Term::from_field_text(*field, s))
+                        } else {
+                            B::Excluded(Term::from_field_text(*field, s))
+                        }
+                    }
+                    None => B::Unbounded,
+                };
+                (lower, upper)
+            }
+        };
+
+        Ok(Box::new(TantivyRangeQuery::new(l_bound, u_bound)))
     }
 
     // Note: schema parameter kept for API consistency; will be used for field type validation in Phase 2

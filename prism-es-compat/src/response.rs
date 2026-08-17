@@ -39,7 +39,10 @@ impl Default for ShardStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HitsResponse {
-    pub total: TotalHits,
+    /// `TotalHits` object, or a bare integer when the client requested
+    /// `rest_total_hits_as_int=true` (legacy 6.x/7.x behaviour that Kibana's
+    /// saved-objects client still relies on).
+    pub total: Value,
     pub max_score: Option<f32>,
     pub hits: Vec<Hit>,
 }
@@ -74,6 +77,13 @@ pub struct Hit {
     pub source: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub highlight: Option<HashMap<String, Vec<String>>>,
+    /// Sort values for this hit, present when the request carried a `sort`.
+    /// Kibana's saved-objects pagination (PIT + `search_after`) reads the last
+    /// hit's `sort` array to request the next page; without it every hit lacks
+    /// `sort`, the client paginates with `search_after: [null, ...]`, and
+    //  `_find`-style queries return `total > 0` with empty pages forever.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<Vec<Value>>,
 }
 
 /// Default number of hits counted exactly before `hits.total` becomes a lower
@@ -144,6 +154,82 @@ fn matches_any(patterns: &[String], field: &str) -> bool {
     patterns.iter().any(|p| source_pattern_matches(p, field))
 }
 
+/// Flatten a JSON value into dotted leaf paths, e.g. `{"a":{"b":1}}` ->
+/// `["a.b" = 1]`. Arrays are kept whole (ES does not project into arrays for
+/// `_source` filtering of this kind; Kibana never asks for it).
+fn flatten_to_paths(v: &Value, prefix: &str, out: &mut Vec<(String, Value)>) {
+    match v {
+        Value::Object(m) => {
+            for (k, val) in m {
+                flatten_to_paths(val, &format!("{}.{}", prefix, k), out);
+            }
+        }
+        _ => out.push((prefix.to_string(), v.clone())),
+    }
+}
+
+/// Rebuild a nested object from dotted paths: `["a.b" = 1]` -> `{"a":{"b":1}}`.
+fn insert_path(map: &mut serde_json::Map<String, Value>, path: &[&str], val: Value) {
+    if path.len() == 1 {
+        map.insert(path[0].to_string(), val);
+        return;
+    }
+    let entry = map
+        .entry(path[0].to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if let Value::Object(m) = entry {
+        insert_path(m, &path[1..], val);
+    }
+}
+
+/// ES `_source` include patterns may address sub-fields of an object field,
+/// e.g. `"index-pattern.title"` on the stored object field `index-pattern`.
+/// ES returns `{"index-pattern": {"title": ...}}`. Projects `v` (the value of
+/// field `name`) down to the include patterns that fall under `name.`.
+fn project_subfields(v: &Value, name: &str, includes: &[String]) -> Option<Value> {
+    let sub_patterns: Vec<&String> = includes
+        .iter()
+        .filter(|p| p.starts_with(&format!("{}.", name)))
+        .collect();
+    if sub_patterns.is_empty() {
+        return None;
+    }
+    let mut flat = vec![];
+    flatten_to_paths(v, name, &mut flat);
+    let matched: Vec<&(String, Value)> = flat
+        .iter()
+        .filter(|(path, _)| sub_patterns.iter().any(|p| source_pattern_matches(p, path)))
+        .collect();
+    if matched.is_empty() {
+        return None;
+    }
+    let mut out = serde_json::Map::new();
+    for (path, val) in matched {
+        // Strip the field-name prefix: path is "<field>.<sub.path>", and the
+        // projected value is stored under the field key itself.
+        let sub = path
+            .strip_prefix(&format!("{}.", name))
+            .unwrap_or(path.as_str());
+        let segs: Vec<&str> = sub.split('.').collect();
+        insert_path(&mut out, &segs, val.clone());
+    }
+    Some(Value::Object(out))
+}
+
+/// Filter fields by include patterns with whole-field match plus sub-field
+/// projection for object values (see `project_subfields`).
+fn filter_includes(fields: HashMap<String, Value>, includes: &[String]) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    for (k, v) in fields {
+        if matches_any(includes, &k) {
+            out.insert(k, v);
+        } else if let Some(projected) = project_subfields(&v, &k, includes) {
+            out.insert(k, projected);
+        }
+    }
+    out
+}
+
 /// Flatten the `_dynamic` catch-all field into top-level fields.
 ///
 /// Prism routes document fields not declared in the collection schema into a
@@ -177,18 +263,10 @@ fn apply_source_filter(
     match source {
         None | Some(SourceFilter::Bool(true)) => Some(fields),
         Some(SourceFilter::Bool(false)) => None,
-        Some(SourceFilter::Fields(includes)) => Some(
-            fields
-                .into_iter()
-                .filter(|(k, _)| matches_any(includes, k))
-                .collect(),
-        ),
+        Some(SourceFilter::Fields(includes)) => Some(filter_includes(fields, includes)),
         Some(SourceFilter::Object { includes, excludes }) => {
             let mut out: HashMap<String, Value> = match includes {
-                Some(inc) if !inc.is_empty() => fields
-                    .into_iter()
-                    .filter(|(k, _)| matches_any(inc, k))
-                    .collect(),
+                Some(inc) if !inc.is_empty() => filter_includes(fields, inc),
                 _ => fields,
             };
             if let Some(exc) = excludes {
@@ -204,6 +282,13 @@ fn apply_source_filter(
 pub enum EsAggregationResult {
     Buckets {
         buckets: Vec<EsBucket>,
+        /// ES terms aggregations always carry these two counts; Kibana's
+        /// task-manager WorkloadAggregator validates the shape with a strict
+        /// schema and rejects the response ("Invalid workload") without them.
+        #[serde(default)]
+        doc_count_error_upper_bound: u64,
+        #[serde(default)]
+        sum_other_doc_count: u64,
     },
     Value {
         value: Option<f64>,
@@ -235,6 +320,54 @@ pub struct EsBucket {
 }
 
 /// Response mapper
+/// Lexicographic comparison of a JSON sort value against a cursor value,
+/// honouring per-clause descending order. Returns true when the tuple is
+/// strictly after the cursor (all earlier components equal).
+fn after_cursor(tuple: &[Value], cursor: &[Value], descending: &[bool]) -> bool {
+    for (i, (t, c)) in tuple.iter().zip(cursor.iter()).enumerate() {
+        let desc = descending.get(i).copied().unwrap_or(false);
+        let ord = cmp_json_values(t, c);
+        if ord == std::cmp::Ordering::Equal {
+            continue;
+        }
+        let strictly_after = if desc {
+            ord == std::cmp::Ordering::Less
+        } else {
+            ord == std::cmp::Ordering::Greater
+        };
+        return strictly_after;
+    }
+    false
+}
+
+/// Nulls sort last (ES default `missing: _last`); numbers compare
+/// numerically, everything else as strings.
+fn cmp_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Null, Value::Null) => Ordering::Equal,
+        (Value::Null, _) => Ordering::Greater,
+        (_, Value::Null) => Ordering::Less,
+        _ => {
+            let na = a.as_f64();
+            let nb = b.as_f64();
+            if let (Some(x), Some(y)) = (na, nb) {
+                x.partial_cmp(&y).unwrap_or(Ordering::Equal)
+            } else {
+                let sa = a
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| a.to_string());
+                let sb = b
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| b.to_string());
+                sa.cmp(&sb)
+            }
+        }
+    }
+}
+
 pub struct ResponseMapper;
 
 impl ResponseMapper {
@@ -244,7 +377,7 @@ impl ResponseMapper {
         results: SearchResultsWithAggs,
         took_ms: u64,
     ) -> EsSearchResponse {
-        Self::map_search_results_with_source(index, results, took_ms, None, None)
+        Self::map_search_results_with_source(index, results, took_ms, None, None, None, None)
     }
 
     /// Like [`map_search_results`], but applies an ES `_source` include/exclude
@@ -256,15 +389,80 @@ impl ResponseMapper {
         took_ms: u64,
         source: Option<&crate::query::SourceFilter>,
         track_total_hits: Option<&crate::query::TrackTotalHits>,
+        sort: Option<&[crate::query::SortClause]>,
+        search_after: Option<&[Value]>,
+    ) -> EsSearchResponse {
+        Self::map_search_results_opt(
+            index,
+            results,
+            took_ms,
+            source,
+            track_total_hits,
+            sort,
+            search_after,
+            false,
+        )
+    }
+
+    /// Same as `map_search_results_with_source`, but with `rest_total_hits_as_int`
+    /// support: when `as_int` is true, `hits.total` is serialised as a bare
+    /// integer (ES 6.x/7.x legacy mode that Kibana's saved-objects client
+    /// requires).
+    pub fn map_search_results_opt(
+        index: &str,
+        results: SearchResultsWithAggs,
+        took_ms: u64,
+        source: Option<&crate::query::SourceFilter>,
+        track_total_hits: Option<&crate::query::TrackTotalHits>,
+        sort: Option<&[crate::query::SortClause]>,
+        search_after: Option<&[Value]>,
+        as_int: bool,
     ) -> EsSearchResponse {
         let max_score = results.results.first().map(|r| r.score);
-        let total = total_hits(results.total, track_total_hits);
+        let total_th = total_hits(results.total, track_total_hits);
+        let total = if as_int {
+            serde_json::Value::from(total_th.value)
+        } else {
+            serde_json::to_value(&total_th).unwrap_or(serde_json::Value::Null)
+        };
 
-        let hits: Vec<Hit> = results
+        let sort_clauses = sort.unwrap_or(&[]);
+        let mut hits: Vec<Hit> = results
             .results
             .into_iter()
-            .map(|r| Self::map_hit(index, r, source))
+            .enumerate()
+            .map(|(ordinal, r)| Self::map_hit(index, r, source, sort_clauses, ordinal))
             .collect();
+
+        // `search_after` cursor: drop hits whose sort tuple is not strictly
+        // after the cursor. Without this, every page returns the first page
+        // again (Kibana saved-objects / fleet pagination then misparses
+        // documents, e.g. `fleet-write-test` surfacing under an
+        // `ingest_manager_settings:` prefix expectation).
+        if let Some(cursor) = search_after.filter(|c| !c.is_empty()) {
+            let descending: Vec<bool> = sort_clauses
+                .iter()
+                .map(|c| {
+                    use crate::query::SortClause;
+                    match c {
+                        SortClause::Object(m) => m
+                            .values()
+                            .next()
+                            .and_then(|v| v.get("order"))
+                            .and_then(|o| o.as_str())
+                            .map(|o| o.eq_ignore_ascii_case("desc"))
+                            .unwrap_or(false),
+                        _ => false,
+                    }
+                })
+                .collect();
+            hits.retain(|hit| {
+                hit.sort
+                    .as_ref()
+                    .map(|tuple| after_cursor(tuple, cursor, &descending))
+                    .unwrap_or(true)
+            });
+        }
 
         let aggregations = if results.aggregations.is_empty() {
             None
@@ -289,7 +487,14 @@ impl ResponseMapper {
         index: &str,
         result: SearchResult,
         source: Option<&crate::query::SourceFilter>,
+        sort_clauses: &[crate::query::SortClause],
+        ordinal: usize,
     ) -> Hit {
+        let sort = if sort_clauses.is_empty() {
+            None
+        } else {
+            Some(Self::sort_values(sort_clauses, &result, ordinal))
+        };
         Hit {
             index: index.to_string(),
             id: result.id,
@@ -299,7 +504,39 @@ impl ResponseMapper {
             version: 1,
             source: apply_source_filter(result.fields, source),
             highlight: result.highlight,
+            sort,
         }
+    }
+
+    /// Compute the per-hit `sort` array for the requested sort clauses.
+    /// Synthesises values from the document's stored fields; `_shard_doc`/
+    /// `_doc` fall back to the hit ordinal (a stable tiebreaker within the
+    /// page), and missing fields serialise as `null` — both match what ES
+    /// clients tolerate for `search_after` pagination.
+    fn sort_values(
+        clauses: &[crate::query::SortClause],
+        result: &SearchResult,
+        ordinal: usize,
+    ) -> Vec<Value> {
+        use crate::query::SortClause;
+        clauses
+            .iter()
+            .map(|clause| {
+                let field = match clause {
+                    SortClause::Field(f) => f.as_str(),
+                    SortClause::Object(map) => {
+                        map.keys().next().map(|k| k.as_str()).unwrap_or("_score")
+                    }
+                };
+                match field {
+                    "_shard_doc" | "_doc" => Value::from(ordinal as u64),
+                    "_seq_no" => Value::from(0),
+                    "_id" => Value::from(result.id.clone()),
+                    "_score" => serde_json::json!(result.score),
+                    other => result.fields.get(other).cloned().unwrap_or(Value::Null),
+                }
+            })
+            .collect()
     }
 
     fn map_aggregations(
@@ -328,6 +565,8 @@ impl ResponseMapper {
 
             AggregationValue::Buckets(buckets) => EsAggregationResult::Buckets {
                 buckets: buckets.iter().map(Self::map_bucket).collect(),
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
             },
         }
     }
@@ -372,8 +611,19 @@ pub struct EsMSearchResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum EsMSearchItem {
-    Success(EsSearchResponse),
-    Error { error: EsError, status: u16 },
+    // The official ES client's taskManager reads `status` from EVERY msearch
+    // sub-response ("Unexpected status code from taskStore::msearch: unknown"
+    // without it), so the success variant must carry an explicit HTTP status
+    // alongside the flattened search response.
+    Success {
+        #[serde(flatten)]
+        response: EsSearchResponse,
+        status: u16,
+    },
+    Error {
+        error: EsError,
+        status: u16,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -858,8 +1108,8 @@ mod tests {
         let response = ResponseMapper::map_search_results("test_index", results, 5);
         assert_eq!(response.took, 5);
         assert!(!response.timed_out);
-        assert_eq!(response.hits.total.value, 0);
-        assert_eq!(response.hits.total.relation, "eq");
+        assert_eq!(response.hits.total["value"], serde_json::json!(0));
+        assert_eq!(response.hits.total["relation"], "eq");
         assert!(response.hits.max_score.is_none());
         assert!(response.hits.hits.is_empty());
         assert!(response.aggregations.is_none());
@@ -900,7 +1150,7 @@ mod tests {
         };
         let response = ResponseMapper::map_search_results("my_index", results, 10);
 
-        assert_eq!(response.hits.total.value, 2);
+        assert_eq!(response.hits.total["value"], serde_json::json!(2));
         assert_eq!(response.hits.max_score, Some(1.5));
         assert_eq!(response.hits.hits.len(), 2);
 
@@ -1101,7 +1351,7 @@ mod tests {
         let response = ResponseMapper::map_search_results("idx", results, 1);
         let es_aggs = response.aggregations.unwrap();
         match &es_aggs["by_status"] {
-            EsAggregationResult::Buckets { buckets } => {
+            EsAggregationResult::Buckets { buckets, .. } => {
                 assert_eq!(buckets.len(), 2);
                 assert_eq!(buckets[0].key, Value::String("active".to_string()));
                 assert_eq!(buckets[0].doc_count, 42);
@@ -1137,7 +1387,7 @@ mod tests {
         let response = ResponseMapper::map_search_results("idx", results, 1);
         let es_aggs = response.aggregations.unwrap();
         match &es_aggs["by_code"] {
-            EsAggregationResult::Buckets { buckets } => {
+            EsAggregationResult::Buckets { buckets, .. } => {
                 // "200" should parse as i64
                 assert_eq!(buckets[0].key, Value::Number(serde_json::Number::from(200)));
                 assert_eq!(buckets[0].key_as_string, Some("200".to_string()));
@@ -1171,7 +1421,7 @@ mod tests {
         let response = ResponseMapper::map_search_results("idx", results, 1);
         let es_aggs = response.aggregations.unwrap();
         match &es_aggs["by_score"] {
-            EsAggregationResult::Buckets { buckets } => {
+            EsAggregationResult::Buckets { buckets, .. } => {
                 // "2.78" can't parse as i64, should parse as f64
                 match &buckets[0].key {
                     Value::Number(n) => {
@@ -1209,7 +1459,7 @@ mod tests {
         let response = ResponseMapper::map_search_results("idx", results, 1);
         let es_aggs = response.aggregations.unwrap();
         match &es_aggs["price_ranges"] {
-            EsAggregationResult::Buckets { buckets } => {
+            EsAggregationResult::Buckets { buckets, .. } => {
                 assert!(buckets[0].from.is_none());
                 assert_eq!(buckets[0].to, Some(50.0));
             }
@@ -1247,7 +1497,7 @@ mod tests {
         let response = ResponseMapper::map_search_results("idx", results, 1);
         let es_aggs = response.aggregations.unwrap();
         match &es_aggs["by_cat"] {
-            EsAggregationResult::Buckets { buckets } => {
+            EsAggregationResult::Buckets { buckets, .. } => {
                 let sub = &buckets[0].sub_aggs;
                 assert!(sub.contains_key("avg_price"));
                 match &sub["avg_price"] {
@@ -1272,10 +1522,7 @@ mod tests {
             timed_out: false,
             shards: ShardStats::default(),
             hits: HitsResponse {
-                total: TotalHits {
-                    value: 1,
-                    relation: "eq".to_string(),
-                },
+                total: serde_json::json!({"value": 1, "relation": "eq"}),
                 max_score: Some(1.0),
                 hits: vec![Hit {
                     index: "test".to_string(),
@@ -1290,6 +1537,7 @@ mod tests {
                         m
                     }),
                     highlight: None,
+                    sort: None,
                 }],
             },
             aggregations: None,
@@ -1298,7 +1546,7 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         let deser: EsSearchResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deser.took, 15);
-        assert_eq!(deser.hits.total.value, 1);
+        assert_eq!(deser.hits.total["value"], serde_json::json!(1));
         assert_eq!(deser.hits.hits[0].id, "1");
     }
 
@@ -1384,20 +1632,20 @@ mod tests {
         let response = EsMSearchResponse {
             took: 10,
             responses: vec![
-                EsMSearchItem::Success(EsSearchResponse {
-                    took: 5,
-                    timed_out: false,
-                    shards: ShardStats::default(),
-                    hits: HitsResponse {
-                        total: TotalHits {
-                            value: 0,
-                            relation: "eq".to_string(),
+                EsMSearchItem::Success {
+                    response: EsSearchResponse {
+                        took: 5,
+                        timed_out: false,
+                        shards: ShardStats::default(),
+                        hits: HitsResponse {
+                            total: serde_json::json!({"value": 0, "relation": "eq"}),
+                            max_score: None,
+                            hits: vec![],
                         },
-                        max_score: None,
-                        hits: vec![],
+                        aggregations: None,
                     },
-                    aggregations: None,
-                }),
+                    status: 200,
+                },
                 EsMSearchItem::Error {
                     error: EsError {
                         error_type: "index_not_found_exception".to_string(),
@@ -1409,6 +1657,9 @@ mod tests {
         };
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("index_not_found_exception"));
+        // The flattened success item must expose its HTTP status — Kibana's
+        // taskManager rejects msearch batches without per-item status.
+        assert!(json.contains("\"status\":200"));
     }
 
     #[test]

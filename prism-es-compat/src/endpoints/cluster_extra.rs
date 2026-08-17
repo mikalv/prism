@@ -679,6 +679,12 @@ pub async fn update_aliases_handler(
                     if let Some(alias) = add.get("alias").and_then(|v| v.as_str()) {
                         if !indices.is_empty() {
                             state.manager.add_alias(alias, &indices);
+                            // Preserve the full alias body (is_write_index,
+                            // filter, routing, ...) so GET /{index} can echo it.
+                            let body = alias_body_from(add);
+                            for idx in &indices {
+                                state.alias_store.add(alias, idx, body.clone());
+                            }
                         }
                     }
                 }
@@ -687,6 +693,9 @@ pub async fn update_aliases_handler(
                     if let Some(alias) = rem.get("alias").and_then(|v| v.as_str()) {
                         if !indices.is_empty() {
                             state.manager.remove_alias(alias, &indices);
+                            for idx in &indices {
+                                state.alias_store.remove(alias, idx);
+                            }
                         }
                     }
                 }
@@ -698,8 +707,22 @@ pub async fn update_aliases_handler(
     let map: std::collections::HashMap<String, Vec<String>> =
         state.manager.list_aliases().into_iter().collect();
     crate::persist::save_json(&state.data_dir, "aliases", &map);
+    state.alias_store.persist_to(&state.data_dir);
 
     Json(serde_json::json!({ "acknowledged": true }))
+}
+
+/// Extract the alias-body portion of an `add` action (everything except the
+/// routing keys `index`/`indices`/`alias`), preserving `is_write_index`,
+/// `filter`, `routing`, etc.
+fn alias_body_from(add: &serde_json::Map<String, Value>) -> Value {
+    let mut body = serde_json::Map::new();
+    for (k, v) in add {
+        if !matches!(k.as_str(), "index" | "indices" | "alias") {
+            body.insert(k.clone(), v.clone());
+        }
+    }
+    Value::Object(body)
 }
 
 /// Collect `index` (string) and/or `indices` (array) from an action body.

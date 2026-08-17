@@ -113,12 +113,28 @@ pub async fn bulk_handler(
         }
 
         // Check if collection exists (use exact name, not pattern expansion)
-        let collections = state
+        let mut collections = state
             .manager
             .expand_collection_patterns(std::slice::from_ref(&index));
 
+        // ES auto_create_index: lazily create the collection on first write
+        // rather than failing the whole bulk batch with 404s.
+        if collections.is_empty()
+            && crate::endpoints::document::ensure_collection(
+                &state,
+                &index,
+                docs.first().map(|(_, d)| &d.fields),
+            )
+            .await
+            .is_ok()
+            {
+                collections = state
+                    .manager
+                    .expand_collection_patterns(std::slice::from_ref(&index));
+            }
+
         if collections.is_empty() {
-            // Collection doesn't exist - report errors
+            // Collection still doesn't exist - report errors
             for (doc_id, _) in docs {
                 items.push(BulkItemResponse { index: Some(BulkItemResult { index: index.clone(),
                 id: doc_id,

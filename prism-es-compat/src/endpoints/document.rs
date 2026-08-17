@@ -9,16 +9,136 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use prism::backends::Document;
-use prism::schema::{
-    types::SystemFieldsConfig,
-    CollectionSchema, Backends, TextBackendConfig, IndexingConfig, QuotaConfig,
-};
-use prism::storage::StorageConfig;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use super::search::EsCompatState;
+
+/// POST /_elastic/{index}/_update/{id} - Partial update (Kibana usage
+/// counters, SLO lock heartbeats, alerting state). ES semantics: merge `doc`
+/// into the stored source; `doc_as_upsert` (or `_source` upsert) creates the
+/// document when absent. Kibana's usage-counter reporter does exactly this
+/// against `/.kibana_usage_counters_*/_update/<counter-id>` every ~10s, so a
+/// 404 here spams the log and loses telemetry. Scripted updates are not
+/// supported; the script body is ignored and the upsert/`doc` merge applies.
+pub async fn update_doc_handler(
+    State(state): State<EsCompatState>,
+    Path((index, id)): Path<(String, String)>,
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), EsCompatError> {
+    // `doc_as_upsert: true`, or an `upsert` block when the doc is missing,
+    // means create-if-absent. Plain `doc` updates on a missing doc would 404
+    // in ES (`document_missing_exception`), but Kibana's counters always send
+    // upserts, and treating a missing target as created is harmless for a
+    // single-node compat shim.
+    let doc = body.get("doc").and_then(|d| d.as_object()).cloned();
+    let upsert = body.get("upsert").and_then(|u| u.as_object()).cloned();
+    let doc_as_upsert = body
+        .get("doc_as_upsert")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // Determine the merged source: existing fields overlaid with `doc`.
+    let merged: serde_json::Map<String, Value> = match state.manager.get(&index, &id).await? {
+        Some(existing) => {
+            let mut src: serde_json::Map<String, Value> = crate::response::flatten_dynamic(existing.fields)
+                .into_iter().collect();
+            if let Some(d) = doc {
+                for (k, v) in d {
+                    src.insert(k, v);
+                }
+            }
+            src
+        }
+        None => {
+            if let Some(u) = upsert.clone() {
+                let mut base = u;
+                if doc_as_upsert {
+                    if let Some(d) = doc {
+                        for (k, v) in d {
+                            base.insert(k, v);
+                        }
+                    }
+                }
+                base
+            } else if let Some(d) = doc {
+                // create-if-absent (lenient; ES would 404)
+                d
+            } else {
+                serde_json::Map::new()
+            }
+        }
+    };
+
+    let merged_hash: HashMap<String, Value> = merged.into_iter().collect();
+    ensure_collection(&state, &index, Some(&merged_hash)).await?;
+    state
+        .manager
+        .index(&index, vec![Document { id: id.clone(), fields: merged_hash.into_iter().collect() }])
+        .await?;
+
+    let created = state.manager.get(&index, &id).await?.is_some();
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "_index": index,
+            "_id": id,
+            "_version": 1,
+            "result": "updated",
+            "_shards": { "total": 2, "successful": 1, "failed": 0 },
+            "_seq_no": 0,
+            "_primary_term": 1,
+            "forced_refresh": true,
+            "created": created,
+        })),
+    ))
+}
+
+/// POST /_elastic/_mget - Multi-get (Kibana Discovery + saved-objects fetch
+/// documents by ID in one round trip). Unknown/missing docs return
+/// `found: false` entries — mirroring ES — rather than erroring the batch.
+pub async fn mget_handler(
+    State(state): State<EsCompatState>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, EsCompatError> {
+    let default_index = body.get("_index").and_then(|i| i.as_str()).unwrap_or("*");
+    let empty = vec![];
+    let docs = body.get("docs").and_then(|d| d.as_array()).unwrap_or(&empty);
+    // Shorthand form: {"ids": ["a","b"]} against the default index.
+    let id_list: Vec<(String, String)> = if !docs.is_empty() {
+        docs.iter()
+            .filter_map(|d| {
+                let index = d.get("_index").and_then(|i| i.as_str()).unwrap_or(default_index);
+                let id = d.get("_id").and_then(|i| i.as_str())?;
+                Some((index.to_string(), id.to_string()))
+            })
+            .collect()
+    } else {
+        body.get("ids")
+            .and_then(|ids| ids.as_array())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| id.as_str().map(|s| (default_index.to_string(), s.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let mut out = Vec::with_capacity(id_list.len());
+    for (index, id) in id_list {
+        match state.manager.get(&index, &id).await {
+            Ok(Some(doc)) => out.push(json!({
+                "_index": index, "_id": id, "_version": 1, "found": true,
+                "_source": crate::response::flatten_dynamic(doc.fields),
+            })),
+            _ => out.push(json!({
+                "_index": index, "_id": id, "found": false,
+            })),
+        }
+    }
+    Ok(Json(json!({ "docs": out })))
+}
 
 /// GET /_elastic/{index}/_doc/{id} - Get a document by ID
 pub async fn get_doc_handler(
@@ -67,6 +187,7 @@ pub async fn post_doc_handler(
         fields: body,
     };
 
+    ensure_collection(&state, &index, Some(&doc.fields)).await?;
     state.manager.index(&index, vec![doc]).await?;
 
     Ok((
@@ -98,6 +219,7 @@ pub async fn create_doc_handler(
         id: id.clone(),
         fields: body,
     };
+    ensure_collection(&state, &index, Some(&doc.fields)).await?;
     state.manager.index(&index, vec![doc]).await?;
     Ok((
         StatusCode::CREATED,
@@ -120,34 +242,8 @@ pub async fn put_doc_handler(
         fields: body,
     };
 
-    // Auto-create index if it doesn't exist
-    if state.manager.get_schema(&index).is_none() {
-        let schema = CollectionSchema {
-            collection: index.clone(),
-            description: Some("Auto-created by Kibana".to_string()),
-            backends: Backends {
-                text: Some(TextBackendConfig {
-                    fields: vec![],
-                    bm25_k1: None,
-                    bm25_b: None,
-                }),
-                vector: None,
-                graph: None,
-            },
-            indexing: IndexingConfig::default(),
-            quota: QuotaConfig::default(),
-            embedding_generation: None,
-            facets: None,
-            boosting: None,
-            storage: StorageConfig::default(),
-            system_fields: SystemFieldsConfig::default(),
-            hybrid: None,
-            replication: None,
-            reranking: None,
-            ilm_policy: None,
-        };
-        state.manager.add_collection(schema).await?;
-    }
+    // Auto-create index if it doesn't exist (ES auto_create_index).
+    ensure_collection(&state, &index, Some(&doc.fields)).await?;
 
     state.manager.index(&index, vec![doc]).await?;
 
@@ -214,6 +310,8 @@ struct EsCreateIndexBody {
     mappings: Option<serde_json::Value>,
     #[serde(default)]
     settings: Option<serde_json::Value>,
+    #[serde(default)]
+    aliases: Option<serde_json::Value>,
 }
 
 /// Convert an ES field type string to a Prism FieldType.
@@ -341,22 +439,29 @@ pub async fn put_index_handler(
         )));
     }
 
-    // If the collection already exists, ES returns a 400 resource_already_exists.
-    let collections = state.manager.list_collections();
-    if collections.contains(&index) {
-        return Err(EsCompatError::ResourceAlreadyExists(format!(
-            "index [{0}/{0}] already exists",
-            index
-        )));
-    }
-
-    // Parse the optional body for mappings.
+    // Parse the optional body for mappings/settings/aliases (parsed before the
+    // exists-check so aliases can be applied idempotently to an existing index).
     let raw_body = body.map(|b| b.0).unwrap_or(serde_json::json!({}));
     let parsed: EsCreateIndexBody = if raw_body.is_null() || raw_body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
         EsCreateIndexBody::default()
     } else {
         serde_json::from_value(raw_body).map_err(|e| EsCompatError::InvalidRequestBody(e.to_string()))?
     };
+
+    // If the collection already exists, ES returns a 400 resource_already_exists.
+    // Still apply any aliases from the body idempotently: prism's earlier
+    // (pre-alias-support) creates left existing indices without aliases, and
+    // Kibana's recovery flow re-issues the create-with-aliases on each boot.
+    // Applying them here lets the subsequent GET /{index} report is_write_index
+    // correctly so Kibana stops throwing "not the write index for the alias".
+    let collections = state.manager.list_collections();
+    if collections.contains(&index) {
+        apply_create_aliases(&state, &index, &parsed);
+        return Err(EsCompatError::ResourceAlreadyExists(format!(
+            "index [{0}/{0}] already exists",
+            index
+        )));
+    }
 
     // Build fields from ES mappings (or a sensible default).
     let fields = if let Some(ref mappings) = parsed.mappings {
@@ -409,6 +514,12 @@ pub async fn put_index_handler(
         .await
         .map_err(|e| EsCompatError::Internal(format!("add_collection failed: {e}")))?;
 
+    // Register any aliases declared in the create body. ES lets you create an
+    // index with `{ aliases: { <name>: { is_write_index: true, ... } } }`;
+    // Kibana's alerting/data-stream flow relies on `is_write_index` being
+    // stored and returned by `GET /{index}`.
+    apply_create_aliases(&state, &index, &parsed);
+
     tracing::info!(index = %index, "Created collection from ES PUT /{{index}} request");
 
     Ok(axum::Json(serde_json::json!({
@@ -418,6 +529,139 @@ pub async fn put_index_handler(
     })))
 }
 
+/// Apply aliases from a create-index body to `index`, updating both the core
+/// manager (search resolution) and the ES metadata store (is_write_index, ...).
+/// Idempotent: safe to call for both fresh creates and re-creates of an
+/// already-existing index. Persists both stores.
+fn apply_create_aliases(state: &EsCompatState, index: &str, parsed: &EsCreateIndexBody) {
+    let Some(aliases) = parsed.aliases.as_ref().and_then(|a| a.as_object()) else {
+        return;
+    };
+    if aliases.is_empty() {
+        return;
+    }
+    for (alias_name, alias_body) in aliases {
+        state.manager.add_alias(alias_name, &[index.to_string()]);
+        state.alias_store.add(alias_name, index, alias_body.clone());
+    }
+    state.alias_store.persist_to(&state.data_dir);
+    let map: std::collections::HashMap<String, Vec<String>> =
+        state.manager.list_aliases().into_iter().collect();
+    crate::persist::save_json(&state.data_dir, "aliases", &map);
+}
+
+/// ES `action.auto_create_index` compatibility: if a document write targets a
+/// non-existent index, auto-create the collection first with a permissive
+/// default schema. The text backend routes unmapped document fields into its
+/// `_dynamic` JSON catch-all (ES-style dynamic mapping), so writes never fail
+/// on unknown fields. Already-existing collections and alias targets are left
+/// untouched (`expand_collection_patterns` resolves both).
+pub(crate) async fn ensure_collection(
+    state: &EsCompatState,
+    index: &str,
+    doc_fields: Option<&HashMap<String, Value>>,
+) -> Result<(), EsCompatError> {
+    // Resolves direct collections AND aliases — non-empty means something
+    // already handles writes to this name, so never auto-create (which would
+    // shadow an alias with a phantom concrete collection).
+    if !state
+        .manager
+        .expand_collection_patterns(std::slice::from_ref(&index.to_string()))
+        .is_empty()
+    {
+        return Ok(());
+    }
+
+    // ES dynamic mapping semantics: the first document indexed into a new
+    // index defines its mapping. Deriving schema fields from that document
+    // keeps bare-term searches (`q="rocky mountain"`) working, because the
+    // fields become first-class searchable columns instead of opaque
+    // `_dynamic` JSON (which Tantivy's query parser cannot search without an
+    // explicit `field.path:` prefix). Fields absent from later documents
+    // simply land in `_dynamic` — same as ES adding new mappings later.
+    let mut fields: Vec<prism::schema::types::TextField> = Vec::new();
+    if let Some(fields_hint) = doc_fields {
+        for (name, value) in fields_hint {
+            // `id` is prism's system document-ID field (auto-injected by the
+            // text backend); re-adding it panics tantivy's schema builder with
+            // "Field already exists in schema". Underscore-prefixed fields
+            // (e.g. _boost) are system fields handled separately.
+            if name.starts_with('_') || name == "id" {
+                continue;
+            }
+            let field_type = match value {
+                Value::String(_) => Some(prism::schema::types::FieldType::Text),
+                Value::Number(n) => {
+                    if n.is_i64() || n.is_u64() {
+                        Some(prism::schema::types::FieldType::I64)
+                    } else {
+                        Some(prism::schema::types::FieldType::F64)
+                    }
+                }
+                Value::Bool(_) => Some(prism::schema::types::FieldType::Bool),
+                // Arrays/objects/null stay dynamic — ES infers from the first
+                // scalar, but routing them to `_dynamic` keeps this simple.
+                _ => None,
+            };
+            if let Some(field_type) = field_type {
+                fields.push(prism::schema::types::TextField {
+                    name: name.clone(),
+                    field_type,
+                    stored: true,
+                    indexed: true,
+                    tokenizer: None,
+                    tokenizer_options: None,
+                });
+            }
+        }
+    }
+    if fields.is_empty() {
+        fields.push(prism::schema::types::TextField {
+            name: "message".to_string(),
+            field_type: prism::schema::types::FieldType::Text,
+            stored: true,
+            indexed: true,
+            tokenizer: None,
+            tokenizer_options: None,
+        });
+    }
+    let schema = prism::schema::types::CollectionSchema {
+        collection: index.to_string(),
+        description: Some("Auto-created by prism es-compat (auto_create_index)".to_string()),
+        backends: prism::schema::types::Backends {
+            text: Some(prism::schema::types::TextBackendConfig {
+                fields,
+                bm25_k1: None,
+                bm25_b: None,
+            }),
+            vector: None,
+            graph: None,
+        },
+        indexing: Default::default(),
+        quota: Default::default(),
+        embedding_generation: None,
+        facets: None,
+        boosting: None,
+        storage: Default::default(),
+        system_fields: Default::default(),
+        hybrid: None,
+        replication: None,
+        reranking: None,
+        ilm_policy: None,
+    };
+    state
+        .manager
+        .persist_schema(&schema)
+        .map_err(|e| EsCompatError::Internal(format!("persist_schema failed: {e}")))?;
+    state
+        .manager
+        .add_collection(schema)
+        .await
+        .map_err(|e| EsCompatError::Internal(format!("add_collection failed: {e}")))?;
+    tracing::info!(index = %index, "Auto-created collection (ES auto_create_index)");
+    Ok(())
+}
+
 /// GET /{index} - Get index info (mappings, settings, aliases)
 pub async fn get_index_handler(
     State(state): State<EsCompatState>,
@@ -425,20 +669,30 @@ pub async fn get_index_handler(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<std::collections::HashMap<String, EsIndexInfo>>, EsCompatError> {
     let ignore_unavailable = params.get("ignore_unavailable").map(|v| v == "true").unwrap_or(false);
-    let collections = state.manager.list_collections();
+    let _collections = state.manager.list_collections();
     // Support comma-separated multi-index requests
     let indices: Vec<&str> = index.split(',').collect();
     let mut result = std::collections::HashMap::new();
     let mut found_any = false;
 
     for idx in indices {
-        if !collections.contains(&idx.to_string()) {
-            if ignore_unavailable {
+        // Expand wildcards/aliases per pattern segment (ES semantics).
+        let expanded = state
+            .manager
+            .expand_collection_patterns(std::slice::from_ref(&idx.to_string()));
+        if expanded.is_empty() {
+            // Wildcard patterns that match nothing return an empty 200 (ES
+            // `ignore_unavailable`-style behavior); Kibana's storage adapters
+            // (workflows, event-log) rely on this instead of a 404. A concrete
+            // missing index 404s unless ignore_unavailable=true.
+            if idx.contains('*') || idx.contains(',') || ignore_unavailable {
                 continue;
-            } else {
-                return Err(EsCompatError::IndexNotFound(index.clone()));
             }
+            return Err(EsCompatError::IndexNotFound(idx.to_string()));
         }
+        for concrete in &expanded {
+            let idx = concrete.as_str();
+            let _ = idx;
 
         let schema = state.manager.get_schema(idx)
             .ok_or_else(|| EsCompatError::Internal("schema not found".to_string()))?;
@@ -478,12 +732,20 @@ pub async fn get_index_handler(
             }
         });
 
+        // Build aliases from the metadata store so `is_write_index` (and any
+        // filter/routing) is returned exactly as ES would.
+        let mut aliases = std::collections::HashMap::new();
+        for (alias_name, alias_body) in state.alias_store.for_index(idx) {
+            aliases.insert(alias_name, alias_body);
+        }
+
         result.insert(idx.to_string(), EsIndexInfo {
-            aliases: std::collections::HashMap::new(),
+            aliases,
             mappings,
             settings,
         });
         found_any = true;
+    }
     }
 
     if !found_any && !result.is_empty() {
@@ -491,6 +753,38 @@ pub async fn get_index_handler(
     }
 
     Ok(Json(result))
+}
+
+/// DELETE /{index} — delete one or more indices (collections).
+/// ES semantics: by default a missing index is a 404, but Kibana (and most
+/// clients) send `?ignore_unavailable=true` on cleanup deletes, so honor that
+/// flag and return `{"acknowledged":true}` idempotently.
+pub async fn delete_index_handler(
+    State(state): State<EsCompatState>,
+    Path(index): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, EsCompatError> {
+    let ignore_unavailable = params
+        .get("ignore_unavailable")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let collections = state.manager.list_collections();
+
+    for idx in index.split(',') {
+        let idx = idx.trim();
+        if collections.contains(&idx.to_string()) {
+            state
+                .manager
+                .remove_collection(idx)
+                .await
+                .map_err(|e| EsCompatError::Internal(format!("failed to delete index [{idx}]: {e}")))?;
+            tracing::info!("es-compat: deleted index [{idx}]");
+        } else if !ignore_unavailable {
+            return Err(EsCompatError::IndexNotFound(index.clone()));
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "acknowledged": true })))
 }
 
 /// Query parameters for GET _search

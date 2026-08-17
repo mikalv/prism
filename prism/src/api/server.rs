@@ -851,14 +851,27 @@ impl ApiServer {
             Router::new()
         };
 
-        // Merge route groups (no middleware yet)
-        Router::new()
+        // Merge route groups (no middleware yet). ILM and template routes
+        // are only registered when their managers are enabled; otherwise they
+        // would shadow the ES-compat layer's ILM/data-stream/template
+        // interception with bare 404s (their handlers return NOT_FOUND when
+        // the manager is absent), breaking Kibana's ES API expectations.
+        let router = Router::new()
             .merge(legacy_routes)
             .merge(pipeline_routes)
             .merge(mcp_routes)
-            .merge(ilm_routes)
-            .merge(template_routes)
-            .merge(export_routes)
+            .merge(export_routes);
+        let router = if self.ilm_manager.is_some() {
+            router.merge(ilm_routes)
+        } else {
+            router
+        };
+        
+        if self.template_manager.is_some() {
+            router.merge(template_routes)
+        } else {
+            router
+        }
     }
 
     /// Apply all middleware layers (CORS, body limits, metrics, audit, auth)

@@ -4,6 +4,7 @@ pub mod backends;
 pub mod cache;
 pub mod collection;
 pub mod config;
+pub mod date_math;
 pub mod embedding;
 pub mod error;
 pub mod export;

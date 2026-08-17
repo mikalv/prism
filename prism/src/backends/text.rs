@@ -137,9 +137,10 @@ fn owned_value_to_json(
 /// not mistaken for field references.
 fn rewrite_unknown_fields_to_dynamic(qs: &str, field_map: &HashMap<String, Field>) -> String {
     use regex::Regex;
-    // Match a field reference: an identifier (letters/digits/_/./-) followed
+    // Match a field reference: an identifier (letters/digits/_/@/./-) followed
     // by ':', preceded by start-of-string or a non-identifier character.
-    let re = match Regex::new(r"(^|[^A-Za-z0-9_.\-])([A-Za-z_][A-Za-z0-9_.\-]*):") {
+    // The leading `@` class covers ECS-style field names like `@timestamp`.
+    let re = match Regex::new(r"(^|[^A-Za-z0-9_.@\-])([@A-Za-z_][A-Za-z0-9_.\-]*):") {
         Ok(r) => r,
         Err(_) => return qs.to_string(),
     };
@@ -166,7 +167,10 @@ fn rewrite_unknown_fields_to_dynamic(qs: &str, field_map: &HashMap<String, Field
         } else {
             out.push_str(caps.get(1).unwrap().as_str());
             out.push_str("_dynamic.");
-            out.push_str(field);
+            // Strip a leading '@' from the subpath: the _dynamic JSON keys
+            // never carry it (ECS `@timestamp` lives under `timestamp` there),
+            // so `_dynamic.@timestamp` would not resolve.
+            out.push_str(field.strip_prefix('@').unwrap_or(field));
             out.push(':');
         }
         last = whole.end();
@@ -227,6 +231,81 @@ fn rewrite_field_star_exists(qs: &str) -> String {
     }
     out.push_str(&qs[last..]);
     out
+}
+
+/// Resolve ES date-math inside Lucene range expressions in a Tantivy query
+/// string.
+///
+/// Structured ES `range` queries are resolved at translation time (in
+/// `prism-es-compat`), but raw `query_string` queries carry their date-math
+/// literally — e.g. Kibana task_manager polls with
+/// `task.runAt:[* TO now]`. Tantivy's date field rejects `now` with
+/// "The date field has an invalid format", so this rewrites recognized
+/// date-math bounds to RFC3339 timestamps before parsing.
+///
+/// Only genuine two-bound ranges (`lo TO hi`) are touched; `*`, numbers,
+/// versions, and ISO dates pass through unchanged (see `resolve_date_math`).
+/// Ranges inside quoted phrases are left alone. Like the other rewrites this
+/// is structure-preserving: it only swaps the bound tokens, so boolean
+/// grouping and operator precedence are unaffected.
+fn resolve_datemath_ranges(qs: &str) -> String {
+    use regex::Regex;
+    // field, ':', '[' or '{', inner (bounds + " TO "), ']' or '}'. The inner
+    // stops at the first closing bracket; Lucene ranges are never nested.
+    let re = Regex::new(r"([A-Za-z_][A-Za-z0-9_.\-]*):([\[{])([^}\]]*)([\]}])")
+        .expect("resolve_datemath_ranges: static regex literal");
+
+    let mut out = String::with_capacity(qs.len());
+    let mut last = 0usize;
+    let mut in_quotes = false;
+
+    for caps in re.captures_iter(qs) {
+        let whole = caps.get(0).unwrap();
+        // Track quote state across the segment preceding this match so ranges
+        // inside quoted value literals are left untouched.
+        for ch in qs[last..whole.start()].chars() {
+            if ch == '"' {
+                in_quotes = !in_quotes;
+            }
+        }
+        out.push_str(&qs[last..whole.start()]);
+        if in_quotes {
+            out.push_str(&qs[whole.start()..whole.end()]);
+            last = whole.end();
+            continue;
+        }
+
+        let inner = caps.get(3).unwrap().as_str();
+        // Only rewrite genuine two-bound ranges: `lo TO hi`.
+        let parts: Vec<&str> = inner.splitn(2, " TO ").collect();
+        if parts.len() != 2 {
+            out.push_str(&qs[whole.start()..whole.end()]);
+            last = whole.end();
+            continue;
+        }
+        let new_lo = normalize_range_bound(parts[0].trim());
+        let new_hi = normalize_range_bound(parts[1].trim());
+        out.push_str(caps.get(1).unwrap().as_str()); // field
+        out.push(':');
+        out.push_str(caps.get(2).unwrap().as_str()); // open bracket
+        out.push_str(&new_lo);
+        out.push_str(" TO ");
+        out.push_str(&new_hi);
+        out.push_str(caps.get(4).unwrap().as_str()); // close bracket
+        last = whole.end();
+    }
+    out.push_str(&qs[last..]);
+    out
+}
+
+/// Resolve a single range bound: keep `*` (open bound) verbatim; run anything
+/// else through the date-math resolver, which only transforms recognized
+/// date-math and leaves numbers, versions, and ISO dates untouched.
+fn normalize_range_bound(b: &str) -> String {
+    if b == "*" || b.is_empty() {
+        return b.to_string();
+    }
+    crate::date_math::resolve_date_math(b)
 }
 
 /// Parse a query string through `query_parser`, logging the post-rewrite
@@ -931,7 +1010,14 @@ impl SearchBackend for TextBackend {
                     let field_entry = coll.schema.get_field_entry(*field);
                     let field_type = field_entry.field_type();
 
-                    let added = match (&value, field_type) {
+                    // ES-style multi-value fields: an array indexes each element.
+                    let values: Vec<&serde_json::Value> = match &value {
+                        serde_json::Value::Array(vs) => vs.iter().collect(),
+                        v => vec![v],
+                    };
+                    let mut added_any = false;
+                    for v in values {
+                    let added = match (v, field_type) {
                         // Date fields — parse ISO 8601 string or epoch micros
                         (serde_json::Value::String(s), tantivy::schema::FieldType::Date(_)) => {
                             // Try RFC 3339 / ISO 8601 parsing via chrono
@@ -1058,7 +1144,12 @@ impl SearchBackend for TextBackend {
                         _ => false,
                     };
 
-                    if !added {
+                    if added {
+                        added_any = true;
+                    }
+                    } // end per-value loop
+
+                    if !added_any {
                         tracing::warn!(
                             "Document '{}': skipped field '{}' with value {:?}",
                             doc.id,
@@ -1115,6 +1206,17 @@ impl SearchBackend for TextBackend {
                 }
             }
         }
+        // ES default (`default_field: *`) searches every queryable field,
+        // including dynamically-mapped ones. Prism routes unknown fields into
+        // the `_dynamic` JSON catch-all, so bare-term queries
+        // (`q="rocky mountain"`, match on all fields) must include it —
+        // otherwise documents in auto-created collections (whose fields all
+        // live in `_dynamic`) are invisible to prefix-less searches.
+        if query.fields.is_empty() {
+            if let Some(dynamic) = coll.field_map.get("_dynamic") {
+                searchable_fields.push(*dynamic);
+            }
+        }
 
         // Determine fields to search
         let fields_to_search: Vec<Field> = if query.fields.is_empty() {
@@ -1145,6 +1247,10 @@ impl SearchBackend for TextBackend {
         // Normalize the `field:*` exists idiom into an open-ended range that
         // Tantivy accepts (bare `field:*` is a parse error).
         let query_string = rewrite_field_star_exists(&query_string);
+        // Resolve ES date-math (`now`, `now-15m`) embedded in `query_string`
+        // ranges before parsing — Tantivy's date field rejects literal
+        // date-math with "invalid format".
+        let query_string = resolve_datemath_ranges(&query_string);
         let parsed_query =
             parse_query_with_logging(collection, "search", &query_string, &query_parser)?;
 
@@ -1485,6 +1591,10 @@ impl SearchBackend for TextBackend {
             rewrite_unknown_fields_to_dynamic(&query.query_string, &coll.field_map);
         // Normalize the `field:*` exists idiom (same fix as `search()`).
         let query_string = rewrite_field_star_exists(&query_string);
+        // Resolve ES date-math (`now`, `now-15m`) embedded in `query_string`
+        // ranges before parsing — Tantivy's date field rejects literal
+        // date-math with "invalid format".
+        let query_string = resolve_datemath_ranges(&query_string);
         let parsed_query = parse_query_with_logging(
             collection,
             "search_with_aggs",
@@ -1702,7 +1812,16 @@ fn execute_aggregations(
     let mut agg_results: HashMap<String, AggregationResult> = HashMap::new();
 
     for agg_req in aggregations {
-        let result = execute_single_agg(searcher, coll, searchable_fields, doc_addrs, agg_req)?;
+        // ES returns an empty/zero aggregation when a field is unmapped
+        // instead of failing the whole request. Kibana dashboards sort and
+        // aggregate on runtime/dynamic fields that may not exist in every
+        // collection (e.g. task-manager `overdueBySeconds`), so a hard error
+        // here would surface as a failed search rather than empty buckets.
+        let result = execute_single_agg(searcher, coll, searchable_fields, doc_addrs, agg_req)
+            .unwrap_or_else(|_| AggregationResult {
+                name: agg_req.name.clone(),
+                value: AggregationValue::Single(0.0),
+            });
         agg_results.insert(agg_req.name.clone(), result);
     }
 
@@ -3101,6 +3220,63 @@ mod tests {
         assert_eq!(run("foo:[* TO *]"), "_dynamic.foo:[* TO *]");
         // Quoted value containing `:*` is left untouched by the star rewrite.
         assert_eq!(rewrite_field_star_exists("foo:\"x:*\""), "foo:\"x:*\"");
+    }
+
+    #[test]
+    fn resolve_datemath_ranges_resolves_now() {
+        // The task_manager poll query shape: open lower bound, literal `now`.
+        let out = resolve_datemath_ranges("task.runAt:[* TO now]");
+        assert!(out.starts_with("task.runAt:[* TO "));
+        assert!(!out.contains("now"), "now must be resolved: {out}");
+        assert!(out.ends_with(']'));
+        assert!(out.contains('T') && out.ends_with("Z]"));
+    }
+
+    #[test]
+    fn resolve_datemath_ranges_resolves_both_bounds() {
+        let out = resolve_datemath_ranges("@timestamp:[now-15m TO now]");
+        assert!(out.starts_with("@timestamp:["));
+        assert!(!out.contains("now"), "both bounds resolved: {out}");
+        assert!(out.contains(" TO "));
+        // The separator structure is preserved.
+        assert_eq!(out.matches(" TO ").count(), 1);
+    }
+
+    #[test]
+    fn resolve_datemath_ranges_preserves_non_math() {
+        // Numbers, versions, open bounds, and ISO dates pass through untouched.
+        assert_eq!(resolve_datemath_ranges("age:[18 TO 65]"), "age:[18 TO 65]");
+        assert_eq!(
+            resolve_datemath_ranges("ver:[* TO 7.14.1}"),
+            "ver:[* TO 7.14.1}"
+        );
+        assert_eq!(
+            resolve_datemath_ranges("ts:[* TO *]"),
+            "ts:[* TO *]"
+        );
+        // A plain ISO upper bound is not date-math and stays verbatim.
+        assert_eq!(
+            resolve_datemath_ranges("ts:[2024-01-01 TO 2024-12-31]"),
+            "ts:[2024-01-01 TO 2024-12-31]"
+        );
+    }
+
+    #[test]
+    fn resolve_datemath_ranges_skips_phrases() {
+        // A `[.. TO ..]`-looking fragment inside a quoted phrase must be left
+        // alone (no false rewrite of literal text).
+        assert_eq!(
+            resolve_datemath_ranges("msg:\"x:[a TO b]\""),
+            "msg:\"x:[a TO b]\""
+        );
+    }
+
+    #[test]
+    fn resolve_datemath_ranges_handles_multiple_ranges() {
+        let out = resolve_datemath_ranges("+(runAt:[* TO now]) +(retryAt:[now-1h TO now])");
+        assert!(!out.contains("now"), "all bounds resolved: {out}");
+        assert_eq!(out.matches('[').count(), 2);
+        assert_eq!(out.matches(']').count(), 2);
     }
 
     #[test]

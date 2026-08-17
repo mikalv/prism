@@ -4,14 +4,23 @@ use crate::endpoints::search::EsCompatState;
 use axum::response::IntoResponse;
 use crate::endpoints::{
     bulk_handler, cat_aliases_handler, cat_indices_handler, cat_nodes_handler, cat_shards_handler, cluster_health_handler, cluster_health_index_handler, cluster_settings_handler, cluster_state_handler, create_pit_handler, delete_pit_handler, get_index_handler,
+    field_caps_handler, field_caps_index_handler, get_alias_all_handler,
+    get_alias_global_name_handler, get_alias_handler, get_alias_name_handler,
+    has_privileges_handler, resolve_index_handler, put_settings_handler,
+    get_inference_handler, put_ingest_pipeline_handler, delete_ingest_pipeline_handler,
+    resolve_cluster_handler, stats_handler, stats_index_handler,
     update_aliases_handler, xpack_handler,
     xpack_usage_handler,
     delete_component_template_handler, delete_index_template_handler,
-    get_all_index_templates_handler, get_component_template_handler, get_index_template_handler, head_index_template_handler,
+    get_all_component_templates_handler, get_all_index_templates_handler, get_component_template_handler, get_index_template_handler, head_index_template_handler,
     put_component_template_handler, put_index_template_handler,
+    post_index_template_handler, simulate_named_index_template_handler,
+    simulate_index_for_name_handler,
     license_handler, nodes_handler, nodes_stats_handler,
-    count_handler, delete_doc_handler, get_doc_handler, get_search_handler, head_doc_handler, head_index_handler, mapping_handler, put_mapping_handler,
-    msearch_handler, post_doc_handler, create_doc_handler, put_doc_handler, put_index_handler, root_handler, search_handler,
+    count_handler, delete_doc_handler, delete_index_handler, get_doc_handler, get_search_handler, head_doc_handler, head_index_handler, mapping_handler, put_mapping_handler,
+    msearch_handler, msearch_handler_indexed, post_doc_handler, create_doc_handler, put_doc_handler, put_index_handler, root_handler, search_handler,
+    async_search_handler,
+    update_doc_handler, mget_handler,
     delete_by_query_handler, get_task_handler, update_by_query_handler,
 };
 use axum::routing::{get, post};
@@ -74,10 +83,19 @@ pub fn es_compat_router(manager: Arc<CollectionManager>, data_dir: PathBuf) -> R
     }
 
     let templates = crate::endpoints::templates::TemplateStore::load_from(&es_compat_dir);
+    let alias_store = crate::endpoints::alias::AliasStore::load_from(&es_compat_dir);
+    // Replay persisted alias metadata into the core manager so search/lookup
+    // resolves alias -> concrete index (complements the legacy `aliases.json`
+    // map replayed above).
+    for (alias, targets) in alias_store.snapshot().iter() {
+        let indices: Vec<String> = targets.keys().cloned().collect();
+        manager.add_alias(alias, &indices);
+    }
     let state = EsCompatState {
         manager,
         templates,
         ilm: crate::endpoints::ilm::IlmStore::new(),
+        alias_store,
         data_dir: es_compat_dir,
     };
     let ilm_state = state.clone();
@@ -88,12 +106,21 @@ pub fn es_compat_router(manager: Arc<CollectionManager>, data_dir: PathBuf) -> R
         // Cluster endpoints
         .route("/_cluster/health", get(cluster_health_handler))
         .route("/_cluster/health/:index", get(cluster_health_index_handler))
+        // GET /_alias (no index): list all aliases. Registered BEFORE
+        // `/:index` so matchit doesn't capture `_alias` as an index name
+        // (observed: "Index not found: _alias").
+        .route("/_alias", get(get_alias_all_handler))
+        .route("/_alias/:name", get(get_alias_global_name_handler))
         .route("/_cluster/state", get(cluster_state_handler))
         .route("/_cluster/settings", get(cluster_settings_handler))
         .route("/_license", get(license_handler))
         // X-Pack info (license mode/features) — Kibana licensing plugin
         .route("/_xpack", get(xpack_handler))
         .route("/_xpack/_usage", get(xpack_usage_handler))
+        // Kibana's JS client calls `_xpack/usage` (no underscore prefix on
+        // `usage`); an unregistered route surfaced as an unhandled promise
+        // rejection in the product-doc / Xpack.usage poller at startup.
+        .route("/_xpack/usage", get(xpack_usage_handler))
         .route("/_nodes", get(nodes_handler))
         .route("/_nodes/stats", get(nodes_stats_handler))
         .route("/_nodes/:node_id/:metric", get(nodes_handler))
@@ -116,8 +143,21 @@ pub fn es_compat_router(manager: Arc<CollectionManager>, data_dir: PathBuf) -> R
             "/_index_template/:name",
             get(get_index_template_handler)
                 .put(put_index_template_handler)
+                .post(post_index_template_handler)
                 .head(head_index_template_handler)
                 .delete(delete_index_template_handler),
+        )
+        .route(
+            "/_index_template/_simulate/:name",
+            post(simulate_named_index_template_handler),
+        )
+        .route(
+            "/_index_template/_simulate_index/:name",
+            post(simulate_index_for_name_handler),
+        )
+        .route(
+            "/_component_template",
+            get(get_all_component_templates_handler),
         )
         .route(
             "/_component_template/:name",
@@ -130,17 +170,36 @@ pub fn es_compat_router(manager: Arc<CollectionManager>, data_dir: PathBuf) -> R
         // registered routes: matchit 0.7 panics on `/_ilm/policy/:name`.
         .route("/_cat/shards", get(cat_shards_handler))
         .route("/_cat/nodes", get(cat_nodes_handler))
+        // Kibana 9.x compatibility endpoints (field caps, aliases lookup,
+        // privileges stub, resolve, settings ack, inference, ingest, stats).
+        .route("/_field_caps", post(field_caps_handler).get(field_caps_handler))
+        .route("/:index/_field_caps", post(field_caps_index_handler).get(field_caps_index_handler))
+        .route("/:index/_alias", get(get_alias_handler))
+        .route("/:index/_alias/:name", get(get_alias_name_handler))
+        .route("/_security/user/_has_privileges", post(has_privileges_handler))
+        .route("/_resolve/index/:pattern", get(resolve_index_handler))
+        .route("/_resolve/cluster/:pattern", get(resolve_cluster_handler))
+        .route("/:index/_settings", axum::routing::put(put_settings_handler))
+        .route("/_inference", get(get_inference_handler))
+        .route("/_ingest/pipeline/:id", axum::routing::put(put_ingest_pipeline_handler).delete(delete_ingest_pipeline_handler))
+        .route("/_stats", get(stats_handler))
+        .route("/:index/_stats", get(stats_index_handler))
         // Search endpoints
         .route("/_search", post(search_handler_no_index))
         .route(
             "/:index/_search",
             get(get_search_handler).post(search_handler),
         )
+        // Async search — Kibana Discovery's primary path; executes inline and
+        // returns a completed async-search envelope.
+        .route("/:index/_async_search", post(async_search_handler))
+        .route("/_async_search", post(async_search_handler))
         // Point-In-Time endpoints (stateless pseudo-PIT)
         .route("/:index/_pit", post(create_pit_handler))
         .route("/_pit", axum::routing::delete(delete_pit_handler))
         // Multi-search
         .route("/_msearch", post(msearch_handler))
+        .route("/:index/_msearch", post(msearch_handler_indexed))
         // Bulk endpoints
         .route("/_bulk", post(bulk_handler_no_index))
         .route("/:index/_bulk", post(bulk_handler))
@@ -165,8 +224,12 @@ pub fn es_compat_router(manager: Arc<CollectionManager>, data_dir: PathBuf) -> R
                 .delete(delete_doc_handler)
                 .head(head_doc_handler),
         )
+        // Partial document update (Kibana usage counters, SLO locks).
+        .route("/:index/_update/:id", post(update_doc_handler))
+        // Multi-get (Kibana Discovery + saved-objects fetch-by-ID batches).
+        .route("/_mget", post(mget_handler))
         // Index-level endpoints
-        .route("/:index", get(get_index_handler).head(head_index_handler).put(put_index_handler))
+        .route("/:index", get(get_index_handler).head(head_index_handler).put(put_index_handler).delete(delete_index_handler))
         .route("/:index/_count", get(count_handler))
         // Fallback so that unmatched paths still return a clean 404 (and
         // dispatch ILM / data-stream paths). Must come BEFORE `.with_state`
@@ -192,8 +255,30 @@ pub fn es_compat_router(manager: Arc<CollectionManager>, data_dir: PathBuf) -> R
 /// `X-Elastic-Product` is still applied.
 /// 404 for unmatched paths, kept inside the layered router so the
 /// `X-Elastic-Product` header is still applied.
-async fn es_not_found() -> axum::http::StatusCode {
-    axum::http::StatusCode::NOT_FOUND
+/// Unmatched paths return an ES-formatted 404 error body (not an empty
+/// one) — the official ES clients throw opaque ResponseError parse failures
+/// on empty bodies, which Kibana surfaces as "ResponseError" with no detail.
+async fn es_not_found(uri: axum::http::Uri) -> axum::response::Response {
+    let body = serde_json::json!({
+        "error": {
+            "root_cause": [{
+                "type": "index_not_found_exception",
+                "reason": format!("no such index [{}]", uri.path().trim_start_matches('/')),
+                "resource.type": "index_or_alias",
+                "resource.id": uri.path().trim_start_matches('/'),
+                "index": uri.path().trim_start_matches('/')
+            }],
+            "type": "index_not_found_exception",
+            "reason": format!("no such index [{}]", uri.path().trim_start_matches('/'))
+        },
+        "status": 404
+    });
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        [("X-Elastic-Product", "Elasticsearch")],
+        axum::Json(body),
+    )
+        .into_response()
 }
 
 /// Middleware that intercepts ILM + data-stream paths BEFORE routing.
@@ -210,6 +295,13 @@ async fn ilm_ds_interceptor(
         || path.starts_with("/_ilm/")
         || path == "/_data_stream"
         || path.starts_with("/_data_stream/")
+        || path == "/_query"
+        || path.starts_with("/_query/")
+        || path == "/_streams"
+        || path.starts_with("/_streams/")
+        || path == "/_template"
+        || path.starts_with("/_template/")
+        || path.contains("/_rollover")
     {
         let method = req.method().clone();
         let path = path.to_string();
@@ -244,6 +336,14 @@ async fn log_es_failures(
     let path = req.uri().path().to_string();
     let resp = next.run(req).await;
     let status = resp.status();
+    // Diagnostic: log every request touching template management regardless of
+    // status. Kibana's "Installing index template" log line does not always
+    // coincide with a `PUT /_index_template/{name}` reaching the router; this
+    // surfaces exactly which methods/paths arrive so we can tell a missing
+    // route from a client-side skip.
+    if path.contains("_template") {
+        tracing::info!(%method, %path, %status, "es-compat template request");
+    }
     if status.is_client_error() || status.is_server_error() {
         tracing::warn!(%method, %path, %status, "es-compat request failed");
     }
@@ -273,9 +373,10 @@ use axum::Json;
 
 async fn search_handler_no_index(
     state: State<EsCompatState>,
+    raw_query: Option<axum::extract::RawQuery>,
     body: Json<EsSearchRequest>,
 ) -> Result<Json<EsSearchResponse>, EsCompatError> {
-    search_handler(state, None, body).await
+    search_handler(state, None, raw_query, body).await
 }
 
 async fn bulk_handler_no_index(
@@ -288,6 +389,7 @@ async fn bulk_handler_no_index(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::routing::head;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;

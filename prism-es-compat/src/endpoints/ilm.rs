@@ -284,7 +284,87 @@ pub async fn es_compat_fallback(
         }
     }
 
+    // Legacy index templates: /_template, /_template/{name}. matchit cannot
+    // co-register these with `_tasks/:task_id`, so they dispatch here.
+    // Kibana's eventLog plugin probes legacy templates to flip `hidden` on
+    // pre-existing ones; reporting none (404) makes it skip cleanly.
+    if path == "/_template" || path.starts_with("/_template/") {
+        return Some(StatusCode::NOT_FOUND.into_response());
+    }
+
+    // ES|QL / EQL query views: POST /_query/{view}. Kibana 9.5 alertingVTwo
+    // queries `$.alert-episodes` etc. We cannot execute view queries; return
+    // an empty-but-valid result envelope so plugins degrade instead of
+    // crashing on ResponseError.
+    if path == "/_query" || path.starts_with("/_query/") {
+        return Some(
+            Json(json!({
+                "took": 1,
+                "timed_out": false,
+                "is_partial": false,
+                "columns": [],
+                "values": []
+            }))
+            .into_response(),
+        );
+    }
+
+    // Streams status: GET /_streams/status (and general /_streams/*).
+    if path == "/_streams" || path.starts_with("/_streams/") {
+        if method == Method::GET {
+            return Some(StatusCode::NOT_FOUND.into_response());
+        }
+        return Some(Json(json!({ "acknowledged": true })).into_response());
+    }
+
+    // Rollover: POST /{index}/_rollover or /{index}/_rollover/{target}.
+    // If the backing collection exists, pretend the rollover succeeded but
+    // did not switch indices (single-node shim keeps writing to the same
+    // collection); otherwise 404 with an ES error body.
+    if let Some(idx) = rollover_target(path) {
+        let expanded = state.manager.expand_collection_patterns(std::slice::from_ref(&idx));
+        if expanded.is_empty() {
+            return Some(StatusCode::NOT_FOUND.into_response());
+        }
+        let new_index = next_generation_name(&idx);
+        return Some(
+            Json(json!({
+                "acknowledged": true,
+                "shards_acknowledged": true,
+                "old_index": idx,
+                "new_index": new_index,
+                "rolled": true,
+                "dry_run": false,
+                "conditions": { }
+            }))
+            .into_response(),
+        );
+    }
+
     None
+}
+
+/// POST /{index}/_rollover → Some(index), else None.
+fn rollover_target(path: &str) -> Option<String> {
+    let rest = path.strip_prefix('/')?;
+    if !rest.contains("/_rollover") {
+        return None;
+    }
+    let idx = rest.split("/_rollover").next()?;
+    if idx.is_empty() || idx.starts_with('_') {
+        return None;
+    }
+    Some(idx.to_string())
+}
+
+/// Increment the trailing `-NNNNNN` generation on a rollover target name.
+fn next_generation_name(index: &str) -> String {
+    if let Some(pos) = index.rfind('-') {
+        if let Ok(n) = index[pos + 1..].parse::<u32>() {
+            return format!("{}-{:06}", &index[..pos], n + 1);
+        }
+    }
+    format!("{index}-000002")
 }
 
 /// Minimal ES data-stream object. Returned inside `{"data_streams": [...]}`

@@ -186,6 +186,25 @@ impl QueryTranslator {
                 Ok(parts.join(" AND "))
             }
 
+            EsQuery::MatchPhrasePrefix(fields) => {
+                // Approximate ES match_phrase_prefix: the phrase with the last
+                // term treated as a prefix. An empty query matches all docs
+                // (Kibana's saved-object search sends "" in its should clause).
+                let mut parts = vec![];
+                for (field, match_query) in fields {
+                    let value = match match_query {
+                        MatchPhraseQuery::Simple(s) => s.clone(),
+                        MatchPhraseQuery::Object { query, .. } => query.clone(),
+                    };
+                    if value.is_empty() {
+                        parts.push("*".to_string());
+                    } else {
+                        parts.push(format!("{}:\"{}*\"", field, escape_phrase(&value)));
+                    }
+                }
+                Ok(parts.join(" AND "))
+            }
+
             EsQuery::MultiMatch(mm) => {
                 let and_operator = mm
                     .operator
@@ -307,14 +326,14 @@ impl QueryTranslator {
         let lower = params
             .gte
             .as_ref()
-            .map(|v| (value_to_string(v), true))
-            .or_else(|| params.gt.as_ref().map(|v| (value_to_string(v), false)));
+            .map(|v| (range_bound(v), true))
+            .or_else(|| params.gt.as_ref().map(|v| (range_bound(v), false)));
 
         let upper = params
             .lte
             .as_ref()
-            .map(|v| (value_to_string(v), true))
-            .or_else(|| params.lt.as_ref().map(|v| (value_to_string(v), false)));
+            .map(|v| (range_bound(v), true))
+            .or_else(|| params.lt.as_ref().map(|v| (range_bound(v), false)));
 
         match (lower, upper) {
             (Some((l, l_inc)), Some((u, u_inc))) => {
@@ -683,6 +702,16 @@ fn value_to_string(v: &Value) -> String {
         Value::Null => "null".to_string(),
         _ => v.to_string(),
     }
+}
+
+/// Render a range-query bound, resolving Elasticsearch date-math expressions
+/// (`now`, `now-15m`, `now/d`, `2024-01-01||+1d`) to concrete RFC3339 timestamps.
+/// Plain values (numbers, ISO dates, terms) pass through unchanged — only
+/// strings anchored on `now` or an ISO date followed by `||` are recognized as
+/// date-math, so non-date range bounds are unaffected.
+fn range_bound(v: &Value) -> String {
+    let raw = value_to_string(v);
+    prism::date_math::resolve_date_math(&raw)
 }
 
 #[cfg(test)]
@@ -1140,6 +1169,25 @@ mod tests {
         assert_eq!(result, "@timestamp:[2024-01-01 TO 2024-12-31]");
     }
 
+    #[test]
+    fn test_range_emits_resolved_date_math() {
+        let mut fields = HashMap::new();
+        fields.insert(
+            "@timestamp".to_string(),
+            range_params(Some(Value::String("now-15m".to_string())), None, None, None),
+        );
+        let query = EsQuery::Range(fields);
+        let result = QueryTranslator::translate_query(&query).unwrap();
+        // The literal date-math must be gone, replaced by an RFC3339 timestamp.
+        assert!(
+            !result.contains("now"),
+            "date-math must be resolved: {result}"
+        );
+        assert!(result.contains("T"), "expected RFC3339 with time: {result}");
+        assert!(result.contains('Z'), "expected UTC 'Z' suffix: {result}");
+        assert!(result.starts_with("@timestamp:[") && result.ends_with(" TO *]"));
+    }
+
     // ===================================================================
     // Bool queries
     // ===================================================================
@@ -1353,15 +1401,15 @@ mod tests {
     // ===================================================================
 
     #[test]
-    fn test_exists_query_unsupported() {
-        // `field:*` is not a valid Tantivy query and panics/500s the backend.
-        // Until a structured ExistsQuery is wired through, exists returns a
-        // clean 400 (UnsupportedQueryType) instead of a 500.
+    fn test_exists_query_translates_to_field_star() {
+        // `exists` nested inside a bool clause falls back to the Tantivy
+        // query-string form `field:*`. (Top-level exists is extracted into a
+        // structured fast-field query by translate_top_level.)
         let query = EsQuery::Exists(ExistsQuery {
             field: "user".to_string(),
         });
-        let err = QueryTranslator::translate_query(&query).unwrap_err();
-        assert!(matches!(err, EsCompatError::UnsupportedQueryType(_)));
+        let result = QueryTranslator::translate_query(&query).unwrap();
+        assert_eq!(result, "user:*");
     }
 
     #[test]
@@ -1570,8 +1618,8 @@ mod tests {
     fn test_query_from_json_exists() {
         let json = serde_json::json!({"exists": {"field": "email"}});
         let query: EsQuery = serde_json::from_value(json).unwrap();
-        let err = QueryTranslator::translate_query(&query).unwrap_err();
-        assert!(matches!(err, EsCompatError::UnsupportedQueryType(_)));
+        let result = QueryTranslator::translate_query(&query).unwrap();
+        assert_eq!(result, "email:*");
     }
 
     #[test]
@@ -1964,16 +2012,16 @@ mod tests {
                 RangeBucket {
                     key: Some("cheap".to_string()),
                     from: None,
-                    to: Some(50.0),
+                    to: Some(RangeBound::Num(50.0)),
                 },
                 RangeBucket {
                     key: Some("mid".to_string()),
-                    from: Some(50.0),
-                    to: Some(100.0),
+                    from: Some(RangeBound::Num(50.0)),
+                    to: Some(RangeBound::Num(100.0)),
                 },
                 RangeBucket {
                     key: Some("expensive".to_string()),
-                    from: Some(100.0),
+                    from: Some(RangeBound::Num(100.0)),
                     to: None,
                 },
             ],
@@ -2085,7 +2133,7 @@ mod tests {
     }
 
     #[test]
-    fn test_agg_no_recognized_type_with_subaggs_errors() {
+    fn test_agg_no_recognized_type_with_subaggs_skipped() {
         let mut aggs = HashMap::new();
         let mut a = empty_agg();
         // Has sub-aggs but no aggregation type on the container
@@ -2099,8 +2147,13 @@ mod tests {
         a.aggs = Some(sub);
         aggs.insert("container".to_string(), a);
 
-        let result = QueryTranslator::translate_aggregations(&aggs);
-        assert!(result.is_err());
+        // Lenient: an unrecognized container is dropped so one unsupported agg
+        // doesn't abort the whole search (Kibana's taskManager relies on this).
+        let result = QueryTranslator::translate_aggregations(&aggs).unwrap();
+        assert!(
+            result.is_empty(),
+            "unsupported container should be skipped, got {result:?}"
+        );
     }
 
     #[test]
@@ -2153,8 +2206,10 @@ mod tests {
             source: None,
             aggs: None,
             sort: None,
+            search_after: None,
             highlight: None,
             track_total_hits: None,
+            pit: None,
         };
         let (query, aggs) = QueryTranslator::translate(&request, &["title".to_string()]).unwrap();
         assert_eq!(query.query_string, "*");
@@ -2173,8 +2228,10 @@ mod tests {
             source: None,
             aggs: None,
             sort: None,
+            search_after: None,
             highlight: None,
             track_total_hits: None,
+            pit: None,
         };
         let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
         assert_eq!(query.offset, 20);
@@ -2192,6 +2249,7 @@ mod tests {
             source: None,
             aggs: None,
             sort: None,
+            search_after: None,
             highlight: Some(EsHighlight {
                 fields: highlight_fields,
                 pre_tags: Some(vec!["<b>".to_string()]),
@@ -2200,6 +2258,7 @@ mod tests {
                 number_of_fragments: Some(5),
             }),
             track_total_hits: None,
+            pit: None,
         };
         let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
         let hl = query.highlight.unwrap();
@@ -2221,6 +2280,7 @@ mod tests {
             source: None,
             aggs: None,
             sort: None,
+            search_after: None,
             highlight: Some(EsHighlight {
                 fields: highlight_fields,
                 pre_tags: None,
@@ -2229,6 +2289,7 @@ mod tests {
                 number_of_fragments: None,
             }),
             track_total_hits: None,
+            pit: None,
         };
         let (query, _) = QueryTranslator::translate(&request, &[]).unwrap();
         let hl = query.highlight.unwrap();
@@ -2257,8 +2318,10 @@ mod tests {
             source: None,
             aggs: Some(agg_map),
             sort: None,
+            search_after: None,
             highlight: None,
             track_total_hits: None,
+            pit: None,
         };
         let (query, aggs) = QueryTranslator::translate(&request, &[]).unwrap();
         assert_eq!(query.query_string, "*");

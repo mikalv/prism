@@ -107,8 +107,11 @@ pub async fn mapping_handler(
 pub async fn put_mapping_handler(
     State(state): State<EsCompatState>,
     Path(index): Path<String>,
-    Json(_body): Json<Value>,
+    body: Option<Json<Value>>,
 ) -> Result<Json<Value>, EsCompatError> {
+    // Kibana sometimes issues PUT /{index}/_mapping with an empty body
+    // (merge-patch no-op); ES accepts it, so must we.
+    let _ = body;
     let collections = state.manager.expand_collection_patterns(std::slice::from_ref(&index));
     if collections.is_empty() {
         return Err(EsCompatError::IndexNotFound(index));
