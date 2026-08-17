@@ -1,0 +1,33 @@
+collection: auto-test-2
+description: Auto-created by prism es-compat (auto_create_index)
+backends:
+  text:
+    fields:
+    - name: message
+      type: text
+      stored: true
+      indexed: true
+      tokenizer: null
+      tokenizer_options: null
+    bm25_k1: null
+    bm25_b: null
+indexing:
+  batch_size: 0
+  commit_interval_secs: 0
+  worker_threads: 0
+quota:
+  max_documents: null
+  max_size_mb: null
+embedding_generation: null
+facets: null
+boosting: null
+storage:
+  type: local
+  path: null
+system_fields:
+  indexed_at: true
+  document_boost: false
+hybrid: null
+replication: null
+reranking: null
+ilm_policy: null
