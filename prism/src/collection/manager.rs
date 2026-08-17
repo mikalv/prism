@@ -581,9 +581,23 @@ impl CollectionManager {
                 .zip(schema.backends.vector.as_ref().map(|v| v.dimension))
                 .map(|(a, s)| a != s)
                 .unwrap_or(false);
+            // Explicit request args override the schema: if the caller passes
+            // source_field/target_field that differ from what's recorded,
+            // update the schema and re-embed with the new fields (otherwise
+            // a stale schema hint would silently ignore the request args).
+            let schema_src = schema.embedding_generation.as_ref().map(|e| e.source_field.clone());
+            let schema_tgt = schema.embedding_generation.as_ref().map(|e| e.target_field.clone());
+            let source_changed = source_field
+                .zip(schema_src.as_deref())
+                .map(|(a, s)| a != s)
+                .unwrap_or(false);
+            let target_changed = target_field
+                .zip(schema_tgt.as_deref())
+                .map(|(a, s)| a != s)
+                .unwrap_or(false);
 
-            if !model_changed && !dim_mismatch {
-                tracing::info!(collection, "vectorize: already vector-enabled with matching model, re-embedding");
+            if !model_changed && !dim_mismatch && !source_changed && !target_changed {
+                tracing::info!(collection, "vectorize: already vector-enabled with matching config, re-embedding");
                 return self.reindex_collection(collection, batch_size).await;
             }
 
@@ -591,12 +605,22 @@ impl CollectionManager {
                 collection,
                 model_changed,
                 dim_mismatch,
-                "vectorize: model/dimension changed, rebuilding vector index"
+                source_changed,
+                target_changed,
+                "vectorize: config changed, rebuilding vector index"
             );
             let mut new_schema = schema.clone();
             if let Some(m) = active_model {
                 if let Some(e) = new_schema.embedding_generation.as_mut() {
                     e.model = m;
+                }
+            }
+            if let Some(e) = new_schema.embedding_generation.as_mut() {
+                if let Some(s) = source_field {
+                    e.source_field = s.to_string();
+                }
+                if let Some(t) = target_field {
+                    e.target_field = t.to_string();
                 }
             }
             if let (Some(dim), Some(v)) = (active_dim, new_schema.backends.vector.as_mut()) {
