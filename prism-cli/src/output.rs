@@ -17,10 +17,16 @@ pub struct CollectionRow { pub name: String, pub docs: usize, pub bytes: u64 }
 
 pub(crate) fn human_bytes(n: u64) -> String {
     const K: u64 = 1024;
+    const M: u64 = K * K;
+    const G: u64 = K * K * K;
+    const T: u64 = G * K;
+    const P: u64 = T * K;
     if n < K { return n.to_string(); }
-    let (v, unit) = if n < K * K { (n as f64 / K as f64, "K") }
-        else if n < K * K * K { (n as f64 / (K * K) as f64, "M") }
-        else { (n as f64 / (K * K * K) as f64, "G") };
+    let (v, unit) = if n < M { (n as f64 / K as f64, "K") }
+        else if n < G { (n as f64 / M as f64, "M") }
+        else if n < T { (n as f64 / G as f64, "G") }
+        else if n < P { (n as f64 / T as f64, "T") }
+        else { (n as f64 / P as f64, "P") };
     format!("{:.1}{}", v, unit)
 }
 
@@ -57,9 +63,17 @@ pub(crate) fn render_search(v: &Value) -> String {
 }
 
 pub(crate) fn render_collections(rows: &[CollectionRow]) -> String {
-    let mut out = String::from("NAME  DOCS  SIZE\n");
+    let mut out = String::new();
+    let wname = rows.iter().map(|r| r.name.len()).max().unwrap_or(4).max(4);
+    let wdocs = rows.iter().map(|r| r.docs.to_string().len()).max().unwrap_or(4).max(4);
+    let _ = writeln!(out, "{:<wname$}  {:>wdocs$}  SIZE", "NAME", "DOCS");
     for r in rows {
-        let _ = writeln!(out, "{}  {}  {}", r.name, r.docs, human_bytes(r.bytes));
+        let _ = writeln!(out, "{:<wname$}  {:>wdocs$}  {}", r.name, r.docs, human_bytes(r.bytes));
+    }
+    if !rows.is_empty() {
+        let docs: usize = rows.iter().map(|r| r.docs).sum();
+        let bytes: u64 = rows.iter().map(|r| r.bytes).sum();
+        let _ = writeln!(out, "{:<wname$}  {:>wdocs$}  {}", format!("TOTAL ({})", rows.len()), docs, human_bytes(bytes));
     }
     out
 }
@@ -201,6 +215,8 @@ mod tests {
         assert_eq!(human_bytes(2048), "2.0K");
         assert_eq!(human_bytes(5 * 1024 * 1024), "5.0M");
         assert_eq!(human_bytes(3 * 1024 * 1024 * 1024), "3.0G");
+        assert_eq!(human_bytes(2 * 1024u64.pow(4)), "2.0T");
+        assert_eq!(human_bytes(7 * 1024u64.pow(5)), "7.0P");
     }
 
     #[test]
@@ -209,6 +225,22 @@ mod tests {
         // capture via format-like helper: render to String
         assert!(render_collections(&rows).contains("idx_web"));
         assert!(render_collections(&rows).contains("2.0K"));
+        assert!(render_collections(&rows).contains("TOTAL"));
+    }
+
+    #[test]
+    fn collections_table_aligns_and_totals() {
+        let rows = vec![
+            CollectionRow { name: "a".into(), docs: 5, bytes: 1024 },
+            CollectionRow { name: "idx_darknet_web".into(), docs: 1234, bytes: 5 * 1024 * 1024 * 1024 },
+        ];
+        let s = render_collections(&rows);
+        assert!(s.contains("TOTAL (2)"));
+        assert!(s.contains("1239")); // summed docs
+        assert!(s.contains("5.0G"));
+        // name column padded: "a" line and header share width
+        let a_line = s.lines().find(|l| l.starts_with('a')).unwrap();
+        assert!(a_line.contains("a    "));
     }
 
     #[test]
