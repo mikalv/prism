@@ -16,6 +16,30 @@ struct Cli {
     #[arg(long, short = 'd', global = true, default_value = "./data")]
     data_dir: PathBuf,
 
+    /// Prism server URL (env PRISM_URL)
+    #[arg(long, global = true, env = "PRISM_URL")]
+    url: Option<String>,
+
+    /// API key for bearer auth (env PRISM_API_KEY)
+    #[arg(long, global = true, env = "PRISM_API_KEY")]
+    api_key: Option<String>,
+
+    /// Output format: table or json (env PRISM_OUTPUT)
+    #[arg(long, short = 'o', global = true, env = "PRISM_OUTPUT", default_value = "table")]
+    output: String,
+
+    /// Request timeout in seconds
+    #[arg(long, global = true, default_value = "30")]
+    timeout: u64,
+
+    /// Skip TLS certificate verification (self-signed certs)
+    #[arg(long, global = true)]
+    insecure: bool,
+
+    /// Disable colored output
+    #[arg(long, global = true)]
+    no_color: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -78,6 +102,9 @@ enum Commands {
         #[arg(long)]
         older_than_days: Option<u32>,
     },
+
+    /// List collections on the server (API mode)
+    Collections,
 }
 
 #[derive(Subcommand, Debug)]
@@ -316,6 +343,14 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    let opts = commands::api::ApiOpts {
+        url: cli.url.clone(),
+        api_key: cli.api_key.clone(),
+        timeout: cli.timeout,
+        insecure: cli.insecure,
+        json: cli.output == "json",
+    };
+
     match cli.command {
         Commands::Collection(cmd) => match cmd {
             CollectionCommands::Inspect { name, verbose } => {
@@ -464,6 +499,11 @@ async fn main() -> Result<()> {
                 tracing::info!("Only entries older than {} days", days);
             }
             tracing::warn!("Cache clear implementation pending");
+        }
+
+        Commands::Collections => {
+            let code = commands::api::run_collections(&opts).await?;
+            std::process::exit(code);
         }
     }
 
