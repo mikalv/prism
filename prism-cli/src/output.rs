@@ -174,6 +174,18 @@ pub fn print_backup(out: &Output, v: &Value) {
     }
 }
 
+pub fn print_graph_edges(out: &Output, v: &Value) {
+    if out.is_json() { out.raw(v); return; }
+    if let Some(edges) = v.as_array() {
+        for e in edges {
+            println!("{} -> {} ({})",
+                e.get("from").and_then(Value::as_str).unwrap_or("?"),
+                e.get("to").and_then(Value::as_str).unwrap_or("?"),
+                e.get("edge_type").and_then(Value::as_str).unwrap_or("?"));
+        }
+    }
+}
+
 pub fn print_graph_bfs(out: &Output, v: &Value) {
     if out.is_json() { out.raw(v); return; }
     let nodes: Vec<&str> = v.get("nodes").and_then(Value::as_array)

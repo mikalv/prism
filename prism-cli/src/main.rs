@@ -165,6 +165,21 @@ enum Commands {
     },
     /// Generate an encryption key for backup/restore (API mode)
     BackupKey,
+    /// Graph traversal (API mode)
+    Graph {
+        #[command(subcommand)]
+        cmd: GraphCommands,
+    },
+    /// Autocomplete suggestions for a field prefix (API mode)
+    Suggest {
+        collection: String,
+        prefix: String,
+        /// Field to suggest from (e.g. title)
+        #[arg(long)]
+        field: String,
+        #[arg(long, default_value = "10")]
+        size: usize,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -358,6 +373,25 @@ enum IndexCommands {
         #[arg(long)]
         gc_only: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum GraphCommands {
+    /// List edges from a node
+    Edges { collection: String, node: String },
+    /// Breadth-first traversal
+    Bfs {
+        collection: String,
+        node: String,
+        #[arg(long, default_value = "relates")]
+        edge_type: String,
+        #[arg(long, default_value = "3")]
+        depth: usize,
+    },
+    /// Shortest path between two nodes
+    Path { collection: String, from: String, to: String },
+    /// Graph node/edge counts
+    Stats { collection: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -669,6 +703,30 @@ async fn main() -> Result<()> {
 
         Commands::BackupKey => {
             let code = commands::api::run_backup_keygen(&opts).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Graph { cmd } => match cmd {
+            GraphCommands::Edges { collection, node } => {
+                let code = commands::api::run_graph_edges(&opts, &collection, &node).await?;
+                std::process::exit(code);
+            }
+            GraphCommands::Bfs { collection, node, edge_type, depth } => {
+                let code = commands::api::run_graph_bfs(&opts, &collection, &node, &edge_type, depth).await?;
+                std::process::exit(code);
+            }
+            GraphCommands::Path { collection, from, to } => {
+                let code = commands::api::run_graph_path(&opts, &collection, &from, &to).await?;
+                std::process::exit(code);
+            }
+            GraphCommands::Stats { collection } => {
+                let code = commands::api::run_graph_stats(&opts, &collection).await?;
+                std::process::exit(code);
+            }
+        }
+
+        Commands::Suggest { collection, prefix, field, size } => {
+            let code = commands::api::run_suggest(&opts, &collection, &prefix, &field, size).await?;
             std::process::exit(code);
         }
     }

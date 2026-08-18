@@ -123,6 +123,74 @@ pub async fn run_reindex(o: &ApiOpts, collections: Vec<String>, batch_size: usiz
     Ok(0)
 }
 
+/// `prismctl graph edges <collection> <node>` — list edges from a node.
+pub async fn run_graph_edges(o: &ApiOpts, collection: &str, node: &str) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let v = match client.request(reqwest::Method::GET,
+        &format!("/collections/{}/graph/nodes/{}/edges", collection, node), None).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_graph_edges(&out, &v);
+    Ok(0)
+}
+
+/// `prismctl graph bfs <collection> <node>` — breadth-first traversal by edge type.
+pub async fn run_graph_bfs(o: &ApiOpts, collection: &str, node: &str, edge_type: &str, depth: usize) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let body = serde_json::json!({ "start": node, "edge_type": edge_type, "max_depth": depth });
+    let v = match client.request(reqwest::Method::POST,
+        &format!("/collections/{}/graph/bfs", collection), Some(body)).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_graph_bfs(&out, &v);
+    Ok(0)
+}
+
+/// `prismctl graph path <collection> <from> <to>` — shortest path between nodes.
+pub async fn run_graph_path(o: &ApiOpts, collection: &str, from: &str, to: &str) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let body = serde_json::json!({ "start": from, "target": to });
+    let v = match client.request(reqwest::Method::POST,
+        &format!("/collections/{}/graph/shortest-path", collection), Some(body)).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_graph_path(&out, &v);
+    Ok(0)
+}
+
+/// `prismctl graph stats <collection>` — node/edge counts for the graph backend.
+pub async fn run_graph_stats(o: &ApiOpts, collection: &str) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let v = match client.request(reqwest::Method::GET,
+        &format!("/collections/{}/graph/stats", collection), None).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_graph_stats(&out, &v);
+    Ok(0)
+}
+
+/// `prismctl suggest <collection> <prefix> --field <f>` — autocomplete suggestions.
+pub async fn run_suggest(o: &ApiOpts, collection: &str, prefix: &str, field: &str, size: usize) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let body = serde_json::json!({ "prefix": prefix, "field": field, "size": size, "fuzzy": false, "max_distance": 2 });
+    let v = match client.request(reqwest::Method::POST,
+        &format!("/collections/{}/_suggest", collection), Some(body)).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_suggest(&out, &v);
+    Ok(0)
+}
+
 /// `prismctl schema get <collection>` — print a collection's schema.
 pub async fn run_schema_get(o: &ApiOpts, collection: &str) -> Result<i32> {
     let client = make_client(o)?;
@@ -712,5 +780,50 @@ mod tests {
         let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
         let code = run_restore(&opts, "/x.enc", "k", None).await.unwrap();
         assert_eq!(code, 3);
+    }
+
+    #[tokio::test]
+    async fn graph_bfs_posts_start_and_depth() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/collections/:c/graph/bfs",
+            post(move |body: String| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = body;
+                    axum::Json(serde_json::json!({"nodes": ["a","b"], "count": 2}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_graph_bfs(&opts, "g", "root", "relates", 4).await.unwrap();
+        assert_eq!(code, 0);
+        let cap = captured.lock().unwrap().clone();
+        assert!(cap.contains("\"start\":\"root\""));
+        assert!(cap.contains("\"max_depth\":4"));
+    }
+
+    #[tokio::test]
+    async fn suggest_posts_prefix_and_field() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/collections/:c/_suggest",
+            post(move |body: String| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = body;
+                    axum::Json(serde_json::json!({"suggestions": ["prism","privacy"]}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_suggest(&opts, "s", "pri", "title", 5).await.unwrap();
+        assert_eq!(code, 0);
+        let cap = captured.lock().unwrap().clone();
+        assert!(cap.contains("\"prefix\":\"pri\"") && cap.contains("\"field\":\"title\""));
     }
 }
