@@ -105,6 +105,49 @@ fn print_doc_errors(v: &serde_json::Value) {
     }
 }
 
+/// `prismctl reindex <patterns...> [--batch-size N]` — strip stored embeddings
+/// and regenerate them with the active provider. Server validates the same
+/// rules; the client pre-validates batch_size so bogus values fail before any I/O.
+pub async fn run_reindex(o: &ApiOpts, collections: Vec<String>, batch_size: usize) -> Result<i32> {
+    if batch_size == 0 || batch_size > 1000 {
+        anyhow::bail!("`batch_size` must be between 1 and 1000");
+    }
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let body = serde_json::json!({ "collections": collections, "batch_size": batch_size });
+    let v = match client.request(reqwest::Method::POST, "/admin/reindex", Some(body)).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_reindex(&out, &v);
+    Ok(0)
+}
+
+/// `prismctl schema get <collection>` — print a collection's schema.
+pub async fn run_schema_get(o: &ApiOpts, collection: &str) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let v = match client.request(reqwest::Method::GET,
+        &format!("/collections/{}/schema", collection), None).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_schema(&out, collection, &v);
+    Ok(0)
+}
+
+/// `prismctl schema lint` — report schema issues across all collections.
+pub async fn run_schema_lint(o: &ApiOpts) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let v = match client.request(reqwest::Method::GET, "/admin/lint-schemas", None).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_lint(&out, &v);
+    Ok(0)
+}
+
 /// `prismctl doc get <collection> <id>` — fetch one document.
 /// A `null` body is a result (not found), not an error: exit 0 either way.
 pub async fn run_doc_get(o: &ApiOpts, collection: &str, id: &str) -> Result<i32> {
@@ -370,6 +413,83 @@ mod tests {
         let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
         // capture stdout by asserting exit code only; rendering covered by output tests
         let code = run_collections(&opts).await.unwrap();
+        assert_eq!(code, 0);
+    }
+
+    #[tokio::test]
+    async fn reindex_posts_patterns_and_batch_size() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/admin/reindex",
+            post(move |axum::extract::Json(body): axum::extract::Json<serde_json::Value>| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = body.to_string();
+                    axum::Json(serde_json::json!({"collections":[{"collection":"x","reembedded":3,"skipped":0}],"total_reembedded":3,"total_skipped":0}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_reindex(&opts, vec!["idx_*".into(), "darknet_web".into()], 100).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(captured.lock().unwrap().contains("idx_*"));
+        assert!(captured.lock().unwrap().contains("darknet_web"));
+        assert!(captured.lock().unwrap().contains("\"batch_size\":100"));
+    }
+
+    #[test]
+    fn reindex_rejects_bad_batch_size_client_side() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let opts = ApiOpts { url: Some("http://127.0.0.1:1".into()), api_key: None, timeout: 1, insecure: false, json: false };
+        assert!(rt.block_on(run_reindex(&opts, vec!["x".into()], 0)).is_err());
+        assert!(rt.block_on(run_reindex(&opts, vec!["x".into()], 1001)).is_err());
+    }
+
+    #[tokio::test]
+    async fn reindex_no_match_is_4xx_exit_code() {
+        // server rejects patterns matching nothing with 400; client maps 4xx -> exit 2
+        let app = Router::new().route("/admin/reindex",
+            post(|| async { (axum::http::StatusCode::BAD_REQUEST, "no collections matched") }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_reindex(&opts, vec!["nonexistent*".into()], 100).await.unwrap();
+        assert_eq!(code, 2);
+    }
+
+    #[tokio::test]
+    async fn schema_get_fetches_endpoint() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/collections/:c/schema",
+            get(move |axum::extract::Path(c): axum::extract::Path<String>| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = c.clone();
+                    axum::Json(serde_json::json!({"collection": c, "fields": {}}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_schema_get(&opts, "idx_web").await.unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(captured.lock().unwrap().as_str(), "idx_web");
+    }
+
+    #[tokio::test]
+    async fn schema_lint_fetches_endpoint() {
+        let app = Router::new().route("/admin/lint-schemas",
+            get(|| async { axum::Json(serde_json::json!({"idx_web": ["field 'x' has no type"]})) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_schema_lint(&opts).await.unwrap();
         assert_eq!(code, 0);
     }
 }

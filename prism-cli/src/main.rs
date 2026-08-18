@@ -129,6 +129,21 @@ enum Commands {
         #[arg(long)]
         vector_weight: Option<f32>,
     },
+
+    /// Re-embed one or more collections (patterns allowed) (API mode)
+    Reindex {
+        /// Collection names or glob patterns (e.g. 'idx_*')
+        #[arg(required = true)]
+        collections: Vec<String>,
+        /// Embedding batch size (1-1000)
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+    },
+    /// Schema operations (API mode)
+    Schema {
+        #[command(subcommand)]
+        cmd: SchemaCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -357,6 +372,17 @@ enum DocCommands {
         #[arg(long, default_value = "100")]
         batch_size: usize,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum SchemaCommands {
+    /// Print a collection's schema
+    Get {
+        /// Collection name
+        collection: String,
+    },
+    /// Report schema issues across all collections
+    Lint,
 }
 
 #[derive(Subcommand, Debug)]
@@ -593,6 +619,22 @@ async fn main() -> Result<()> {
             let code = commands::api::run_search(&opts, &collection, &query, &mode, limit, weights).await?;
             std::process::exit(code);
         }
+
+        Commands::Reindex { collections, batch_size } => {
+            let code = commands::api::run_reindex(&opts, collections, batch_size).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Schema { cmd } => match cmd {
+            SchemaCommands::Get { collection } => {
+                let code = commands::api::run_schema_get(&opts, &collection).await?;
+                std::process::exit(code);
+            }
+            SchemaCommands::Lint => {
+                let code = commands::api::run_schema_lint(&opts).await?;
+                std::process::exit(code);
+            }
+        },
     }
 
     Ok(())
