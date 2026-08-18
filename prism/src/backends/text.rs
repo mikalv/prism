@@ -656,6 +656,82 @@ impl TextBackend {
         self.collections.write().unwrap().remove(name);
     }
 
+    /// Keyset-paginated scan of every document, ordered by id.
+    ///
+    /// Used by reindex/vectorize backfills on large collections where
+    /// offset-based search pagination degrades quadratically (tantivy's
+    /// TopDocs fetches and scores `offset + limit` docs per page). Returns up
+    /// to `limit` documents whose id sorts strictly after `after_id` (use an
+    /// empty string to start from the beginning). Results are ordered by id
+    /// ascending, making the last returned id the cursor for the next call.
+    ///
+    /// The id field is indexed as a tantivy STRING term dictionary, so the
+    /// range query below seeks the dictionary directly instead of scanning
+    /// documents.
+    pub async fn scan_by_id(
+        &self,
+        collection: &str,
+        after_id: &str,
+        limit: usize,
+    ) -> Result<Vec<Document>> {
+        let collections = self.collections.read().unwrap();
+        let coll = collections
+            .get(collection)
+            .ok_or_else(|| Error::CollectionNotFound(collection.to_string()))?;
+
+        coll.reader.reload()?;
+        let searcher = coll.reader.searcher();
+        let id_field = coll.field_map.get("id").unwrap();
+
+        use std::ops::Bound;
+        let id_field = coll.field_map.get("id").unwrap();
+
+        // Stream id terms directly from each segment's term dictionary.
+        // RangeQuery + collector approaches either need scoring (TopDocs) or
+        // return unordered sets (DocSetCollector), neither of which gives us
+        // the sorted, bounded page a cursor needs. The term dictionary is
+        // sorted, so `range().gte(after_id)` + `take(limit)` is exactly a
+        // keyset page, at O(limit) per call.
+        let mut ids: Vec<String> = Vec::with_capacity(limit);
+        for seg_reader in searcher.segment_readers() {
+            let inv = seg_reader.inverted_index(*id_field)?;
+            let mut stream = inv
+                .terms()
+                .range()
+                .gt(after_id.as_bytes())
+                .into_stream()?;
+            while ids.len() < limit && stream.advance() {
+                ids.push(String::from_utf8_lossy(stream.key()).to_string());
+            }
+        }
+        ids.sort();
+        ids.dedup();
+        ids.truncate(limit);
+
+        // Fetch each document by its id term (same path as `get`).
+        let mut docs = Vec::with_capacity(ids.len());
+        for id in ids {
+            let term = Term::from_field_text(*id_field, &id);
+            let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
+            let top_docs = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
+            if let Some((_score, doc_addr)) = top_docs.first() {
+                let doc: TantivyDocument = searcher.doc(*doc_addr)?;
+                let mut fields = HashMap::new();
+                for (field, entry) in coll.schema.fields() {
+                    if entry.is_stored() {
+                        if let Some(value) = doc.get_first(field) {
+                            if let Some(json_value) = owned_value_to_json(value) {
+                                fields.insert(entry.name().to_string(), json_value);
+                            }
+                        }
+                    }
+                }
+                docs.push(Document { id, fields });
+            }
+        }
+        Ok(docs)
+    }
+
     /// Delete a collection's on-disk data. Everything for a collection (the
     /// Tantivy index and any sibling vector data) lives under
     /// `{base_path}/{name}`, so removing that directory purges it. Call

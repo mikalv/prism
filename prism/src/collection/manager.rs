@@ -425,27 +425,27 @@ impl CollectionManager {
                 return Ok((1, 0, 0));
             }
         };
-        let mut offset = 0usize;
+        let mut cursor = String::new();
         let mut reembedded = 0usize;
         let mut skipped = 0usize;
         loop {
-            // "*" = match-all (same translation the ES-compat layer uses
-            // for match_all queries); docs without the source field are
-            // skipped by auto-embed downstream.
-            let query = crate::backends::Query {
-                query_string: "*".to_string(),
-                limit: batch_size,
-                offset,
-                ..Default::default()
-            };
-
-            let page = self.text_backend.search(collection, query.clone()).await?;
-            if page.results.is_empty() {
+            // Keyset scan by id: each page costs O(limit), independent of how
+            // deep into the collection we are. (Offset pagination here made
+            // full-collection backfills quadratic: tantivy fetches and scores
+            // offset+limit docs per page.)
+            let page = self
+                .text_backend
+                .scan_by_id(collection, &cursor, batch_size)
+                .await?;
+            if page.is_empty() {
                 break;
             }
+            cursor = page
+                .last()
+                .map(|d| d.id.clone())
+                .unwrap_or_default();
 
             let batch: Vec<Document> = page
-                .results
                 .iter()
                 .filter_map(|r| {
                     // Skip docs whose vector is already in the HNSW index:
@@ -482,8 +482,7 @@ impl CollectionManager {
                 self.index(collection, batch).await?;
             }
 
-            offset += page.results.len();
-            if page.results.len() < batch_size {
+            if page.len() < batch_size {
                 break;
             }
         }
