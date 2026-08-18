@@ -290,6 +290,83 @@ async fn post_batch(client: &PrismClient, collection: &str, batch: &[serde_json:
     Ok((indexed, failed))
 }
 
+/// `prismctl backup-key` — ask the server to generate an AES-256 key.
+/// The key is printed once; it is required for restore, so it must be stored
+/// in a secrets manager. Never logged by the server or this client.
+pub async fn run_backup_keygen(o: &ApiOpts) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let v = match client.request(reqwest::Method::POST, "/_admin/encryption/generate-key", None).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    if out.is_json() {
+        out.raw(&v);
+        return Ok(0);
+    }
+    let key = v.get("key").and_then(|x| x.as_str()).unwrap_or("?");
+    println!("key: {}", key);
+    println!("algorithm: {}", v.get("algorithm").and_then(|x| x.as_str()).unwrap_or("?"));
+    eprintln!("WARNING: store this key in a secrets manager — it is needed for restore and cannot be regenerated.");
+    Ok(0)
+}
+
+/// `prismctl backup <collection> <output_path> [--key HEX]` — encrypted backup.
+/// NOTE: output_path is a path ON THE SERVER, not local. If --key is omitted,
+/// a key is generated via keygen first and printed to stderr with instructions.
+pub async fn run_backup(o: &ApiOpts, collection: &str, output_path: &str, key: Option<&str>) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    let key = match key {
+        Some(k) => k.to_string(),
+        None => {
+            let v = match client.request(reqwest::Method::POST, "/_admin/encryption/generate-key", None).await {
+                Ok(v) => v,
+                Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+            };
+            let k = v.get("key").and_then(|x| x.as_str())
+                .ok_or_else(|| anyhow::anyhow!("server did not return a key"))?.to_string();
+            eprintln!("note: no --key given; generated a new encryption key:");
+            eprintln!("  key: {}", k);
+            eprintln!("  store it in a secrets manager — it is needed for restore and cannot be regenerated.");
+            k
+        }
+    };
+    eprintln!("note: output_path is a path ON THE SERVER, not local");
+    let body = serde_json::json!({
+        "collection": collection,
+        "output_path": output_path,
+        "key": key,
+    });
+    let v = match client.request(reqwest::Method::POST, "/_admin/export/encrypted", Some(body)).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_backup(&out, &v);
+    Ok(0)
+}
+
+/// `prismctl restore <input_path> --key HEX [--target-collection NAME]` —
+/// restore an encrypted backup. NOTE: input_path is a path ON THE SERVER.
+pub async fn run_restore(o: &ApiOpts, input_path: &str, key: &str, target_collection: Option<String>) -> Result<i32> {
+    let client = make_client(o)?;
+    let out = make_output(o);
+    eprintln!("note: input_path is a path ON THE SERVER");
+    let mut body = serde_json::json!({
+        "input_path": input_path,
+        "key": key,
+    });
+    if let Some(t) = target_collection {
+        body.as_object_mut().unwrap().insert("target_collection".into(), serde_json::json!(t));
+    }
+    let v = match client.request(reqwest::Method::POST, "/_admin/import/encrypted", Some(body)).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("error: {}", e); return Ok(e.exit_code()); }
+    };
+    crate::output::print_backup(&out, &v);
+    Ok(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,5 +568,149 @@ mod tests {
         let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
         let code = run_schema_lint(&opts).await.unwrap();
         assert_eq!(code, 0);
+    }
+
+    #[tokio::test]
+    async fn backup_auto_generates_key_when_missing() {
+        let key_calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let kc = key_calls.clone();
+        let app = Router::new()
+            .route("/_admin/encryption/generate-key", post(move || {
+                let kc = kc.clone();
+                async move { kc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    axum::Json(serde_json::json!({"key": "a".repeat(64), "key_bytes": 32})) }
+            }))
+            .route("/_admin/export/encrypted", post(|body: String| async move {
+                assert!(body.contains("\"key\""));
+                axum::Json(serde_json::json!({"success": true, "collection": "c", "output_path": "/tmp/x", "size_bytes": 10}))
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_backup(&opts, "c", "/tmp/x", None).await.unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(key_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn backup_with_explicit_key_skips_keygen() {
+        let key_calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let kc = key_calls.clone();
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new()
+            .route("/_admin/encryption/generate-key", post(move || {
+                let kc = kc.clone();
+                async move { kc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    axum::Json(serde_json::json!({"key": "a".repeat(64), "key_bytes": 32})) }
+            }))
+            .route("/_admin/export/encrypted", post(move |body: String| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = body;
+                    axum::Json(serde_json::json!({"success": true, "collection": "c", "output_path": "/tmp/x", "size_bytes": 10}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_backup(&opts, "c", "/tmp/x", Some("b".repeat(64).as_str())).await.unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(key_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(captured.lock().unwrap().contains(&"b".repeat(64)));
+    }
+
+    #[tokio::test]
+    async fn backup_maps_server_error_to_exit_code() {
+        let app = Router::new()
+            .route("/_admin/export/encrypted", post(|| async {
+                (axum::http::StatusCode::BAD_REQUEST,
+                 axum::Json(serde_json::json!({"success": false, "collection": "c", "output_path": "/tmp/x", "size_bytes": 0, "error": "Invalid key"})))
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_backup(&opts, "c", "/tmp/x", Some("k")).await.unwrap();
+        assert_eq!(code, 2);
+    }
+
+    #[tokio::test]
+    async fn backup_keygen_fetches_endpoint() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/_admin/encryption/generate-key", post(move || {
+            let c2 = c2.clone();
+            async move { *c2.lock().unwrap() = "hit".into();
+                axum::Json(serde_json::json!({"key": "a".repeat(64), "key_bytes": 32, "algorithm": "AES-256-GCM"})) }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_backup_keygen(&opts).await.unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(captured.lock().unwrap().as_str(), "hit");
+    }
+
+    #[tokio::test]
+    async fn restore_posts_body_and_exits_zero() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/_admin/import/encrypted",
+            post(move |body: String| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = body;
+                    axum::Json(serde_json::json!({"success": true, "collection": "c", "files_extracted": 4, "bytes_extracted": 512}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_restore(&opts, "/srv/backup/c.enc", "a".repeat(64).as_str(), Some("c2".to_string())).await.unwrap();
+        assert_eq!(code, 0);
+        let cap = captured.lock().unwrap().clone();
+        assert!(cap.contains("/srv/backup/c.enc"));
+        assert!(cap.contains(&"a".repeat(64)));
+        assert!(cap.contains("\"target_collection\":\"c2\"") || cap.contains("\"target_collection\": \"c2\""));
+    }
+
+    #[tokio::test]
+    async fn restore_omits_target_collection_when_none() {
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let c2 = captured.clone();
+        let app = Router::new().route("/_admin/import/encrypted",
+            post(move |body: String| {
+                let c2 = c2.clone();
+                async move {
+                    *c2.lock().unwrap() = body;
+                    axum::Json(serde_json::json!({"success": true, "collection": "c", "files_extracted": 1, "bytes_extracted": 8}))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_restore(&opts, "/srv/backup/c.enc", "a".repeat(64).as_str(), None).await.unwrap();
+        assert_eq!(code, 0);
+        assert!(!captured.lock().unwrap().contains("target_collection"));
+    }
+
+    #[tokio::test]
+    async fn restore_maps_server_error_to_exit_code() {
+        let app = Router::new().route("/_admin/import/encrypted", post(|| async {
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+             axum::Json(serde_json::json!({"success": false, "collection": "", "files_extracted": 0, "bytes_extracted": 0, "error": "decryption failed"})))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let opts = ApiOpts { url: Some(format!("http://{}", addr)), api_key: None, timeout: 5, insecure: false, json: false };
+        let code = run_restore(&opts, "/x.enc", "k", None).await.unwrap();
+        assert_eq!(code, 3);
     }
 }

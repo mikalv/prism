@@ -144,6 +144,27 @@ enum Commands {
         #[command(subcommand)]
         cmd: SchemaCommands,
     },
+    /// Encrypted backup of a collection — writes to a SERVER-side path (API mode)
+    Backup {
+        collection: String,
+        /// Output file path ON THE SERVER
+        output_path: String,
+        /// Hex encryption key (64 chars). If omitted, one is generated and printed to stderr.
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// Restore a collection from an encrypted backup (API mode)
+    Restore {
+        /// Input file path ON THE SERVER
+        input_path: String,
+        #[arg(long)]
+        key: String,
+        /// Rename the restored collection
+        #[arg(long)]
+        target_collection: Option<String>,
+    },
+    /// Generate an encryption key for backup/restore (API mode)
+    BackupKey,
 }
 
 #[derive(Subcommand, Debug)]
@@ -635,6 +656,21 @@ async fn main() -> Result<()> {
                 std::process::exit(code);
             }
         },
+
+        Commands::Backup { collection, output_path, key } => {
+            let code = commands::api::run_backup(&opts, &collection, &output_path, key.as_deref()).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Restore { input_path, key, target_collection } => {
+            let code = commands::api::run_restore(&opts, &input_path, &key, target_collection).await?;
+            std::process::exit(code);
+        }
+
+        Commands::BackupKey => {
+            let code = commands::api::run_backup_keygen(&opts).await?;
+            std::process::exit(code);
+        }
     }
 
     Ok(())
