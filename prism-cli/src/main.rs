@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod commands;
+mod client;
 
 #[derive(Parser, Debug)]
 #[command(name = "prism")]
