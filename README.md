@@ -134,6 +134,27 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+## prismctl — CLI client
+
+API mode (talks to a running server; `--url` or `PRISM_URL`, `PRISM_API_KEY`):
+
+    prismctl collections
+    prismctl search <collection> "query" [--mode hybrid|vector|text] [--limit N]
+    prismctl doc get|index|delete|bulk ...
+    prismctl schema get <collection> | schema lint
+    prismctl reindex 'pattern*' [--batch-size 100]
+    prismctl backup <collection> <server-side-path> [--key HEX]
+    prismctl restore <server-side-path> --key HEX [--target-collection NAME]
+    prismctl backup-key
+    prismctl graph edges|bfs|path|stats ...
+    prismctl suggest <collection> <prefix> --field title
+
+Output is a table by default; add `-o json` for scripting. Backup/restore
+paths are on the *server's* filesystem.
+
+File mode (offline, `--data-dir`): collection inspect/migrate/merge/optimize,
+benchmark, cluster — unchanged.
+
 ## Elasticsearch Compatibility
 
 Prism provides an Elasticsearch-compatible API layer at `/_elastic/*` for easy migration:
@@ -321,7 +342,7 @@ prism = { version = "0.3", features = ["full"] }
 |-------|-------------|
 | `prism` | Core library with backends, embedding, and search |
 | `prism-server` | HTTP server with REST API and embedded web UI |
-| `prism-cli` | Command-line interface |
+| `prism-cli` | Command-line interface (`prismctl` binary) |
 | `prism-core` | Core types and traits |
 | `prism-storage` | Storage abstractions (local, S3) |
 | `prism-cluster` | Distributed clustering support |
