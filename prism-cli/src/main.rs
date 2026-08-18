@@ -105,6 +105,26 @@ enum Commands {
 
     /// List collections on the server (API mode)
     Collections,
+
+    /// Search a collection (API mode)
+    Search {
+        /// Collection name
+        collection: String,
+        /// Query text
+        query: String,
+        /// Search mode: hybrid, vector, or text
+        #[arg(long, default_value = "hybrid")]
+        mode: String,
+        /// Maximum results
+        #[arg(long, default_value = "10")]
+        limit: usize,
+        /// Text-engine weight (requires --vector-weight too)
+        #[arg(long)]
+        text_weight: Option<f32>,
+        /// Vector-engine weight (requires --text-weight too)
+        #[arg(long)]
+        vector_weight: Option<f32>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -503,6 +523,16 @@ async fn main() -> Result<()> {
 
         Commands::Collections => {
             let code = commands::api::run_collections(&opts).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Search { collection, query, mode, limit, text_weight, vector_weight } => {
+            let weights = match (text_weight, vector_weight) {
+                (Some(t), Some(v)) => Some((t, v)),
+                (None, None) => None,
+                _ => anyhow::bail!("--text-weight and --vector-weight must be set together"),
+            };
+            let code = commands::api::run_search(&opts, &collection, &query, &mode, limit, weights).await?;
             std::process::exit(code);
         }
     }
