@@ -5,6 +5,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod commands;
 mod client;
+mod output;
 
 #[derive(Parser, Debug)]
 #[command(name = "prism")]
