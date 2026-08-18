@@ -106,6 +106,10 @@ enum Commands {
     /// List collections on the server (API mode)
     Collections,
 
+    /// Document operations (API mode)
+    #[command(subcommand)]
+    Doc(DocCommands),
+
     /// Search a collection (API mode)
     Search {
         /// Collection name
@@ -321,6 +325,41 @@ enum IndexCommands {
 }
 
 #[derive(Subcommand, Debug)]
+enum DocCommands {
+    /// Fetch a document by id
+    Get {
+        /// Collection name
+        collection: String,
+        /// Document id
+        id: String,
+    },
+    /// Index one JSON document from a file, stdin ('-'), or an inline JSON object
+    Index {
+        /// Collection name
+        collection: String,
+        /// Input file, '-' for stdin, or an inline JSON object
+        file: String,
+    },
+    /// Delete a document by id
+    Delete {
+        /// Collection name
+        collection: String,
+        /// Document id
+        id: String,
+    },
+    /// Bulk-import JSONL documents from a file or stdin ('-')
+    Bulk {
+        /// Collection name
+        collection: String,
+        /// Input JSONL file or '-' for stdin
+        file: String,
+        /// Documents per POST batch
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum ClusterCommands {
     /// Show upgrade status for all cluster nodes
     UpgradeStatus {
@@ -525,6 +564,25 @@ async fn main() -> Result<()> {
             let code = commands::api::run_collections(&opts).await?;
             std::process::exit(code);
         }
+
+        Commands::Doc(cmd) => match cmd {
+            DocCommands::Get { collection, id } => {
+                let code = commands::api::run_doc_get(&opts, &collection, &id).await?;
+                std::process::exit(code);
+            }
+            DocCommands::Index { collection, file } => {
+                let code = commands::api::run_doc_index(&opts, &collection, &file).await?;
+                std::process::exit(code);
+            }
+            DocCommands::Delete { collection, id } => {
+                let code = commands::api::run_doc_delete(&opts, &collection, &id).await?;
+                std::process::exit(code);
+            }
+            DocCommands::Bulk { collection, file, batch_size } => {
+                let code = commands::api::run_doc_bulk(&opts, &collection, &file, batch_size).await?;
+                std::process::exit(code);
+            }
+        },
 
         Commands::Search { collection, query, mode, limit, text_weight, vector_weight } => {
             let weights = match (text_weight, vector_weight) {
