@@ -1,3 +1,4 @@
+pub mod api;
 pub mod attach;
 pub mod benchmark;
 pub mod cluster;

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod commands;
+mod client;
+mod output;
 
 #[derive(Parser, Debug)]
 #[command(name = "prism")]
@@ -13,6 +15,30 @@ struct Cli {
     /// Data directory (defaults to ./data)
     #[arg(long, short = 'd', global = true, default_value = "./data")]
     data_dir: PathBuf,
+
+    /// Prism server URL (env PRISM_URL)
+    #[arg(long, global = true, env = "PRISM_URL")]
+    url: Option<String>,
+
+    /// API key for bearer auth (env PRISM_API_KEY)
+    #[arg(long, global = true, env = "PRISM_API_KEY")]
+    api_key: Option<String>,
+
+    /// Output format: table or json (env PRISM_OUTPUT)
+    #[arg(long, short = 'o', global = true, env = "PRISM_OUTPUT", default_value = "table")]
+    output: String,
+
+    /// Request timeout in seconds
+    #[arg(long, global = true, default_value = "30")]
+    timeout: u64,
+
+    /// Skip TLS certificate verification (self-signed certs)
+    #[arg(long, global = true)]
+    insecure: bool,
+
+    /// Disable colored output
+    #[arg(long, global = true)]
+    no_color: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -75,6 +101,84 @@ enum Commands {
         /// Only clear entries older than N days
         #[arg(long)]
         older_than_days: Option<u32>,
+    },
+
+    /// List collections on the server (API mode)
+    Collections,
+
+    /// Document operations (API mode)
+    #[command(subcommand)]
+    Doc(DocCommands),
+
+    /// Search a collection (API mode)
+    Search {
+        /// Collection name
+        collection: String,
+        /// Query text
+        query: String,
+        /// Search mode: hybrid, vector, or text
+        #[arg(long, default_value = "hybrid")]
+        mode: String,
+        /// Maximum results
+        #[arg(long, default_value = "10")]
+        limit: usize,
+        /// Text-engine weight (requires --vector-weight too)
+        #[arg(long)]
+        text_weight: Option<f32>,
+        /// Vector-engine weight (requires --text-weight too)
+        #[arg(long)]
+        vector_weight: Option<f32>,
+    },
+
+    /// Re-embed one or more collections (patterns allowed) (API mode)
+    Reindex {
+        /// Collection names or glob patterns (e.g. 'idx_*')
+        #[arg(required = true)]
+        collections: Vec<String>,
+        /// Embedding batch size (1-1000)
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+    },
+    /// Schema operations (API mode)
+    Schema {
+        #[command(subcommand)]
+        cmd: SchemaCommands,
+    },
+    /// Encrypted backup of a collection — writes to a SERVER-side path (API mode)
+    Backup {
+        collection: String,
+        /// Output file path ON THE SERVER
+        output_path: String,
+        /// Hex encryption key (64 chars). If omitted, one is generated and printed to stderr.
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// Restore a collection from an encrypted backup (API mode)
+    Restore {
+        /// Input file path ON THE SERVER
+        input_path: String,
+        #[arg(long)]
+        key: String,
+        /// Rename the restored collection
+        #[arg(long)]
+        target_collection: Option<String>,
+    },
+    /// Generate an encryption key for backup/restore (API mode)
+    BackupKey,
+    /// Graph traversal (API mode)
+    Graph {
+        #[command(subcommand)]
+        cmd: GraphCommands,
+    },
+    /// Autocomplete suggestions for a field prefix (API mode)
+    Suggest {
+        collection: String,
+        prefix: String,
+        /// Field to suggest from (e.g. title)
+        #[arg(long)]
+        field: String,
+        #[arg(long, default_value = "10")]
+        size: usize,
     },
 }
 
@@ -272,6 +376,71 @@ enum IndexCommands {
 }
 
 #[derive(Subcommand, Debug)]
+enum GraphCommands {
+    /// List edges from a node
+    Edges { collection: String, node: String },
+    /// Breadth-first traversal
+    Bfs {
+        collection: String,
+        node: String,
+        #[arg(long, default_value = "relates")]
+        edge_type: String,
+        #[arg(long, default_value = "3")]
+        depth: usize,
+    },
+    /// Shortest path between two nodes
+    Path { collection: String, from: String, to: String },
+    /// Graph node/edge counts
+    Stats { collection: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum DocCommands {
+    /// Fetch a document by id
+    Get {
+        /// Collection name
+        collection: String,
+        /// Document id
+        id: String,
+    },
+    /// Index one JSON document from a file, stdin ('-'), or an inline JSON object
+    Index {
+        /// Collection name
+        collection: String,
+        /// Input file, '-' for stdin, or an inline JSON object
+        file: String,
+    },
+    /// Delete a document by id
+    Delete {
+        /// Collection name
+        collection: String,
+        /// Document id
+        id: String,
+    },
+    /// Bulk-import JSONL documents from a file or stdin ('-')
+    Bulk {
+        /// Collection name
+        collection: String,
+        /// Input JSONL file or '-' for stdin
+        file: String,
+        /// Documents per POST batch
+        #[arg(long, default_value = "100")]
+        batch_size: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum SchemaCommands {
+    /// Print a collection's schema
+    Get {
+        /// Collection name
+        collection: String,
+    },
+    /// Report schema issues across all collections
+    Lint,
+}
+
+#[derive(Subcommand, Debug)]
 enum ClusterCommands {
     /// Show upgrade status for all cluster nodes
     UpgradeStatus {
@@ -313,6 +482,14 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+
+    let opts = commands::api::ApiOpts {
+        url: cli.url.clone(),
+        api_key: cli.api_key.clone(),
+        timeout: cli.timeout,
+        insecure: cli.insecure,
+        json: cli.output == "json",
+    };
 
     match cli.command {
         Commands::Collection(cmd) => match cmd {
@@ -462,6 +639,95 @@ async fn main() -> Result<()> {
                 tracing::info!("Only entries older than {} days", days);
             }
             tracing::warn!("Cache clear implementation pending");
+        }
+
+        Commands::Collections => {
+            let code = commands::api::run_collections(&opts).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Doc(cmd) => match cmd {
+            DocCommands::Get { collection, id } => {
+                let code = commands::api::run_doc_get(&opts, &collection, &id).await?;
+                std::process::exit(code);
+            }
+            DocCommands::Index { collection, file } => {
+                let code = commands::api::run_doc_index(&opts, &collection, &file).await?;
+                std::process::exit(code);
+            }
+            DocCommands::Delete { collection, id } => {
+                let code = commands::api::run_doc_delete(&opts, &collection, &id).await?;
+                std::process::exit(code);
+            }
+            DocCommands::Bulk { collection, file, batch_size } => {
+                let code = commands::api::run_doc_bulk(&opts, &collection, &file, batch_size).await?;
+                std::process::exit(code);
+            }
+        },
+
+        Commands::Search { collection, query, mode, limit, text_weight, vector_weight } => {
+            let weights = match (text_weight, vector_weight) {
+                (Some(t), Some(v)) => Some((t, v)),
+                (None, None) => None,
+                _ => anyhow::bail!("--text-weight and --vector-weight must be set together"),
+            };
+            let code = commands::api::run_search(&opts, &collection, &query, &mode, limit, weights).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Reindex { collections, batch_size } => {
+            let code = commands::api::run_reindex(&opts, collections, batch_size).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Schema { cmd } => match cmd {
+            SchemaCommands::Get { collection } => {
+                let code = commands::api::run_schema_get(&opts, &collection).await?;
+                std::process::exit(code);
+            }
+            SchemaCommands::Lint => {
+                let code = commands::api::run_schema_lint(&opts).await?;
+                std::process::exit(code);
+            }
+        },
+
+        Commands::Backup { collection, output_path, key } => {
+            let code = commands::api::run_backup(&opts, &collection, &output_path, key.as_deref()).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Restore { input_path, key, target_collection } => {
+            let code = commands::api::run_restore(&opts, &input_path, &key, target_collection).await?;
+            std::process::exit(code);
+        }
+
+        Commands::BackupKey => {
+            let code = commands::api::run_backup_keygen(&opts).await?;
+            std::process::exit(code);
+        }
+
+        Commands::Graph { cmd } => match cmd {
+            GraphCommands::Edges { collection, node } => {
+                let code = commands::api::run_graph_edges(&opts, &collection, &node).await?;
+                std::process::exit(code);
+            }
+            GraphCommands::Bfs { collection, node, edge_type, depth } => {
+                let code = commands::api::run_graph_bfs(&opts, &collection, &node, &edge_type, depth).await?;
+                std::process::exit(code);
+            }
+            GraphCommands::Path { collection, from, to } => {
+                let code = commands::api::run_graph_path(&opts, &collection, &from, &to).await?;
+                std::process::exit(code);
+            }
+            GraphCommands::Stats { collection } => {
+                let code = commands::api::run_graph_stats(&opts, &collection).await?;
+                std::process::exit(code);
+            }
+        }
+
+        Commands::Suggest { collection, prefix, field, size } => {
+            let code = commands::api::run_suggest(&opts, &collection, &prefix, &field, size).await?;
+            std::process::exit(code);
         }
     }
 

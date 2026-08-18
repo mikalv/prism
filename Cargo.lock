@@ -2614,6 +2614,7 @@ name = "prismsearch-cli"
 version = "0.7.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "prismsearch",
  "prismsearch-storage",
