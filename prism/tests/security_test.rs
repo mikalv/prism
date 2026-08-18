@@ -65,6 +65,7 @@ fn test_config() -> SecurityConfig {
         roles,
         audit: Default::default(),
         isolation: false,
+        require_auth: Default::default(),
     }
 }
 

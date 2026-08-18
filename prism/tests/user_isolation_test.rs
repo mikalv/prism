@@ -59,6 +59,7 @@ fn checker_granting(role: &str, pattern: &str, perms: &[&str]) -> Arc<Permission
         roles,
         audit: Default::default(),
         isolation: false,
+        require_auth: Default::default(),
     }))
 }
 

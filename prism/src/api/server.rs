@@ -897,10 +897,12 @@ impl ApiServer {
             }));
         }
 
-        // Add auth middleware (only when security.enabled)
+        // Add auth middleware (when security.enabled OR any per-collection
+        // policy is configured — require_auth must protect even open servers).
         // Added last so it runs first (tower layers are LIFO)
         // Uses dynamic config from AppState for hot-reload support
-        if security_config.enabled {
+        let has_policies = !security_config.require_auth.collections.is_empty();
+        if security_config.enabled || has_policies {
             let security_config_arc = self.security_config.clone();
             app = app.layer(axum::middleware::from_fn(move |req, next| {
                 let config = security_config_arc.clone();

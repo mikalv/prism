@@ -134,6 +134,12 @@ pub async fn auth_middleware(
 
 /// Dynamic auth middleware that takes ownership of PermissionChecker
 /// Used for hot-reload support where config is read from RwLock
+///
+/// Also carries the per-collection policy chain. Policies run for every
+/// request — including anonymous ones — so `require_auth` collections stay
+/// protected even when `security.enabled = false` (open server). When
+/// `security.enabled = true`, global authentication and role checks apply
+/// on top, exactly as before.
 pub async fn auth_middleware_dynamic(
     checker: PermissionChecker,
     request: Request,
@@ -147,32 +153,54 @@ pub async fn auth_middleware_dynamic(
         return Ok(next.run(request).await);
     }
 
-    // Extract API key from Authorization header
+    // Extract API key from Authorization header (optional: policies decide
+    // whether authentication is required for this request)
     let api_key = request
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
 
-    let api_key = match api_key {
-        Some(k) => k,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
+    let user = api_key.and_then(|k| checker.authenticate(k));
 
-    // Authenticate
-    let user = match checker.authenticate(api_key) {
-        Some(u) => u,
-        None => return Err(StatusCode::UNAUTHORIZED),
+    // Per-collection policy chain: first non-Allow decision wins.
+    let collection = extract_collection(&path);
+    let ctx = crate::security::policy::RequestCtx {
+        path: &path,
+        method: method.as_str(),
+        collection,
+        user: user.as_ref(),
     };
-
-    // Check authorization (collection-scoped or admin, per the path).
-    if !is_authorized(&checker, &user, &method, &path) {
-        return Err(StatusCode::FORBIDDEN);
+    match checker.policy_chain().evaluate(&ctx) {
+        crate::security::policy::Decision::Allow => {}
+        crate::security::policy::Decision::Deny(code) => {
+            return Err(StatusCode::from_u16(code).unwrap_or(StatusCode::NOT_FOUND));
+        }
+        crate::security::policy::Decision::Challenge => {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
     }
 
-    // Store AuthUser and PermissionChecker in request extensions for handlers
+    // Global auth (security.enabled): authentication is mandatory and role
+    // checks apply. Without it the request proceeds (policies above were the
+    // only gate).
+    if checker.auth_required() {
+        match user.as_ref() {
+            None => return Err(StatusCode::UNAUTHORIZED),
+            Some(u) => {
+                if !is_authorized(&checker, u, &method, &path) {
+                    return Err(StatusCode::FORBIDDEN);
+                }
+            }
+        }
+    }
+
+    // Store AuthUser (when authenticated) and PermissionChecker in request
+    // extensions for handlers
     let mut request = request;
-    request.extensions_mut().insert(user);
+    if let Some(user) = user {
+        request.extensions_mut().insert(user);
+    }
     request.extensions_mut().insert(Arc::new(checker));
 
     Ok(next.run(request).await)
@@ -206,6 +234,7 @@ mod tests {
             roles,
             audit: Default::default(),
             isolation: false,
+            require_auth: Default::default(),
         };
         PermissionChecker::new(&config)
     }

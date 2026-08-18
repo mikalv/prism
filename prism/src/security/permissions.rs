@@ -1,5 +1,6 @@
 use super::types::{AuthUser, Permission};
 use crate::config::SecurityConfig;
+use crate::security::policy::PolicyChain;
 use std::collections::HashMap;
 use subtle::ConstantTimeEq;
 
@@ -10,6 +11,10 @@ pub struct PermissionChecker {
     roles: HashMap<String, Vec<(String, Vec<String>)>>,
     /// Opt-in isolation mode (namespace implicit grants + default-deny surfaces).
     isolation: bool,
+    /// Per-collection policies (require-auth, future: rate limit, masking, ...)
+    policy_chain: PolicyChain,
+    /// Whether global authentication is required (security.enabled).
+    auth_required: bool,
 }
 
 impl PermissionChecker {
@@ -44,6 +49,8 @@ impl PermissionChecker {
             keys,
             roles,
             isolation: config.isolation,
+            policy_chain: crate::security::policy::build_policy_chain(config),
+            auth_required: config.enabled,
         }
     }
 
@@ -83,18 +90,42 @@ impl PermissionChecker {
         })
     }
 
-    /// Return the subset of `all` collections the user may act on with the given
-    /// permission. This is the single resolver used by every enumeration and
-    /// fan-out surface (collection listing, multi-search, ES-compat `_cat`, etc.)
-    /// so isolation is enforced consistently and no surface is missed.
+    /// Return the subset of `all` collections the caller may act on with the
+    /// given permission. This is the single resolver used by every enumeration
+    /// and fan-out surface (collection listing, multi-search, ES-compat `_cat`,
+    /// etc.) so isolation is enforced consistently and no surface is missed.
+    ///
+    /// - Global auth (security.enabled): role-based visibility for the
+    ///   authenticated user.
+    /// - Open server: collections hidden only when a policy denies this caller
+    ///   (e.g. anonymous callers never see `require_auth` collections).
     pub fn visible_collections(
         &self,
-        user: &AuthUser,
+        user: Option<&AuthUser>,
         all: Vec<String>,
         permission: Permission,
     ) -> Vec<String> {
+        if self.auth_required {
+            let Some(user) = user else { return Vec::new() };
+            return all
+                .into_iter()
+                .filter(|c| self.check_permission(user, c, permission))
+                .collect();
+        }
+        // Open server: a collection is hidden only if a policy denies it.
         all.into_iter()
-            .filter(|c| self.check_permission(user, c, permission))
+            .filter(|c| {
+                let ctx = crate::security::policy::RequestCtx {
+                    path: "",
+                    method: "GET",
+                    collection: Some(c.as_str()),
+                    user,
+                };
+                matches!(
+                    self.policy_chain.evaluate(&ctx),
+                    crate::security::policy::Decision::Allow
+                )
+            })
             .collect()
     }
 
@@ -105,12 +136,30 @@ impl PermissionChecker {
         self.isolation
     }
 
+    /// Whether global authentication is required (security.enabled).
+    pub fn auth_required(&self) -> bool {
+        self.auth_required
+    }
+
+    /// The per-collection policy chain (require-auth and future policies).
+    pub fn policy_chain(&self) -> &crate::security::policy::PolicyChain {
+        &self.policy_chain
+    }
+
     pub fn check_permission(
         &self,
         user: &AuthUser,
         collection: &str,
         permission: Permission,
     ) -> bool {
+        // On an open server (security.enabled = false) role-based permissions
+        // do not apply. Access control is decided by the policy chain in the
+        // middleware (require_auth etc.) — handlers must not 403 callers who
+        // passed that gate.
+        if !self.auth_required {
+            return true;
+        }
+
         for role_name in &user.roles {
             if let Some(patterns) = self.roles.get(role_name) {
                 for (pattern, perms) in patterns {
@@ -138,7 +187,7 @@ impl PermissionChecker {
 }
 
 /// Simple glob matching: only supports trailing `*` (e.g., `logs-*`, `*`)
-fn glob_match(pattern: &str, value: &str) -> bool {
+pub fn glob_match(pattern: &str, value: &str) -> bool {
     if pattern == "*" {
         return true;
     }
@@ -171,6 +220,7 @@ mod tests {
             roles,
             audit: Default::default(),
             isolation: false,
+            require_auth: Default::default(),
         };
         PermissionChecker::new(&config)
     }
@@ -196,6 +246,7 @@ mod tests {
             roles: HashMap::new(),
             audit: Default::default(),
             isolation,
+            require_auth: Default::default(),
         };
         PermissionChecker::new(&config)
     }
@@ -211,7 +262,7 @@ mod tests {
             "mail".to_string(),
         ];
 
-        let visible = checker.visible_collections(&user, all, Permission::Search);
+        let visible = checker.visible_collections(Some(&user), all, Permission::Search);
 
         assert_eq!(
             visible,

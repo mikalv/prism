@@ -1115,12 +1115,18 @@ pub async fn list_collections(
     >,
 ) -> Json<CollectionsList> {
     let all = manager.list_collections();
-    // When security is enabled, restrict the listing to collections the caller
-    // may search — the same enforcement point used by simple_search. Without an
-    // auth context (security disabled) the full list is returned unchanged.
+    // Restrict the listing to collections the caller may see — role-based when
+    // global auth is on, policy-based (e.g. require_auth) when the server is
+    // otherwise open. Anonymous open-server callers never see protected
+    // collections. Without any auth context (middleware not installed) the
+    // full list is returned unchanged.
     let collections = match (user_ext, checker_ext) {
-        (Some(axum::extract::Extension(user)), Some(axum::extract::Extension(checker))) => {
-            checker.visible_collections(&user, all, crate::security::types::Permission::Search)
+        (user_ext, Some(axum::extract::Extension(checker))) => {
+            checker.visible_collections(
+                user_ext.map(|axum::extract::Extension(u)| u).as_ref(),
+                all,
+                crate::security::types::Permission::Search,
+            )
         }
         _ => all,
     };

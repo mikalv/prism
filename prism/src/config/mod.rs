@@ -205,6 +205,28 @@ impl Default for TlsConfig {
     }
 }
 
+/// Per-collection authentication requirements.
+///
+/// Collections matching `collections` patterns require an authenticated
+/// caller even when `security.enabled = false` (open server). When
+/// `hide_from_anonymous` is true, anonymous callers receive 404 instead of
+/// 401 so the collection's existence is not revealed.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RequireAuthConfig {
+    /// Glob patterns (same syntax as roles: trailing `*`, exact, or `*`).
+    #[serde(default)]
+    pub collections: Vec<String>,
+    /// 404 for anonymous instead of 401 (hide existence). Default: true.
+    #[serde(default = "default_true")]
+    pub hide_from_anonymous: bool,
+}
+
+impl Default for RequireAuthConfig {
+    fn default() -> Self {
+        Self { collections: Vec::new(), hide_from_anonymous: true }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SecurityConfig {
     #[serde(default = "default_true")]
@@ -220,6 +242,9 @@ pub struct SecurityConfig {
     /// restrict results to what the caller may see. Off by default.
     #[serde(default)]
     pub isolation: bool,
+    /// Per-collection auth requirements (works even when security.enabled=false).
+    #[serde(default)]
+    pub require_auth: RequireAuthConfig,
 }
 
 impl Default for SecurityConfig {
@@ -230,6 +255,7 @@ impl Default for SecurityConfig {
             roles: HashMap::new(),
             audit: AuditConfig::default(),
             isolation: false,
+            require_auth: RequireAuthConfig::default(),
         }
     }
 }
