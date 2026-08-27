@@ -31,3 +31,4 @@ inspiration
 # Python artifacts
 clients/python/prismsearch/.venv/
 __pycache__/
+binary-*.zip

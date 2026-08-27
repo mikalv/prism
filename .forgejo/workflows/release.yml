@@ -4,156 +4,333 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write
+  packages: write
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-linux:
-    name: Build Linux
-    runs-on: rust-1.93-bookworm
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux (glibc)
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            label: linux-x86_64
+            features: ""
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            label: linux-aarch64
+            features: ""
+
+          # Linux (glibc) + ONNX
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            label: linux-x86_64-onnx
+            features: "provider-onnx"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            label: linux-aarch64-onnx
+            features: "provider-onnx"
+
+          # Linux (musl/static)
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            label: linux-x86_64-static
+            features: ""
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            label: linux-aarch64-static
+            features: ""
+
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            label: darwin-x86_64
+            features: ""
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            label: darwin-aarch64
+            features: ""
+
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            label: windows-x86_64
+            features: ""
+
+    runs-on: ${{ matrix.os }}
+
     steps:
-      - name: Install system dependencies
-        run: apt-get update && apt-get install -y git nodejs npm musl-tools musl-dev
+      - uses: actions/checkout@v4
 
-      - uses: https://data.forgejo.org/actions/checkout@v4
-
-      - name: Add musl target
-        run: rustup target add x86_64-unknown-linux-musl
-
-      - name: Build x86_64-musl (static)
-        run: cargo build --release --target x86_64-unknown-linux-musl -p prism-server -p prism-cli -p prism-importer
-
-      - name: Create dist
-        run: cargo xtask dist --target x86_64-unknown-linux-musl
-
-      - name: Upload artifact
-        uses: https://data.forgejo.org/actions/upload-artifact@v4
-        with:
-          name: dist-linux-x86_64-static
-          path: dist/*.tar.gz
-
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
-    steps:
-      - uses: https://data.forgejo.org/actions/checkout@v4
+      - name: Create placeholder UI dist
+        shell: bash
+        run: |
+          mkdir -p websearch-ui/dist
+          echo '<!DOCTYPE html><html><body>placeholder</body></html>' > websearch-ui/dist/index.html
 
       - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Build aarch64
-        run: |
-          source $HOME/.cargo/env
-          cargo build --release -p prism-server -p prism-cli -p prism-importer
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
-      - name: Create dist
-        run: |
-          source $HOME/.cargo/env
-          cargo xtask dist
+      - name: Install musl-tools
+        if: endsWith(matrix.target, '-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Upload via scp
-        env:
-          ARTIFACT_SSH_KEY: ${{ secrets.ARTIFACT_SSH_KEY }}
-          ARTIFACT_HOST: ${{ secrets.ARTIFACT_HOST }}
+      - name: Build release binary
         run: |
-          if [ -n "$ARTIFACT_SSH_KEY" ] && [ -n "$ARTIFACT_HOST" ]; then
-            mkdir -p ~/.ssh
-            echo "$ARTIFACT_SSH_KEY" > ~/.ssh/artifact_key
-            chmod 600 ~/.ssh/artifact_key
-            scp -o StrictHostKeyChecking=no -i ~/.ssh/artifact_key dist/*.tar.gz "$ARTIFACT_HOST"
-            rm ~/.ssh/artifact_key
+          if [ -n "${{ matrix.features }}" ]; then
+            cargo build --release --target ${{ matrix.target }} --features "${{ matrix.features }}"
           else
-            echo "Artifact upload skipped - ARTIFACT_SSH_KEY or ARTIFACT_HOST not configured"
-            ls -la dist/
+            cargo build --release --target ${{ matrix.target }}
           fi
+        shell: bash
 
-  build-windows:
-    name: Build Windows
-    runs-on: windows10msvc2022
-    steps:
-      - uses: https://data.forgejo.org/actions/checkout@v4
-
-      - name: Install Rust
+      - name: Strip binaries (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
-          Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
-          .\rustup-init.exe -y
-          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+          for bin in prism-server prismctl prism-import; do
+            strip target/${{ matrix.target }}/release/${bin}
+          done
 
-      - name: Build
-        run: |
-          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-          cargo build --release -p prism-server -p prism-cli -p prism-importer
+      - name: Import code signing certificate
+        if: startsWith(matrix.os, 'macos')
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
 
-      - name: Create dist
-        run: |
-          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-          cargo xtask dist --format zip
-
-      - name: Upload via scp
+      - name: Sign binaries (macOS)
+        if: startsWith(matrix.os, 'macos')
         env:
-          ARTIFACT_SSH_KEY: ${{ secrets.ARTIFACT_SSH_KEY }}
-          ARTIFACT_HOST: ${{ secrets.ARTIFACT_HOST }}
+          CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
         run: |
-          if ($env:ARTIFACT_SSH_KEY -and $env:ARTIFACT_HOST) {
-            $keyPath = "$env:USERPROFILE\.ssh\artifact_key"
-            New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
-            $env:ARTIFACT_SSH_KEY | Out-File -FilePath $keyPath -Encoding ASCII
-            scp -o StrictHostKeyChecking=no -i $keyPath dist\*.zip $env:ARTIFACT_HOST
-            Remove-Item $keyPath
-          } else {
-            Write-Host "Artifact upload skipped - secrets not configured"
-            Get-ChildItem dist\
-          }
+          for bin in prism-server prismctl prism-import; do
+            codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+              target/${{ matrix.target }}/release/${bin}
+            codesign --verify --verbose target/${{ matrix.target }}/release/${bin}
+          done
 
-  create-release:
-    name: Create Release
-    needs: [build-linux]  # Only Linux can upload artifacts for now
-    runs-on: rust-1.93-bookworm
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          archive="prism-${tag}-${{ matrix.label }}.tar.gz"
+          staging="prism-${tag}-${{ matrix.label }}"
+          mkdir -p "${staging}"
+          cp target/${{ matrix.target }}/release/prism-server "${staging}/"
+          cp target/${{ matrix.target }}/release/prismctl "${staging}/"
+          cp target/${{ matrix.target }}/release/prism-import "${staging}/"
+          tar czf "${archive}" "${staging}"
+          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $archive = "prism-${tag}-${{ matrix.label }}.zip"
+          $staging = "prism-${tag}-${{ matrix.label }}"
+          New-Item -ItemType Directory -Path $staging -Force
+          Copy-Item "target/${{ matrix.target }}/release/prism-server.exe" $staging/
+          Copy-Item "target/${{ matrix.target }}/release/prismctl.exe" $staging/
+          Copy-Item "target/${{ matrix.target }}/release/prism-import.exe" $staging/
+          Compress-Archive -Path $staging -DestinationPath $archive
+          echo "ARCHIVE=$archive" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.label }}
+          path: ${{ env.ARCHIVE }}
+
+  extract-changelog:
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.extract.outputs.changelog }}
     steps:
-      - name: Install system dependencies
-        run: apt-get update && apt-get install -y git nodejs npm
+      - uses: actions/checkout@v4
 
-      - uses: https://data.forgejo.org/actions/checkout@v4
-
-      - name: Download Linux artifact
-        uses: https://data.forgejo.org/actions/download-artifact@v4
-        with:
-          name: dist-linux-x86_64-static
-          path: artifacts
-
-      - name: List artifacts
-        run: ls -la artifacts/
-
-      - name: Create checksums
+      - name: Extract changelog for tag
+        id: extract
         run: |
-          cd artifacts
-          sha256sum *.tar.gz > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          # Strip leading 'v' from tag to get version number
+          version="${GITHUB_REF_NAME#v}"
+          # Extract section between ## [version] and next ## [
+          changelog=$(awk "/^## \\[${version}\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          # Write multiline output
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            echo "${changelog}"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Create release
-        uses: https://data.forgejo.org/actions/forgejo-release@v2
+  release:
+    needs: [build, extract-changelog]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
         with:
-          direction: upload
-          tag: ${{ github.ref_name }}
-          token: ${{ secrets.RELEASE_TOKEN }}
-          release-dir: artifacts
-          release-notes: |
-            ## Prism ${{ github.ref_name }}
+          pattern: archive-*
+          merge-multiple: true
 
-            ### Downloads
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Prism ${{ github.ref_name }}"
+          body: ${{ needs.extract-changelog.outputs.changelog }}
+          files: |
+            prism-*.tar.gz
+            prism-*.zip
 
-            | Platform | Architecture | File |
-            |----------|--------------|------|
-            | Linux | x86_64 (static/musl) | `prism-*-linux-x86_64-static.tar.gz` |
+  packages:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-            ### Build from Source
+      - name: Download Linux x86_64 archive
+        uses: actions/download-artifact@v4
+        with:
+          name: archive-linux-x86_64
 
-            ```bash
-            # macOS / Windows / other platforms
-            cargo build --release -p prism-server -p prism-cli
-            ```
+      - name: Extract version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-            ### Checksums
+      - name: Build DEB package
+        run: |
+          mkdir -p deb/usr/bin deb/DEBIAN deb/lib/systemd/system
+          tar xzf prism-${GITHUB_REF_NAME}-linux-x86_64.tar.gz
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server deb/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prismctl deb/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import deb/usr/bin/
+          cp packaging/systemd/prismsearch.service deb/lib/systemd/system/
+          cat > deb/DEBIAN/control <<EOF
+          Package: prismsearch
+          Version: ${VERSION}
+          Architecture: amd64
+          Maintainer: mikalv <spam@mux.rs>
+          Description: Hybrid search engine combining full-text and vector search for AI/RAG applications
+          EOF
+          sed -i 's/^          //' deb/DEBIAN/control
+          cat > deb/DEBIAN/postinst <<'SCRIPT'
+          #!/bin/sh
+          set -e
+          if ! getent group prismsearch >/dev/null; then
+            groupadd --system prismsearch
+          fi
+          if ! getent passwd prismsearch >/dev/null; then
+            useradd --system --gid prismsearch --home-dir /var/lib/prismsearch --shell /usr/sbin/nologin prismsearch
+          fi
+          mkdir -p /var/lib/prismsearch
+          chown prismsearch:prismsearch /var/lib/prismsearch
+          systemctl daemon-reload
+          SCRIPT
+          sed -i 's/^          //' deb/DEBIAN/postinst
+          chmod 755 deb/DEBIAN/postinst
+          dpkg-deb --build deb "prismsearch_${VERSION}_amd64.deb"
 
-            See `SHA256SUMS.txt` for file checksums.
+      - name: Build RPM package
+        run: |
+          sudo apt-get update && sudo apt-get install -y rpm
+          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin
+          mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/lib/systemd/system
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prismctl rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp packaging/systemd/prismsearch.service rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/lib/systemd/system/
+          cat > rpmbuild/SPECS/prismsearch.spec <<EOF
+          Name: prismsearch
+          Version: ${VERSION}
+          Release: 1
+          Summary: Hybrid search engine for AI/RAG applications
+          License: MIT
+          URL: https://github.com/mikalv/prism
+          %description
+          Prism is a hybrid search engine combining full-text and vector search.
+          %pre
+          getent group prismsearch >/dev/null || groupadd -r prismsearch
+          getent passwd prismsearch >/dev/null || useradd -r -g prismsearch -d /var/lib/prismsearch -s /sbin/nologin prismsearch
+          mkdir -p /var/lib/prismsearch
+          chown prismsearch:prismsearch /var/lib/prismsearch
+          %post
+          systemctl daemon-reload
+          %files
+          /usr/bin/prism-server
+          /usr/bin/prismctl
+          /usr/bin/prism-import
+          /usr/lib/systemd/system/prismsearch.service
+          EOF
+          sed -i 's/^          //' rpmbuild/SPECS/prismsearch.spec
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/prismsearch.spec
+          cp rpmbuild/RPMS/x86_64/prismsearch-${VERSION}-1.x86_64.rpm .
+
+      - name: Upload DEB to pkg42
+        run: |
+          curl -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.PKG42_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@prismsearch_${VERSION}_amd64.deb" \
+            --url "https://pkg42.dev/deb/stable/main/amd64/upload?file=prismsearch_${VERSION}_amd64.deb&meta%5BPackage%5D=prismsearch&meta%5BVersion%5D=${VERSION}"
+
+      - name: Upload RPM to pkg42
+        continue-on-error: true
+        run: |
+          curl -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.PKG42_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@prismsearch-${VERSION}-1.x86_64.rpm" \
+            "https://pkg42.dev/rpm/stable/x86_64/upload"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

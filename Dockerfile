@@ -82,7 +82,7 @@ RUN if [ -n "$FEATURES" ]; then \
     else \
       cargo build --release --workspace; \
     fi && \
-    strip target/release/prism-server target/release/prism target/release/prism-import 2>/dev/null || true
+    strip target/release/prism-server target/release/prismctl target/release/prism-import 2>/dev/null || true
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -98,7 +98,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy binaries
 COPY --from=builder /app/target/release/prism-server /usr/local/bin/prism-server
-COPY --from=builder /app/target/release/prism /usr/local/bin/prism
+COPY --from=builder /app/target/release/prismctl /usr/local/bin/prismctl
 COPY --from=builder /app/target/release/prism-import /usr/local/bin/prism-import
 
 USER prismsearch

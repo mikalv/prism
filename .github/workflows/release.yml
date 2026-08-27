@@ -100,7 +100,7 @@ jobs:
       - name: Strip binaries (Linux)
         if: startsWith(matrix.os, 'ubuntu')
         run: |
-          for bin in prism-server prism prism-import; do
+          for bin in prism-server prismctl prism-import; do
             strip target/${{ matrix.target }}/release/${bin}
           done
 
@@ -116,7 +116,7 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
         run: |
-          for bin in prism-server prism prism-import; do
+          for bin in prism-server prismctl prism-import; do
             codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
               target/${{ matrix.target }}/release/${bin}
             codesign --verify --verbose target/${{ matrix.target }}/release/${bin}
@@ -131,7 +131,7 @@ jobs:
           staging="prism-${tag}-${{ matrix.label }}"
           mkdir -p "${staging}"
           cp target/${{ matrix.target }}/release/prism-server "${staging}/"
-          cp target/${{ matrix.target }}/release/prism "${staging}/"
+          cp target/${{ matrix.target }}/release/prismctl "${staging}/"
           cp target/${{ matrix.target }}/release/prism-import "${staging}/"
           tar czf "${archive}" "${staging}"
           echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
@@ -145,7 +145,7 @@ jobs:
           $staging = "prism-${tag}-${{ matrix.label }}"
           New-Item -ItemType Directory -Path $staging -Force
           Copy-Item "target/${{ matrix.target }}/release/prism-server.exe" $staging/
-          Copy-Item "target/${{ matrix.target }}/release/prism.exe" $staging/
+          Copy-Item "target/${{ matrix.target }}/release/prismctl.exe" $staging/
           Copy-Item "target/${{ matrix.target }}/release/prism-import.exe" $staging/
           Compress-Archive -Path $staging -DestinationPath $archive
           echo "ARCHIVE=$archive" | Out-File -Append -FilePath $env:GITHUB_ENV
@@ -215,7 +215,7 @@ jobs:
           mkdir -p deb/usr/bin deb/DEBIAN deb/lib/systemd/system
           tar xzf prism-${GITHUB_REF_NAME}-linux-x86_64.tar.gz
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server deb/usr/bin/
-          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism deb/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prismctl deb/usr/bin/
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import deb/usr/bin/
           cp packaging/systemd/prismsearch.service deb/lib/systemd/system/
           cat > deb/DEBIAN/control <<EOF
@@ -250,7 +250,7 @@ jobs:
           mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin
           mkdir -p rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/lib/systemd/system
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-server rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
-          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
+          cp prism-${GITHUB_REF_NAME}-linux-x86_64/prismctl rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
           cp prism-${GITHUB_REF_NAME}-linux-x86_64/prism-import rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/bin/
           cp packaging/systemd/prismsearch.service rpmbuild/BUILDROOT/prismsearch-${VERSION}-1.x86_64/usr/lib/systemd/system/
           cat > rpmbuild/SPECS/prismsearch.spec <<EOF
@@ -271,7 +271,7 @@ jobs:
           systemctl daemon-reload
           %files
           /usr/bin/prism-server
-          /usr/bin/prism
+          /usr/bin/prismctl
           /usr/bin/prism-import
           /usr/lib/systemd/system/prismsearch.service
           EOF
