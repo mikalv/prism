@@ -4,7 +4,7 @@
 //! identifiers (split by camelCase/snake_case), comments, strings, and keywords.
 
 use crate::detector::language_from_content;
-use crate::splitter::{split_identifier, tokenize_text};
+use crate::splitter::{split_identifier, tokenize_text_split};
 use crate::Language;
 use tantivy::tokenizer::{Token, TokenStream, Tokenizer};
 
@@ -214,7 +214,7 @@ fn walk_tree(
             if is_comment_kind(kind) && index_comments {
                 // Strip comment markers and tokenize content
                 let content = strip_comment_markers(node_text);
-                let words = tokenize_text(&content);
+                let words = tokenize_text_split(&content);
                 for word in words {
                     tokens.push(ExtractedToken {
                         text: word,
@@ -239,7 +239,7 @@ fn walk_tree(
             if is_string_kind(kind) && index_strings {
                 // Strip quotes and tokenize content
                 let content = strip_string_delimiters(node_text);
-                let words = tokenize_text(&content);
+                let words = tokenize_text_split(&content);
                 for word in words {
                     tokens.push(ExtractedToken {
                         text: word,
@@ -457,6 +457,31 @@ fn do_work() {}
         assert!(tokens.contains(&"comment".to_string()));
         assert!(tokens.contains(&"do".to_string()));
         assert!(tokens.contains(&"work".to_string()));
+    }
+
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_comment_camel_case_split() {
+        let code = r#"
+// validates validateZebraInput in all paths
+fn process_data() {}
+"#;
+        let tokens = tokenize_with_lang(code, Language::Rust);
+        assert!(tokens.contains(&"validate".to_string()));
+        assert!(tokens.contains(&"zebra".to_string()));
+        assert!(tokens.contains(&"input".to_string()));
+    }
+
+    #[cfg(feature = "rust")]
+    #[test]
+    fn test_string_camel_case_split() {
+        let code = r#"
+let s = "kangarooJumpHigh";
+"#;
+        let tokens = tokenize_with_lang(code, Language::Rust);
+        assert!(tokens.contains(&"kangaroo".to_string()));
+        assert!(tokens.contains(&"jump".to_string()));
+        assert!(tokens.contains(&"high".to_string()));
     }
 
     #[cfg(feature = "rust")]

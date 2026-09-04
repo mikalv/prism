@@ -98,10 +98,15 @@ pub fn split_identifier(ident: &str) -> Vec<String> {
 ///
 /// Simple whitespace + punctuation splitting with lowercasing.
 /// Filters out very short tokens (< 2 chars).
-pub fn tokenize_text(text: &str) -> Vec<String> {
+/// Tokenize free-form text into lowercase words, splitting
+/// camelCase/PascalCase/SCREAMING_CASE fragments into sub-identifier parts,
+/// so that `validateZebraInput` inside a comment or string is searchable as
+/// `zebra`.
+pub fn tokenize_text_split(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter(|s| s.len() >= 2)
-        .map(|s| s.to_lowercase())
+        .flat_map(split_identifier)
+        .filter(|s| s.len() >= 2)
         .collect()
 }
 
@@ -164,9 +169,12 @@ mod tests {
 
     #[test]
     fn test_tokenize_text() {
-        assert_eq!(tokenize_text("This is a test"), vec!["this", "is", "test"]);
         assert_eq!(
-            tokenize_text("TODO: fix the bug"),
+            tokenize_text_split("This is a test"),
+            vec!["this", "is", "test"]
+        );
+        assert_eq!(
+            tokenize_text_split("TODO: fix the bug"),
             vec!["todo", "fix", "the", "bug"]
         );
     }
