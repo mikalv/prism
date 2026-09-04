@@ -30,12 +30,12 @@ backends:
 
 The tree-sitter tokenizer parses code into an AST (Abstract Syntax Tree) before extracting tokens. This gives it real language awareness — it can distinguish identifiers from comments, string literals, and keywords.
 
-!!! note "Feature flag required"
+!!! note "Feature flag"
     The tree-sitter tokenizer requires building Prism with the `tokenizer-treesitter` feature:
     ```bash
     cargo build --release --features tokenizer-treesitter
     ```
-    Without this feature, Prism will fall back to the `code` tokenizer with a warning.
+    It is enabled by default in `prism-server` builds since v0.7.0; CLI/library consumers must opt in. Without this feature, Prism falls back to the `code` tokenizer with a warning.
 
 ## Supported languages
 
@@ -137,8 +137,8 @@ The tree-sitter tokenizer processes code in three steps:
 1. **Parse** — Tree-sitter parses the source code into an AST
 2. **Extract** — The tokenizer walks the AST and collects:
    - **Identifiers** (function names, variables, types) — split on camelCase/snake_case boundaries and lowercased
-   - **Comments** (if enabled) — tokenized as natural language text
-   - **String literals** (if enabled) — tokenized as natural language text
+   - **Comments** (if enabled) — tokenized as natural language text; camelCase fragments inside comments are also split into sub-identifier parts
+   - **String literals** (if enabled) — tokenized as natural language text; camelCase fragments inside strings are also split into sub-identifier parts
    - **Keywords** — emitted as-is
 3. **Emit** — Each sub-token is emitted with its byte offset from the AST node
 
