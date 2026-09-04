@@ -262,6 +262,30 @@ curl -X POST http://localhost:3080/collections/products/aggregate \
 
 ---
 
+## Code Search (tree-sitter)
+
+For indexing and searching **source code**, use the AST-aware
+`code-treesitter` tokenizer (default in prism-server ≥ v0.7.0). It splits
+camelCase/snake_case identifiers into searchable sub-tokens
+(`getUserById` → `get`, `user`, `by`, `id`), including camelCase inside
+comments and string literals.
+
+```yaml
+backends:
+  text:
+    fields:
+      - name: content
+        type: text
+        stored: true
+        indexed: true
+        tokenizer: code-treesitter
+```
+
+See the `prism-code-search` skill for full reference (languages, options,
+re-indexing, semantics).
+
+---
+
 ## Storage Backends
 
 ### Backend Types
