@@ -22,7 +22,7 @@ Prism combines vector search (HNSW) with full-text search (Tantivy) to deliver f
 ### Running the Server
 
 ```bash
-cargo run -p prism-server
+cargo run -p prismsearch-server
 ```
 
 This starts Prism on `http://localhost:3080` with:
@@ -66,11 +66,12 @@ This starts the backend on `:3080` and Vite dev server on `:5173`.
 
 ### Using Prism as a Library
 
-Add Prism to your `Cargo.toml`:
+Add Prism to your `Cargo.toml`. The library crate is `prismsearch`. It is not
+yet published on crates.io, so depend on it via git:
 
 ```toml
 [dependencies]
-prism = "0.3"
+prismsearch = { git = "https://github.com/mikalv/prism" }
 ```
 
 ### Basic Vector Search
