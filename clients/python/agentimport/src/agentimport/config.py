@@ -51,6 +51,7 @@ class Config:
             "chatgpt_export": SourceConfig(enabled=False, roots=[]),
             "antigravity": SourceConfig(roots=[home / ".gemini" / "antigravity" / "brain"]),
             "pi": SourceConfig(roots=[home / ".pi" / "agent" / "sessions"]),
+            "cursor": SourceConfig(roots=[home / "Library" / "Application Support" / "Cursor" / "User" / "globalStorage"]),
             "opencode": SourceConfig(roots=[home / ".local" / "share" / "opencode"]),
         }
 
