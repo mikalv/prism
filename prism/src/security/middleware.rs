@@ -28,11 +28,62 @@ fn is_public_path(path: &str) -> bool {
     })
 }
 
-/// Extract collection name from URL path
-fn extract_collection(path: &str) -> Option<&str> {
-    // Match /collections/:collection/...
-    let path = path.strip_prefix("/collections/")?;
-    path.split('/').next()
+/// First path segments that are native (non-collection) endpoints, so their
+/// leading segment must NOT be mistaken for an Elasticsearch index name.
+/// `_`-prefixed ES endpoints (`/_search`, `/_bulk`, `/_cat/...`) are handled
+/// separately by the `_` check.
+const RESERVED_ROOTS: &[&str] = &[
+    "collections", "api", "ui", "health", "stats", "metrics", "err", "ok", "sse", "admin",
+];
+
+/// Extract the target collection name(s) from a request path.
+///
+/// Two mounting styles carry a collection in the path:
+/// - native:    `/collections/:collection/...`
+/// - ES-compat: `/:index/...` and bare `/:index`, where the first segment is
+///   neither a reserved root (see `RESERVED_ROOTS`) nor a `_`-prefixed ES
+///   endpoint (`/_search`, `/_bulk`, `/_cat/indices`, ...).
+///
+/// The ES index segment may be a comma-separated list (`/a,b/_search`), so a
+/// `Vec` is returned and the caller must authorize *every* named index.
+/// Returns `None` when no collection is named in the path (cluster/meta routes
+/// and the index-less cross-collection endpoints like `/_search`).
+fn extract_collections(path: &str) -> Option<Vec<&str>> {
+    if let Some(rest) = path.strip_prefix("/collections/") {
+        let c = rest.split('/').next().filter(|s| !s.is_empty())?;
+        return Some(vec![c]);
+    }
+    let first = path.strip_prefix('/')?.split('/').next()?;
+    if first.is_empty() || first.starts_with('_') || RESERVED_ROOTS.contains(&first) {
+        return None;
+    }
+    // ES index segment: split comma-lists, drop empties.
+    let cols: Vec<&str> = first.split(',').filter(|s| !s.is_empty()).collect();
+    if cols.is_empty() {
+        None
+    } else {
+        Some(cols)
+    }
+}
+
+/// Index-less Elasticsearch endpoints that read, write, or enumerate across
+/// *all* collections. They carry no index in the path, so authorization falls
+/// back to a check against the `*` collection: only a key granted the relevant
+/// permission on all collections may use them. Per-result filtering for
+/// narrowly-scoped keys is a separate, handler-level concern.
+fn is_cross_collection_route(path: &str) -> bool {
+    matches!(
+        path,
+        "/_search"
+            | "/_msearch"
+            | "/_mget"
+            | "/_bulk"
+            | "/_async_search"
+            | "/_pit"
+            | "/_field_caps"
+            | "/_stats"
+    ) || path.starts_with("/_cat/")
+        || path.starts_with("/_resolve/")
 }
 
 /// Whether a path is an administrative endpoint requiring the Admin permission.
@@ -45,22 +96,31 @@ fn is_admin_path(path: &str) -> bool {
 
 /// Decide whether an authenticated user may perform this request.
 ///
-/// - `/collections/:c/...` → collection-scoped permission for the method.
+/// - a collection-scoped path (`/collections/:c/...` or ES `/:index/...`) →
+///   the method's permission on *every* named index.
 /// - `/admin/*` and `/_admin/*` → global (`*`) Admin permission.
-/// - anything else → authentication alone suffices.
+/// - index-less cross-collection ES routes (`/_search`, `/_cat/...`, ...) →
+///   the method's permission on the `*` collection (all collections).
+/// - anything else (cluster/meta routes) → authentication alone suffices.
 fn is_authorized(
     checker: &PermissionChecker,
     user: &super::types::AuthUser,
     method: &axum::http::Method,
     path: &str,
 ) -> bool {
-    if let Some(collection) = extract_collection(path) {
-        checker.check_permission(user, collection, required_permission(method, path))
-    } else if is_admin_path(path) {
-        checker.check_permission(user, "*", Permission::Admin)
-    } else {
-        true
+    if is_admin_path(path) {
+        return checker.check_permission(user, "*", Permission::Admin);
     }
+    if let Some(collections) = extract_collections(path) {
+        let perm = required_permission(method, path);
+        return collections
+            .iter()
+            .all(|c| checker.check_permission(user, c, perm));
+    }
+    if is_cross_collection_route(path) {
+        return checker.check_permission(user, "*", required_permission(method, path));
+    }
+    true
 }
 
 /// Determine required permission from HTTP method and path
@@ -72,7 +132,16 @@ fn required_permission(method: &axum::http::Method, path: &str) -> Permission {
     match *method {
         axum::http::Method::GET => Permission::Read,
         axum::http::Method::POST => {
+            // Read-shaped ES/native verbs need only Search; everything else
+            // POSTed is a write. `_delete_by_query` is intentionally treated as
+            // a write (>= Delete would also pass a write-capable key).
             if path.ends_with("/search")
+                || path.ends_with("/_search")
+                || path.ends_with("/_msearch")
+                || path.ends_with("/_count")
+                || path.ends_with("/_field_caps")
+                || path.ends_with("/_async_search")
+                || path.ends_with("/_pit")
                 || path.ends_with("/_suggest")
                 || path.ends_with("/_mlt")
                 || path.ends_with("/aggregate")
@@ -163,8 +232,10 @@ pub async fn auth_middleware_dynamic(
 
     let user = api_key.and_then(|k| checker.authenticate(k));
 
-    // Per-collection policy chain: first non-Allow decision wins.
-    let collection = extract_collection(&path);
+    // Per-collection policy chain: first non-Allow decision wins. ES paths may
+    // name several indices (`/a,b/_search`); the policy chain is per-collection,
+    // so use the first named index (the common single-index case).
+    let collection = extract_collections(&path).and_then(|c| c.into_iter().next());
     let ctx = crate::security::policy::RequestCtx {
         path: &path,
         method: method.as_str(),
@@ -322,5 +393,81 @@ mod tests {
         assert!(!is_public_path("/ui-admin/secrets"));
         assert!(!is_public_path("/healthz-internal"));
         assert!(!is_public_path("/stats/server-secret"));
+    }
+
+    #[test]
+    fn es_index_paths_are_collection_scoped() {
+        // Regression: the ES-compat API mounts collections as `/:index/_*`, not
+        // `/collections/:c/...`. A key scoped to one index must NOT reach
+        // another via the ES routes (read, write, or delete).
+        let checker = checker_with_role("alpha", &[("alpha", &["read", "search", "write", "delete"])]);
+        let u = user("alpha");
+        // Own index: allowed.
+        assert!(is_authorized(&checker, &u, &axum::http::Method::POST, "/alpha/_search"));
+        assert!(is_authorized(&checker, &u, &axum::http::Method::PUT, "/alpha/_doc/1"));
+        assert!(is_authorized(&checker, &u, &axum::http::Method::GET, "/alpha/_doc/1"));
+        // Other index: denied on every verb.
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::POST, "/beta/_search"));
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::PUT, "/beta/_doc/1"));
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::DELETE, "/beta/_doc/1"));
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::GET, "/beta/_doc/1"));
+        // Bare index create/delete is scoped too.
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::PUT, "/beta"));
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::DELETE, "/beta"));
+    }
+
+    #[test]
+    fn es_multi_index_requires_all() {
+        // A comma-separated index list authorizes only if the key covers every
+        // named index — one unauthorized index denies the whole request.
+        let checker = checker_with_role("alpha", &[("alpha", &["read", "search"])]);
+        let u = user("alpha");
+        assert!(is_authorized(&checker, &u, &axum::http::Method::POST, "/alpha/_search"));
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::POST, "/alpha,beta/_search"));
+    }
+
+    #[test]
+    fn cross_collection_routes_need_star_permission() {
+        // Index-less endpoints span all collections. A key scoped to one index
+        // must not read-all or enumerate; a key granted `*` may.
+        let scoped = checker_with_role("alpha", &[("alpha", &["read", "search"])]);
+        let us = user("alpha");
+        for path in ["/_search", "/_msearch", "/_bulk", "/_cat/indices", "/_stats"] {
+            assert!(
+                !is_authorized(&scoped, &us, &axum::http::Method::POST, path),
+                "scoped key must be denied on cross-collection route {path}"
+            );
+        }
+        // `/_cat/indices` is a GET enumeration — still denied for a scoped key.
+        assert!(!is_authorized(&scoped, &us, &axum::http::Method::GET, "/_cat/indices"));
+
+        let all = checker_with_role("reader", &[("*", &["read", "search"])]);
+        let ua = user("reader");
+        assert!(is_authorized(&all, &ua, &axum::http::Method::POST, "/_search"));
+        assert!(is_authorized(&all, &ua, &axum::http::Method::GET, "/_cat/indices"));
+    }
+
+    #[test]
+    fn native_non_index_roots_are_not_treated_as_indices() {
+        // First-segment roots like `api`/`stats` must not be read as an ES
+        // index named "api" (which would demand a bogus collection permission).
+        assert_eq!(extract_collections("/api/search"), None);
+        assert_eq!(extract_collections("/stats/server"), None);
+        assert_eq!(extract_collections("/_search"), None);
+        assert_eq!(extract_collections("/health"), None);
+        assert_eq!(extract_collections("/collections/logs/search"), Some(vec!["logs"]));
+        assert_eq!(extract_collections("/myindex/_doc/1"), Some(vec!["myindex"]));
+        assert_eq!(extract_collections("/a,b/_search"), Some(vec!["a", "b"]));
+    }
+
+    #[test]
+    fn es_search_needs_only_search_permission() {
+        // POST `/:index/_search` is a read; a search-only key must be able to
+        // run it (it must not be misclassified as a write).
+        let checker = checker_with_role("s", &[("alpha", &["search"])]);
+        let u = user("s");
+        assert!(is_authorized(&checker, &u, &axum::http::Method::POST, "/alpha/_search"));
+        // But not write.
+        assert!(!is_authorized(&checker, &u, &axum::http::Method::PUT, "/alpha/_doc/1"));
     }
 }
